@@ -1,0 +1,38 @@
+{
+  "name": "agentic-mobile-kit",
+  "version": "0.0.1",
+  "description": "One setup for AI-assisted mobile development that works the same in Claude Code, Codex, Cursor, OpenCode, Kiro and Antigravity. Early development.",
+  "license": "MIT",
+  "author": "prakashpro1",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/prakashpro3/agentic-mobile-kit.git"
+  },
+  "homepage": "https://github.com/prakashpro3/agentic-mobile-kit#readme",
+  "bugs": {
+    "url": "https://github.com/prakashpro3/agentic-mobile-kit/issues"
+  },
+  "bin": {
+    "agentic-mobile-kit": "bin/cli.js"
+  },
+  "files": [
+    "bin"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "keywords": [
+    "react-native",
+    "expo",
+    "ai",
+    "agents",
+    "agents-md",
+    "agent-skills",
+    "claude-code",
+    "codex",
+    "cursor",
+    "opencode",
+    "kiro",
+    "antigravity"
+  ]
+}
