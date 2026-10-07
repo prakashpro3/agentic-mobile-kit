@@ -1,0 +1,8 @@
+{
+  "version": 1,
+  "hooks": {
+    // no matcher: runs for every tool call; guard.sh decides from the payload text
+    "preToolUse": [{ "command": "sh scripts/ai/guard.sh" }],
+    "stop": [{ "command": "sh scripts/ai/stop-probe.sh" }]
+  }
+}

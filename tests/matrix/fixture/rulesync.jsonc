@@ -1,0 +1,6 @@
+{
+  "targets": ["claudecode", "codexcli", "antigravity-ide", "antigravity-cli"],
+  "features": ["permissions", "hooks", "subagents"],
+  "outputRoots": ["."],
+  "delete": false
+}

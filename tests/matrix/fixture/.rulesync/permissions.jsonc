@@ -1,0 +1,6 @@
+{
+  "permission": {
+    "bash": { "git reset --hard*": "deny" },
+    "read": { ".env": "deny" }
+  }
+}
