@@ -46,9 +46,7 @@ rulesync warnings: Antigravity CLI permissions are global-only, and Codex permis
 5. **Skill names must not be common words.** Codex invoked the `probe` skill on its own because a folder name contained "probe". Workflow skills named `feature`, `review` or `continue` would misfire the same way. Turn off implicit invocation for workflow skills, or prefix their names.
 6. **Tool versions matter.** Antigravity CLI 1.1.9 ignored `AGENTS.md`; 1.3.1 reads it. `doctor` should check minimum versions.
 7. **Safe default in Antigravity's headless mode:** shell commands are denied unless explicitly allowed.
-8. **Local setup issues on the test Mac:**
-   - `~/.codex/config.toml` selects `gpt-5.3-codex`, which Codex CLI 0.160.1 rejects for ChatGPT logins.
-   - `ANTHROPIC_API_KEY` in the shell makes headless Claude Code runs bill that API key.
+8. **Personal tool settings can break runs silently.** A model name in a tool's user config that the current CLI no longer accepts, or an API key in the shell that takes over from the subscription login, both made test runs fail. `doctor` should flag these.
 
 ## Pending
 
