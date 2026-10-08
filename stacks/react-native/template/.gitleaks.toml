@@ -1,0 +1,12 @@
+# gitleaks config (read by the pre-commit hook and CI). Default rules, minus files that
+# hold checksums or vendored code rather than secrets.
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Lockfiles and vendored package-manager releases contain hashes, not secrets"
+paths = [
+  '''(^|/)Podfile\.lock$''',
+  '''(^|/)(package-lock\.json|yarn\.lock|pnpm-lock\.yaml|bun\.lock)$''',
+  '''(^|/)\.yarn/releases/''',
+]
