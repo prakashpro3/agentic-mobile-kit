@@ -2,9 +2,9 @@
 const { test } = require('node:test');
 const assert = require('node:assert');
 const fs = require('fs');
-const os = require('os');
 const path = require('path');
 const { execFileSync, spawnSync } = require('child_process');
+const tmpDir = require('./tmp');
 
 const SCRIPT = path.join(__dirname, '../stacks/react-native/template/scripts/ai/release-check.js');
 const git = (cwd, ...a) => execFileSync('git', a, { cwd, encoding: 'utf8' }).trim();
@@ -43,7 +43,7 @@ ${perms.map(p => `  <uses-permission android:name="android.permission.${p}" />`)
 
 // a released app (tagged v1.0.0), then an optional change on top
 function app(change = {}) {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'amk-release-'));
+  const dir = tmpDir('amk-release-');
   const files = {
     'package.json': JSON.stringify({ name: 'demo', dependencies: { 'react-native': '0.87.1' } }),
     'ios/Demo.xcodeproj/project.pbxproj': pbx('1.0', 1),

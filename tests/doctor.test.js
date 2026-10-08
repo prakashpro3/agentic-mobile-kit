@@ -2,16 +2,16 @@
 const { test } = require('node:test');
 const assert = require('node:assert');
 const fs = require('fs');
-const os = require('os');
 const path = require('path');
 const { execFileSync } = require('child_process');
 const { init } = require('../lib/init');
 const { projectChecks } = require('../lib/doctor');
+const tmpDir = require('./tmp');
 
 const git = (cwd, ...a) => execFileSync('git', a, { cwd, encoding: 'utf8' }).trim();
 
 function installedApp() {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'amk-doctor-'));
+  const dir = tmpDir('amk-doctor-');
   fs.writeFileSync(path.join(dir, 'package.json'), JSON.stringify({ name: 'DemoApp', dependencies: { 'react-native': '0.87.1', react: '19.2.3' } }));
   for (const d of ['ios', 'android']) { fs.mkdirSync(path.join(dir, d)); fs.writeFileSync(path.join(dir, d, '.keep'), ''); }
   git(dir, 'init', '-q');

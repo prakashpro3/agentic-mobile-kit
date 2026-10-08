@@ -2,10 +2,10 @@
 const { test } = require('node:test');
 const assert = require('node:assert');
 const fs = require('fs');
-const os = require('os');
 const path = require('path');
 const { execFileSync } = require('child_process');
 const { init, sync, uninstall, InitError, KIT_VERSION } = require('../lib/init');
+const tmpDir = require('./tmp');
 
 const TEMPLATE = path.join(__dirname, '../stacks/react-native/template');
 
@@ -14,7 +14,7 @@ const read = (cwd, f) => fs.readFileSync(path.join(cwd, f), 'utf8');
 
 // a minimal bare React Native project in a new git repo
 function fakeApp({ files = {}, pkg = {} } = {}) {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'amk-init-'));
+  const dir = tmpDir('amk-init-');
   const base = {
     name: 'DemoApp',
     dependencies: { 'react-native': '0.87.1', react: '19.2.3' },
@@ -144,7 +144,7 @@ test('an existing postinstall keeps failing when it fails (hooks command is grou
 
 // an older kit: today's template with a few differences, as if those files changed between versions
 function oldKit() {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'amk-oldkit-'));
+  const dir = tmpDir('amk-oldkit-');
   fs.cpSync(TEMPLATE, dir, { recursive: true });
   const edit = (f, change) => fs.writeFileSync(path.join(dir, f), change(fs.readFileSync(path.join(dir, f), 'utf8')));
   edit('scripts/ai/pm-run.sh', t => `${t}# old line\n`);

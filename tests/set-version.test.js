@@ -2,9 +2,9 @@
 const { test } = require('node:test');
 const assert = require('node:assert');
 const fs = require('fs');
-const os = require('os');
 const path = require('path');
 const { spawnSync } = require('child_process');
+const tmpDir = require('./tmp');
 
 const SCRIPT = path.join(__dirname, '../stacks/react-native/template/scripts/ai/set-version.sh');
 const PBX = 'ios/Demo.xcodeproj/project.pbxproj';
@@ -12,7 +12,7 @@ const GRADLE = 'android/app/build.gradle';
 
 // an app whose targets and flavors carry the given version names
 function app(iosVersions, androidVersions) {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'amk-version-'));
+  const dir = tmpDir('amk-version-');
   fs.mkdirSync(path.join(dir, 'ios/Demo.xcodeproj'), { recursive: true });
   fs.mkdirSync(path.join(dir, 'android/app'), { recursive: true });
   const configs = iosVersions.map((v, i) => `  C${i} = { MARKETING_VERSION = ${v}; CURRENT_PROJECT_VERSION = 3; };`);

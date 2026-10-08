@@ -1,6 +1,6 @@
 #!/bin/sh
 # Copies the probe fixture into a fresh temp project and generates tool configs with pinned rulesync.
-# Prints the temp project path.
+# Prints the temp project path; delete it when you're done testing.
 set -eu
 RULESYNC_VERSION=27.0.0
 here=$(cd "$(dirname "$0")" && pwd)
@@ -17,3 +17,4 @@ git add -A
 git -c user.name=probe -c user.email=probe@example.invalid commit -qm fixture
 npx -y "rulesync@$RULESYNC_VERSION" generate > .ai-rulesync.log 2>&1
 echo "$dir"
+echo "Delete it when you're done: rm -r $dir" >&2
