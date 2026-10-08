@@ -6,4 +6,4 @@
 - Run at most 2 or 3 agents in parallel per person.
 - Don't use "skip permissions", "YOLO" or auto-run modes in any tool.
 - Keep secrets out of the repo folder; inject them at run time.
-- Review the metrics and the `learn` changes once a month. Re-check `AGENTS.md` and `docs/ai/` after every React Native, Xcode or Android Gradle Plugin upgrade, and after switching AI models.
+- Review the metrics and the `m-learn` changes (`git log --grep 'chore(learn)'`) once a month. Re-check `AGENTS.md` and `docs/ai/` after every React Native, Xcode or Android Gradle Plugin upgrade, and after switching AI models.
