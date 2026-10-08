@@ -31,6 +31,8 @@ npx agentic-mobile-kit doctor
 
 Work continues across tools and machines through `specs/<id>/progress.md`: run `m-pause` in one tool, then `m-continue` in another.
 
+For the day-to-day workflow, what's enforced, and a 1-hour training plan, see the [team guide](docs/team-guide.md).
+
 ## License
 
 MIT
