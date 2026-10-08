@@ -19,6 +19,7 @@ Read by Claude Code (through CLAUDE.md), Codex, Cursor, OpenCode, Kiro and Antig
 | Android build | `cd android && ./gradlew assembleDebug` |
 | Check on devices (release builds, Maestro flows, screenshots) | `sh scripts/ai/verify.sh all --spec <id>` |
 | Check a release before tagging it (versions, permission texts, debug leftovers) | `node scripts/ai/release-check.js` |
+| Signed release builds (a person runs them: they use the signing keys) | `sh scripts/ai/release-build.sh android [flavor]`, `sh scripts/ai/release-build.sh ios [scheme]` |
 
 ## Definition of done
 

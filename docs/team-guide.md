@@ -30,7 +30,7 @@ Every AI tool reads the same rules (`AGENTS.md`), the same project facts (`docs/
 | Stop for now, or switch tool | `m-pause` | Writes the handoff in `progress.md`, moves decisions out of the chat, commits as `wip:` and pushes |
 | Carry on anywhere | `m-continue <id>` | Reads the spec and handoff, tells you the open question, the status and the next step, then waits for you |
 | Review a branch | `m-review` | A read-only review for scope, tests, both platforms, error states, security and native changes |
-| Ship a release | `m-release <version>` | Changelog from real commits, store and client notes, version bump, release check, release PR, then the tag that starts the signed builds |
+| Ship a release | `m-release <version>` | Changelog from real commits, store and client notes, version bump, release check, release PR, then the tag. Signed builds come from Codemagic, or from `sh scripts/ai/release-build.sh` run by a person on a Mac. |
 | Stop a mistake from repeating | `m-learn <what went wrong>` | The smallest lasting fix: a check, a known-issues entry, a docs line or a skill step |
 
 How to invoke a skill: `/m-feature` in Claude Code and Antigravity, and `$m-feature` in Codex. The skills only run when you invoke them; they never start on their own.

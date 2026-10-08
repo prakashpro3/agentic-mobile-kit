@@ -168,7 +168,7 @@ const releaseBlock = block(block(gradle, 'buildTypes'), 'release');
 if (/debuggable\s*=?\s*true/.test(releaseBlock)) fail('Android release build is debuggable', 'remove "debuggable true" from buildTypes.release; Play rejects debuggable apps');
 if (/android\.injected\.signing/.test(codemagic)) ok('Android release signing', 'Codemagic signs with the upload key');
 else if (/signingConfig\s*=?\s*signingConfigs\.debug/.test(releaseBlock)) {
-  warn('Android release build is signed with the debug key', 'fine only if your release pipeline (for example Codemagic) re-signs it; Play rejects debug-signed uploads');
+  warn('Android release build is signed with the debug key', 'fine if you build releases with sh scripts/ai/release-build.sh or Codemagic, which sign with your upload key; Play rejects debug-signed uploads');
 }
 if (/android:usesCleartextTraffic="true"/.test(readNow(manifestPath) || '')) {
   warn('Android allows cleartext (HTTP) traffic', 'allow only the domains that need it (network security config)');
