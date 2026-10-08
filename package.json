@@ -16,7 +16,9 @@
     "agentic-mobile-kit": "bin/cli.js"
   },
   "files": [
-    "bin"
+    "bin",
+    "lib",
+    "stacks"
   ],
   "engines": {
     "node": ">=20"
@@ -36,6 +38,7 @@
     "antigravity"
   ],
   "scripts": {
-    "release": "sh scripts/release.sh"
+    "release": "sh scripts/release.sh",
+    "test": "node --test tests/*.test.js && sh tests/guard.test.sh"
   }
 }
