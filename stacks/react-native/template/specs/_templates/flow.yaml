@@ -4,11 +4,11 @@ appId: ${APP_ID}  # set by verify.sh
 ---
 - launchApp:
     clearState: true
-# Criterion 1: <WHEN … THE APP SHALL …>
+# Scenario 1: <scenario name from requirements.md>
 - assertVisible:
     id: "<testID of the element>"
 - takeScreenshot: <id>-1-<short-name>
-# Criterion 2: …
+# Scenario 2: …
 - tapOn:
     id: "<testID>"
 - takeScreenshot: <id>-2-<short-name>

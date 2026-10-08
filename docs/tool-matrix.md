@@ -171,3 +171,16 @@ The pilot used a company's bare React Native 0.84 app: JavaScript, npm, two apps
 - `m-release` committed a root `CHANGELOG.md`, which proAgents' `.gitignore` ignores. The changelog now goes into `release-notes/<version>/`.
 - Release commits used `Release <version>`, which the next changelog would list. They now use `chore(release):`.
 - CI and Codemagic used to be added to every app; they're now opt-in with `--ci`. Signed builds without CI come from `release-build.sh`.
+
+## Ideas adapted from OpenSpec (2026-10-08)
+
+OpenSpec (Fission-AI, v1.14.1) is a planning-only layer: living specs that each change updates through ADDED, MODIFIED and REMOVED requirements. The kit took its spec format, its change notes and its review practices, implemented as `scripts/ai/spec.js` and skill steps. It didn't take OpenSpec's lack of approval stops, its per-tool copies of skills, or its telemetry.
+
+| Check | Result |
+|---|---|
+| `spec.js` tests: format check, drafts skipped, merge by name (add, modify, remove, deleting an emptied area), refusals that change nothing, safe re-runs, status | ✅ |
+| Pre-commit in a freshly initialized app | ✅ blocked a requirement with no SHALL and no scenario, with clear messages; passed once it was fixed |
+| `sync` on the test repo from the recorded version 0.4.0 (no `--from`) | ✅ exact merge base: 13 files updated, 5 added; the CI choice was recorded |
+| Headless `/m-feature` in Claude Code | ✅ wrote `## ADDED Requirements: home` with a SHALL requirement and two GIVEN/WHEN/THEN scenarios, dropped the empty sections, ran `spec.js check`, and asked one question at a time. 113 s. |
+
+**Bug found:** `sync` reported a file as "merged with your changes" when only the team had edited it and the kit hadn't changed it. The file was left as it was, but the report was noise. Such files are now left out of the report.

@@ -41,7 +41,13 @@ if [ -n "$files" ]; then
   fi
 fi
 
-# 5. warn about large commits (the PR size check in CI is the hard limit)
+# 5. spec format: requirements in force need a SHALL and a scenario (format: specs/current/README.md)
+specs=$(echo "$staged" | grep -E '^specs/([^_/][^/]*/requirements|current/[^/]+)\.md$' | grep -v '^specs/current/README\.md$' || true)
+if [ -n "$specs" ] && [ -f scripts/ai/spec.js ]; then
+  node scripts/ai/spec.js check --skip-drafts $specs || fail "fix the spec format above (format: specs/current/README.md)"
+fi
+
+# 6. warn about large commits (the PR size check in CI is the hard limit)
 lines=$(git diff --cached --numstat -- . ':(exclude)*.lock' ':(exclude)package-lock.json' ':(exclude)pnpm-lock.yaml' ':(exclude)*.snap' |
   awk '{ s += $1 + $2 } END { print s + 0 }')
 [ "$lines" -le 400 ] || echo "pre-commit: warning: $lines changed lines; consider smaller commits" >&2

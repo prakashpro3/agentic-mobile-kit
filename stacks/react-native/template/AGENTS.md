@@ -20,6 +20,7 @@ This project may also use other AI workflow frameworks (for example Superpowers,
 | iOS build (simulator, no signing) | `sh scripts/ai/ios-build.sh` |
 | Android build | `cd android && ./gradlew assembleDebug` |
 | Check on devices (release builds, Maestro flows, screenshots) | `sh scripts/ai/verify.sh all --spec <id>` |
+| Specs: progress, format check, fold a finished feature into the living spec | `node scripts/ai/spec.js status`, `node scripts/ai/spec.js check`, `node scripts/ai/spec.js merge <id>` |
 | Check a release before tagging it (versions, permission texts, debug leftovers) | `node scripts/ai/release-check.js` |
 | Signed release builds (a person runs them: they use the signing keys) | `sh scripts/ai/release-build.sh android [flavor]`, `sh scripts/ai/release-build.sh ios [scheme]` |
 

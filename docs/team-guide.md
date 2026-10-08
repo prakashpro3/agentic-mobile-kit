@@ -25,6 +25,7 @@ Every AI tool reads the same rules (`AGENTS.md`), the same project facts (`docs/
 
 | You want to | Run | What happens |
 |---|---|---|
+| Think a problem through first | `m-explore <question or problem>` | Reads the code, explains how it works today and lays out options with trade-offs. It never edits code; it hands off to `m-feature` or `m-bugfix`. |
 | Build a feature | `m-feature <task text or link>` | Requirements with acceptance criteria → **you approve** → design and tasks → **you approve** → one task at a time with tests and real command output → device check with screenshots → living spec updated → review → PR |
 | Fix a bug | `m-bugfix <report>` | Checks known issues → reproduces → failing test → root cause → smallest fix → verifies |
 | Stop for now, or switch tool | `m-pause` | Writes the handoff in `progress.md`, moves decisions out of the chat, commits as `wip:` and pushes |
@@ -35,7 +36,7 @@ Every AI tool reads the same rules (`AGENTS.md`), the same project facts (`docs/
 
 How to invoke a skill: `/m-feature` in Claude Code and Antigravity, and `$m-feature` in Codex. The skills only run when you invoke them; they never start on their own.
 
-`specs/current/` is the living spec: one file per area of the app, saying what it does now, requirement by requirement. `m-feature` adds to it when a feature is done, and `m-bugfix` corrects it when a fix changes behavior. It starts empty and grows with each change, so there's no need to write it all up front.
+`specs/current/` is the living spec: one file per area of the app, saying what it does now, requirement by requirement. Each feature's requirements say what they add, change and remove, and `m-feature` merges them in when the feature is done (`node scripts/ai/spec.js merge <id>`). `m-bugfix` corrects it when a fix changes behavior, and `node scripts/ai/spec.js status` shows every feature's progress. It starts empty and grows with each change, so there's no need to write it all up front.
 
 Small changes don't need a skill. Ask the agent directly; the rules in `AGENTS.md` and the git hooks still apply.
 
@@ -96,6 +97,7 @@ From `docs/ai/team-process.md`:
 | Anything odd after setup | `npx agentic-mobile-kit doctor` |
 | A build error | Check `docs/ai/known-issues.md` first; `m-bugfix` does this too |
 | The agent made a mistake you had to correct | `m-learn`, so it doesn't happen again |
+| `pre-commit` says to fix the spec format | Each requirement needs a SHALL sentence and a scenario with WHEN and THEN; see `specs/current/README.md` |
 | Hooks don't run | `git config core.hooksPath` must print `.githooks`; `sh scripts/ai/install-deps.sh` sets it |
 | `pre-push` says dependencies aren't installed | `sh scripts/ai/install-deps.sh` |
 | Metro's port 8081 is busy | Nothing to do: `verify.sh` uses release builds, which don't need Metro |
