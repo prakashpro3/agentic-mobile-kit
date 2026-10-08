@@ -25,7 +25,7 @@ Input: $ARGUMENTS (the new version such as 1.4.0, or patch, minor or major; whic
    - When `codemagic.yaml` sets build numbers, leave them alone.
    - Otherwise every store upload needs a higher build number. Ask before changing native files. Then raise Android's `versionCode` in `android/app/build.gradle`, and set iOS with `cd ios && agvtool new-version -all <number>`. Never edit `project.pbxproj` by hand. iOS may keep its build number when the version name changes, if that's how the team works.
 6. **Release check:** `node scripts/ai/release-check.js`. Show the output. Fix each ✗, asking first when the fix touches native config. List each ! for the user to decide.
-7. **Release PR:** commit as `Release <version>` with `Assisted-by: <tool>/<model>`. Ask before pushing. Open a PR titled `Release <version>` with the new changelog section and the release-check output.
+7. **Release PR:** commit as `chore(release): <version>` (so the next changelog leaves it out), with `Assisted-by: <tool>/<model>`. Ask before pushing. Open a PR titled `Release <version>` with the new changelog section and the release-check output.
 8. **Tag and build, after the merge.** Once the PR is merged, ask the user before tagging. Then run `git switch main && git pull && git tag v<version> && git push origin v<version>`.
    - With Codemagic (`codemagic.yaml`; see `docs/ai/codemagic.md`), the tag starts the signed builds.
    - Without CI, the user builds signed apps on their Mac, because signing keys stay with people. Tell them to run `sh scripts/ai/release-build.sh android [flavor]` and `sh scripts/ai/release-build.sh ios [scheme]`, and to upload the results from `.ai/release/` (Play Console, and Xcode's Organizer or Transporter). Never run these yourself or ask for the keys.
