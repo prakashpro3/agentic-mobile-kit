@@ -22,6 +22,7 @@ function fakeApp({ files = {}, pkg = {} } = {}) {
   fs.writeFileSync(path.join(dir, 'package.json'), JSON.stringify({ ...base, ...pkg }, null, 2));
   for (const d of ['ios', 'android']) { fs.mkdirSync(path.join(dir, d)); fs.writeFileSync(path.join(dir, d, '.keep'), ''); }
   fs.writeFileSync(path.join(dir, 'yarn.lock'), '');
+  fs.writeFileSync(path.join(dir, 'App.tsx'), 'export default {};\n');
   for (const [f, text] of Object.entries(files)) fs.writeFileSync(path.join(dir, f), text);
   git(dir, 'init', '-q');
   git(dir, 'add', '-A');
@@ -104,4 +105,20 @@ test('refuses: uncommitted changes, not React Native, no native folders, unknown
   assert.throws(() => init(expo, { skipGenerate: true }), /Only bare React Native/);
 
   assert.throws(() => init(fakeApp(), { skipGenerate: true, tools: ['vscode'] }), /Unknown tool/);
+});
+
+test('JavaScript projects with typescript installed get no typecheck script', () => {
+  const dir = fakeApp();
+  fs.unlinkSync(path.join(dir, 'App.tsx'));
+  commitAll(dir);
+  init(dir, { skipGenerate: true });
+  assert.strictEqual(JSON.parse(read(dir, 'package.json')).scripts.typecheck, undefined);
+});
+
+test('an existing postinstall keeps failing when it fails (hooks command is grouped)', () => {
+  const dir = fakeApp({ pkg: { scripts: { postinstall: 'patch-package' } } });
+  init(dir, { skipGenerate: true });
+  const post = JSON.parse(read(dir, 'package.json')).scripts.postinstall;
+  assert.strictEqual(post, 'patch-package && (git config core.hooksPath .githooks || true)');
+  assert.notStrictEqual(require('child_process').spawnSync('sh', ['-c', post.replace('patch-package', 'false')]).status, 0);
 });
