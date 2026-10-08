@@ -38,6 +38,9 @@ const gradlePath = ['android/app/build.gradle', 'android/app/build.gradle.kts'].
 const gradle = stripComments(readNow(gradlePath));
 const manifestPath = 'android/app/src/main/AndroidManifest.xml';
 const pkg = JSON.parse(readNow('package.json') || '{}');
+// this kit's codemagic.yaml sets build numbers and the Android upload key on the build machine
+const codemagic = readNow('codemagic.yaml') || '';
+const ciBuildNumber = { iOS: /agvtool new-version/.test(codemagic), Android: /versionCode[^\n]*\$code/.test(codemagic) };
 const deps = { ...pkg.dependencies, ...pkg.devDependencies };
 
 // ---------- 1. versions ----------
@@ -47,6 +50,7 @@ const androidVersions = t => all(/versionName\s*=?\s*"([^"]+)"/g, stripComments(
 const androidBuilds = t => all(/versionCode\s*=?\s*(\d+)/g, stripComments(t));
 
 function compare(platform, now, before, kind) {
+  if (kind === 'build number' && ciBuildNumber[platform]) { info(`${platform} build number: set by Codemagic at build time`); return; }
   if (!now.length) { warn(`${platform} ${kind}: couldn't read it`, 'check it by hand before you ship'); return; }
   if (!before) { info(`${platform} ${kind}: ${now.join(', ')}`); return; }
   if (!before.length || now.join() !== before.join()) {
@@ -162,7 +166,8 @@ function block(text, name) {
 }
 const releaseBlock = block(block(gradle, 'buildTypes'), 'release');
 if (/debuggable\s*=?\s*true/.test(releaseBlock)) fail('Android release build is debuggable', 'remove "debuggable true" from buildTypes.release; Play rejects debuggable apps');
-if (/signingConfig\s*=?\s*signingConfigs\.debug/.test(releaseBlock)) {
+if (/android\.injected\.signing/.test(codemagic)) ok('Android release signing', 'Codemagic signs with the upload key');
+else if (/signingConfig\s*=?\s*signingConfigs\.debug/.test(releaseBlock)) {
   warn('Android release build is signed with the debug key', 'fine only if your release pipeline (for example Codemagic) re-signs it; Play rejects debug-signed uploads');
 }
 if (/android:usesCleartextTraffic="true"/.test(readNow(manifestPath) || '')) {

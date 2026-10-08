@@ -23,7 +23,10 @@ function fakeApp({ files = {}, pkg = {} } = {}) {
   for (const d of ['ios', 'android']) { fs.mkdirSync(path.join(dir, d)); fs.writeFileSync(path.join(dir, d, '.keep'), ''); }
   fs.writeFileSync(path.join(dir, 'yarn.lock'), '');
   fs.writeFileSync(path.join(dir, 'App.tsx'), 'export default {};\n');
-  for (const [f, text] of Object.entries(files)) fs.writeFileSync(path.join(dir, f), text);
+  for (const [f, text] of Object.entries(files)) {
+    fs.mkdirSync(path.dirname(path.join(dir, f)), { recursive: true });
+    fs.writeFileSync(path.join(dir, f), text);
+  }
   git(dir, 'init', '-q');
   git(dir, 'add', '-A');
   git(dir, '-c', 'user.name=t', '-c', 'user.email=t@example.invalid', 'commit', '-qm', 'app');
@@ -31,8 +34,8 @@ function fakeApp({ files = {}, pkg = {} } = {}) {
 }
 const commitAll = dir => { git(dir, 'add', '-A'); git(dir, '-c', 'user.name=t', '-c', 'user.email=t@example.invalid', '-c', 'core.hooksPath=/dev/null', 'commit', '-qm', 'kit'); };
 
-test('fresh install: files, filled AGENTS.md, links, hooks, scripts', () => {
-  const dir = fakeApp();
+test('fresh install: files, filled AGENTS.md and codemagic.yaml, links, hooks, scripts', () => {
+  const dir = fakeApp({ files: { 'ios/DemoApp.xcodeproj/project.pbxproj': 'PRODUCT_BUNDLE_IDENTIFIER = "org.reactjs.native.example.$(PRODUCT_NAME:rfc1034identifier)";\n' } });
   const { report } = init(dir, { skipGenerate: true });
 
   const agents = read(dir, 'AGENTS.md');
@@ -40,6 +43,7 @@ test('fresh install: files, filled AGENTS.md, links, hooks, scripts', () => {
   assert.match(agents, /Bare React Native 0\.87\.1/);
   assert.match(agents, /`yarn lint`/);
   assert.match(read(dir, 'CLAUDE.md'), /@AGENTS\.md/);
+  assert.match(read(dir, 'codemagic.yaml'), /bundle_identifier: org\.reactjs\.native\.example\.DemoApp\n/);
   assert.ok(fs.statSync(path.join(dir, '.githooks/pre-commit')).mode & 0o111, 'pre-commit is executable');
   assert.strictEqual(fs.readlinkSync(path.join(dir, '.claude/skills')), '../.agents/skills');
   assert.ok(fs.existsSync(path.join(dir, '.agents/skills/m-feature/SKILL.md')));

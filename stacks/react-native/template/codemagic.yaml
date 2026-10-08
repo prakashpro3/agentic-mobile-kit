@@ -1,0 +1,88 @@
+# Signed release builds on Codemagic (codemagic.io). One-time setup for each app: docs/ai/codemagic.md
+# Both workflows start when a version tag is pushed (git push origin v1.2.0); you can also start them in Codemagic.
+# Build numbers are set on the build machine only (one more than the store's latest), so the repo never needs a bump for them.
+workflows:
+  android-release:
+    name: Android release
+    instance_type: mac_mini_m2
+    max_build_duration: 60
+    triggering: &on_version_tag
+      events:
+        - tag
+      tag_patterns:
+        - pattern: 'v*'
+    environment:
+      android_signing:
+        - upload_keystore
+      groups:
+        - google_play
+      node: 24
+      java: 17
+    scripts:
+      - name: Release check
+        script: node scripts/ai/release-check.js
+      - name: Install dependencies
+        script: sh scripts/ai/install-deps.sh
+      - name: Store release notes
+        script: cp "release-notes/${CM_TAG#v}/play-store.txt" release_notes.txt 2>/dev/null || true
+      - name: Build the signed app bundle
+        script: |
+          echo "sdk.dir=$ANDROID_SDK_ROOT" > android/local.properties
+          package=$(sed -n -E 's/.*applicationId( =)? "([^"]+)".*/\2/p' android/app/build.gradle* | head -1)
+          if last=$(google-play get-latest-build-number --package-name "$package") && [ -n "$last" ]; then code=$((last + 1)); else code=$BUILD_NUMBER; fi
+          # AGP 9 ignores injected version codes, so the number is written into build.gradle on this machine only
+          sed -i '' -E "s/versionCode( =)? [0-9]+/versionCode\1 $code/" android/app/build.gradle*
+          grep -qE "versionCode( =)? $code" android/app/build.gradle* || { echo "No versionCode number in android/app/build.gradle to set"; exit 1; }
+          # the upload key from Codemagic; build.gradle keeps debug signing for local release builds
+          cd android && ./gradlew bundleRelease \
+            -Pandroid.injected.signing.store.file="$CM_KEYSTORE_PATH" \
+            -Pandroid.injected.signing.store.password="$CM_KEYSTORE_PASSWORD" \
+            -Pandroid.injected.signing.key.alias="$CM_KEY_ALIAS" \
+            -Pandroid.injected.signing.key.password="$CM_KEY_PASSWORD"
+    artifacts:
+      - android/app/build/outputs/bundle/release/*.aab
+    publishing:
+      google_play:
+        credentials: $GOOGLE_PLAY_SERVICE_ACCOUNT_CREDENTIALS
+        track: internal
+
+  ios-release:
+    name: iOS release
+    instance_type: mac_mini_m2
+    max_build_duration: 60
+    triggering: *on_version_tag
+    integrations:
+      app_store_connect: codemagic
+    environment:
+      ios_signing:
+        distribution_type: app_store
+        bundle_identifier: {{IOS_BUNDLE_ID}}
+      vars:
+        APP_STORE_APPLE_ID: 0 # App Store Connect > the app > App Information > Apple ID
+      node: 24
+      xcode: latest
+      cocoapods: default
+    scripts:
+      - name: Release check
+        script: node scripts/ai/release-check.js
+      - name: Install dependencies
+        script: sh scripts/ai/install-deps.sh && cd ios && pod install
+      - name: Store release notes
+        script: |
+          notes="release-notes/${CM_TAG#v}/app-store.txt"
+          [ ! -f "$notes" ] || node -e 'const fs = require("fs"); fs.writeFileSync("release_notes.json", JSON.stringify([{ language: "en-US", text: fs.readFileSync(process.argv[1], "utf8").trim() }]))' "$notes"
+      - name: Use the signing files
+        script: xcode-project use-profiles
+      - name: Build the signed ipa
+        script: |
+          if last=$(app-store-connect get-latest-build-number "$APP_STORE_APPLE_ID") && [ -n "$last" ]; then build=$((last + 1)); else build=$BUILD_NUMBER; fi
+          (cd ios && agvtool new-version -all "$build")
+          workspace=$(ls -d ios/*.xcworkspace | head -1)
+          xcode-project build-ipa --workspace "$workspace" --scheme "$(basename "$workspace" .xcworkspace)"
+    artifacts:
+      - build/ios/ipa/*.ipa
+      - /tmp/xcodebuild_logs/*.log
+    publishing:
+      app_store_connect:
+        auth: integration
+        submit_to_testflight: true
