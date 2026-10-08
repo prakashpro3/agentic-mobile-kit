@@ -1,0 +1,14 @@
+# Copy to .maestro/<id>.yaml. verify.sh runs it on iOS and Android and keeps the screenshots as evidence.
+# Tap by testID (give every interactive element one); tapping by text can hit a label instead of the control.
+appId: ${APP_ID}  # set by verify.sh
+---
+- launchApp:
+    clearState: true
+# Criterion 1: <WHEN … THE APP SHALL …>
+- assertVisible:
+    id: "<testID of the element>"
+- takeScreenshot: <id>-1-<short-name>
+# Criterion 2: …
+- tapOn:
+    id: "<testID>"
+- takeScreenshot: <id>-2-<short-name>

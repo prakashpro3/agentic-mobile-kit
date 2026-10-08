@@ -25,7 +25,7 @@ If the input describes a bug rather than new behavior, suggest `m-bugfix` and st
 
 1. **Search the codebase before designing.** List the components, hooks, API clients and helpers you'll reuse in `design.md` under "Existing code to reuse". Read `docs/ai/structure.md` and `docs/ai/conventions.md`.
 2. Fill `design.md`: approach, files to change, risks (native changes, pod install, migrations).
-3. Fill `tasks.md`: small tasks (about an hour, under ~300 changed lines each), each with its own check.
+3. Fill `tasks.md`: small tasks (about an hour, under ~300 changed lines each), each with its own check. The last task writes `.maestro/<id>.yaml` (from `specs/_templates/flow.yaml`), a Maestro flow that walks through the acceptance criteria, taps elements by `testID` and takes a screenshot per criterion.
 4. Show design and tasks and **stop until the user approves them**.
 
 ## 4. Build, one task at a time
@@ -39,7 +39,7 @@ For each task:
 ## 5. Check against the spec
 
 When all tasks are done:
-1. For UI changes, build iOS (`sh scripts/ai/ios-build.sh`) and Android (`cd android && ./gradlew assembleDebug`) and say what you checked on each.
+1. Run `sh scripts/ai/verify.sh all --spec <id>`. Then **open the screenshots** in `.ai/evidence/<id>/` and check each one against its criterion. Maestro can report a tap as passed when nothing happened, so the screenshots are the evidence, not the log.
 2. Go through every acceptance criterion and note the evidence for it (test name, command output, or screen checked). If one isn't met, fix the code or ask whether the spec should change.
 
 ## 6. Review and pull request

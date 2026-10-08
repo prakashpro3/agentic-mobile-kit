@@ -17,7 +17,7 @@ Input: $ARGUMENTS (what's wrong, steps to reproduce, error text, screenshots, ta
    - Form one hypothesis, test it, and confirm or reject it. One at a time.
    - Fix the cause, not the symptom: no try/catch that hides the error, no special case for the failing input.
 5. **Make the smallest fix.** Don't refactor or touch unrelated code.
-6. **Verify.** The new test passes, and lint, typecheck and all tests pass. Paste the output. For UI or native bugs, rebuild and check the affected platform(s).
+6. **Verify.** The new test passes, and lint, typecheck and all tests pass. Paste the output. For UI or native bugs, run `sh scripts/ai/verify.sh ios` and/or `android` and look at the screenshots.
 7. **Two attempts at most.** If two fixes didn't work, stop. Report what you tried, what you learned and what you suspect next.
 8. **Record it.** If this kind of error could come back, add an entry to `docs/ai/known-issues.md` (error, cause, fix, prevention).
 9. **Commit** with a message ending in `Assisted-by: <tool>/<model>`. Ask the user before pushing, then open a PR with the evidence.

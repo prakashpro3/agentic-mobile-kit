@@ -17,12 +17,13 @@ Read by Claude Code (through CLAUDE.md), Codex, Cursor, OpenCode, Kiro and Antig
 | iOS pods (after native dependency changes) | `cd ios && pod install` |
 | iOS build (simulator, no signing) | `sh scripts/ai/ios-build.sh` |
 | Android build | `cd android && ./gradlew assembleDebug` |
+| Check on devices (release builds, Maestro flows, screenshots) | `sh scripts/ai/verify.sh all --spec <id>` |
 
 ## Definition of done
 
 A task is done only when:
 1. lint, typecheck and tests pass, and you show the command output from this session;
-2. UI changes were built and checked on both iOS and Android;
+2. UI changes were checked with `sh scripts/ai/verify.sh all --spec <id>` on both iOS and Android, and you looked at the screenshots;
 3. the change stays inside the task's scope;
 4. `specs/<id>/progress.md` is updated, when working from a spec.
 

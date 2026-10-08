@@ -43,6 +43,7 @@ test('fresh install: files, filled AGENTS.md, links, hooks, scripts', () => {
   assert.strictEqual(fs.readlinkSync(path.join(dir, '.claude/skills')), '../.agents/skills');
   assert.ok(fs.existsSync(path.join(dir, '.agents/skills/m-feature/SKILL.md')));
   assert.match(read(dir, '.gitignore'), /^\.env$/m);
+  assert.match(read(dir, '.gitignore'), /^\.ai\/$/m);
   const pkg = JSON.parse(read(dir, 'package.json'));
   assert.strictEqual(pkg.scripts.typecheck, 'tsc --noEmit');
   assert.match(pkg.scripts.postinstall, /core\.hooksPath \.githooks/);
