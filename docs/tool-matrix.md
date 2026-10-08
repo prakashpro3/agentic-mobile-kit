@@ -81,3 +81,20 @@ Task DM-1 ("dark-mode switch on the home screen") on the bare test app, PR https
 | PR | — | ✅ CI green, merge state CLEAN |
 
 **Finding:** iOS builds and simulator checks need to run outside Codex's sandbox: by a person, by Claude Code, or in CI.
+
+## Re-test after a disk cleanup, and on-screen check of DM-1 (2026-10-08)
+
+Gradle and CocoaPods caches and several simulators had been deleted. Everything was re-run on the fresh clone:
+
+| Check | Result |
+|---|---|
+| Guard tests, lint, typecheck, Jest (3) | ✅ |
+| `pod install` with an empty CocoaPods cache | ✅ |
+| iOS simulator build (debug 26 s, release 61 s) | ✅ |
+| Android build with an empty Gradle cache (debug 151 s, release 84 s) | ✅ |
+| DM-1 criteria 1–5 on the iPhone 17 simulator (iOS 26.5), Maestro | ✅ after a fix (below), verified from screenshots |
+| DM-1 criteria 1–5 on the Pixel 9 emulator (Android 15), Maestro | ✅ verified from screenshots |
+
+**Findings:**
+- **Maestro reported a tap as successful when nothing happened.** On iOS, React Native exposes the "Dark mode" label and the switch twice each, so a text-based tap hit the label. Fix: a `testID` on every interactive element (now a rule in `docs/ai/react-native.md`), and screenshots, not the tool's log, are the evidence.
+- **Port 8081 was in use by another project's Metro on the same Mac.** Release builds, which bundle the JavaScript, avoid the conflict and are closer to what users get. The Phase 4 verify script should use them, or a free Metro port.

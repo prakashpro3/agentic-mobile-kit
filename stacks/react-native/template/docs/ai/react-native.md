@@ -13,6 +13,7 @@ Rules for things AI agents commonly get wrong in current React Native. Each one 
 - Android draws edge to edge (Android 15 and later), so handle top and bottom insets on every screen.
 - For apps targeting Android 16 (API 36), `onBackPressed` is no longer called. Handle back with `BackHandler` in JS, or `OnBackPressedDispatcher` in native code.
 - Check every UI change on both iOS and Android; behavior differs (keyboard, insets, fonts, permissions).
+- Give every interactive element a `testID` (kebab-case, for example `dark-mode-switch`). End-to-end tools tap by `testID`. On iOS, React Native exposes a label and its control as duplicate accessibility elements, so tapping by text can hit the label: nothing happens, yet the tool reports success.
 
 ## Native changes
 
