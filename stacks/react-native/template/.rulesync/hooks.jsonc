@@ -1,0 +1,8 @@
+{
+  "version": 1,
+  "hooks": {
+    // no matcher: runs for every tool call; guard.js decides from the payload
+    "preToolUse": [{ "command": "node scripts/ai/guard.js" }],
+    "stop": [{ "command": "node scripts/ai/handoff-check.js" }]
+  }
+}

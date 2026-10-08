@@ -1,0 +1,9 @@
+// Generates per-tool permissions, hooks and subagents from .rulesync/. Run: npx -y rulesync@27.0.0 generate
+// Commit the generated files. Rules and skills don't go through rulesync (AGENTS.md and .agents/skills are shared).
+{
+  "targets": ["claudecode", "codexcli", "antigravity-ide", "antigravity-cli"],
+  "features": ["permissions", "hooks", "subagents"],
+  "outputRoots": ["."],
+  "delete": false,
+  "preserveUnownedHooks": true
+}

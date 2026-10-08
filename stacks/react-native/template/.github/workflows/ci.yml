@@ -27,6 +27,9 @@ jobs:
       - run: sh scripts/ai/pm-run.sh lint
       - run: sh scripts/ai/pm-run.sh typecheck
       - run: CI=true sh scripts/ai/pm-run.sh test
+      - name: Tool configs match .rulesync/ (run "npx -y rulesync@27.0.0 generate" and commit if this fails)
+        if: hashFiles('rulesync.jsonc') != ''
+        run: npx -y rulesync@27.0.0 generate > /dev/null && git diff --exit-code -- .claude .codex .agents .antigravity
       - name: Secret scan
         run: docker run --rm -v "$PWD:/repo" ghcr.io/gitleaks/gitleaks:v8.30.1 git /repo --no-banner --redact
       - name: PR size (max 600 changed lines; label "large-pr" to override)
