@@ -13,6 +13,12 @@ npx agentic-mobile-kit init
 npx agentic-mobile-kit init --tools claude,codex,antigravity   # choose your AI tools
 ```
 
+Then check the project and your machine, with a fix for each problem:
+
+```sh
+npx agentic-mobile-kit doctor
+```
+
 `init` never overwrites your files. It adds its section to an existing `AGENTS.md` between `KIT` markers, and it's safe to run again. Undo it with git.
 
 ## What it adds
