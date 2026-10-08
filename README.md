@@ -1,51 +1,104 @@
 # agentic-mobile-kit
 
-One setup for AI-assisted mobile development that works the same in Claude Code, Codex and Antigravity (Cursor, OpenCode and Kiro next).
+One setup for AI-assisted development of bare React Native apps. Every AI tool on the team reads the same rules, project knowledge and workflows. Git hooks and CI check the work, whichever person or tool wrote it. A task started in one tool, or on one machine, carries on in another.
 
-> **Status: early development.** Bare React Native projects only for now; Expo comes next.
+Tested with Claude Code, Codex and Antigravity. `--tools` also sets up Cursor, OpenCode and Kiro.
 
-## Install into a bare React Native app
+## Install
 
-Run in the app's root, on a clean git working tree:
+In the root of a bare React Native app (one with `ios/` and `android/` folders), on a clean git working tree:
 
 ```sh
 npx agentic-mobile-kit init
-npx agentic-mobile-kit init --tools claude,codex,antigravity   # choose your AI tools
-npx agentic-mobile-kit init --ci github,codemagic              # only if the app uses that CI
 ```
 
-Then check the project and your machine, with a fix for each problem:
+| Option | What it does |
+|---|---|
+| `--tools claude,codex,antigravity` | The AI tools your team uses (this is the default) |
+| `--ci github,codemagic` | Adds GitHub Actions checks, Codemagic signed builds, or both. Leave it out if the app has no CI. |
+| `--pm yarn` | The package manager, if the lockfile doesn't show it |
+
+`init` never overwrites a file. Besides adding the kit's files, it:
+- adds its section to an existing `AGENTS.md` between `KIT` markers, and an `@AGENTS.md` line to an existing `CLAUDE.md`;
+- records the kit version and CI choice in that section, so `sync` knows what's installed;
+- adds `.env`, `.env.*` and `.ai/` to `.gitignore`;
+- adds a `typecheck` script for TypeScript apps;
+- adds a `postinstall` script that turns on the git hooks for every clone;
+- turns on the git hooks for this clone too;
+- generates each chosen tool's permissions, hooks and reviewer agent, and links the skills folder for Claude Code and Kiro.
+
+It's safe to run again. Undo it with git.
+
+Then check the project and your machine:
 
 ```sh
 npx agentic-mobile-kit doctor
 ```
 
-`init` never overwrites your files. It adds its section to an existing `AGENTS.md` between `KIT` markers, and it's safe to run again. Undo it with git.
+`doctor` gives a fix for each problem it finds, in three groups:
+- **The project:** the kit is installed, `AGENTS.md` is within its size limit, the git hooks are active, no `.env` file is in git, the tool configs are current, and `docs/ai/` is filled in.
+- **This Mac:** Node, installed dependencies, Xcode, CocoaPods and pods, an iPhone simulator, the Android SDK and an emulator, Java, Maestro (the same version as CI) and gitleaks.
+- **The AI tools:** whether Codex and Antigravity trust the project, the Antigravity version, and an `ANTHROPIC_API_KEY` in the shell that would override a Claude subscription.
 
-## Update or remove it
+## How work flows
+
+| You want to | Run | What happens |
+|---|---|---|
+| Think a problem through | `m-explore` | The agent reads the code, explains how it works today and lays out options with trade-offs. It never edits code. |
+| Build a feature | `m-feature` | Requirements → you approve → design and tasks → you approve → one task at a time with tests → device checks with screenshots → living spec updated → review → PR |
+| Fix a bug | `m-bugfix` | Reproduces the bug, proves it with a failing test, finds the root cause, then makes the smallest fix |
+| Stop, or switch tool or machine | `m-pause` | Writes a handoff in the spec, commits and pushes |
+| Carry on anywhere | `m-continue` | Reads the spec and handoff, then picks up at the next step |
+| Review a branch | `m-review` | Checks the work against the spec (complete, correct, coherent) and covers both platforms, error states, security and native changes |
+| Ship a release | `m-release` | Changelog from real commits, store and client notes, versions, release check, release PR, tag, signed builds |
+| Stop a mistake repeating | `m-learn` | Turns a correction into a lasting check, a known-issues entry or a rule |
+
+Invoke a skill with `/m-feature` in Claude Code and Antigravity, or `$m-feature` in Codex. The skills are set to run only when you invoke them.
+
+## What it adds to the app
+
+| Area | What you get |
+|---|---|
+| Project knowledge | `AGENTS.md` (with a one-line `CLAUDE.md`): commands, the definition of done and the rules. `docs/ai/`: product, tech stack, structure, conventions, decisions, known issues, React Native rules and team process. Callstack's React Native skills. |
+| Specs | `specs/<id>/` for each feature: requirements, design, tasks, a Maestro flow and a handoff file. A living spec of what the app does now, in `specs/current/`. `spec.js`: `check`, `merge`, `status`. |
+| Device checks | `verify.sh`: lint and tests, release builds on an iPhone simulator and an Android emulator, the feature's Maestro flow, and screenshots in `.ai/evidence/<id>/` |
+| Releases | `release-check.js` catches what store review would reject. Changelog and store notes come from commits (git-cliff). `set-version.sh` sets versions. Signed builds come from `release-build.sh` or Codemagic (`--ci codemagic`). |
+| Guardrails in AI tools | Hooks that block destructive commands and secret files and remind the agent about the handoff, permission rules, and a read-only reviewer, generated with rulesync |
+| Git hooks | Before a commit: secrets, signing files, Xcode project files, ESLint, spec format. Before a push: typecheck and tests. |
+| CI (`--ci github`) | Lint, typecheck, tests, a secret scan, a tool-config check, a 600-line PR limit (`large-pr` label), Android and iOS builds, nightly end-to-end tests (`e2e` label), and a PR template |
+| Everyday scripts | `install-deps.sh`, `pm-run.sh`, `ios-build.sh` |
+
+All scripts are in `scripts/ai/`. The [team guide](docs/team-guide.md) has the details.
+
+## Alongside other AI workflows
+
+Apps that already use Superpowers, BMAD, proAgents or similar keep them as they are. The kit adds its section next to theirs and links its skills into an existing `.claude/skills` folder. A task started with an `m-` skill follows the kit's steps, and everything else keeps working as before.
+
+## Update or remove
 
 ```sh
-npx agentic-mobile-kit@latest sync   # update the kit's files; your own changes to them are merged in
+npx agentic-mobile-kit@latest sync   # update the kit's files, merging in your own changes
 npx agentic-mobile-kit uninstall     # remove the kit; files you changed are kept and listed
 ```
 
-Both need a clean working tree, and both leave the result for you to review with `git diff`.
+Both need a clean working tree and leave the result for you to review with `git diff`.
+- **Report:** `sync` lists what it updated, added, removed and merged.
+- **Conflicts:** if you and the kit changed the same lines, the file gets `<<<<<<<` conflict markers to resolve.
+- **Your docs:** the product, tech, structure and conventions files your team filled in are never changed.
+- **Adding CI later:** `sync --ci github` or `--ci codemagic` does it.
+- **Older installs:** installs from before 0.4.0 pass the kit version they started from, for example `--from 0.3.0`.
+- **What `uninstall` leaves:** the `.gitignore` lines and the `typecheck` script.
 
-`sync` reports what it updated, added, removed and merged. If you and the kit changed the same lines, the file gets `<<<<<<<` conflict markers to resolve. The docs your team filled in (`docs/ai/product.md`, `tech.md`, `structure.md`, `conventions.md`) are never changed.
+## Requirements
 
-Installs older than 0.4.0 don't record which kit version made them, so their first `sync` or `uninstall` needs `--from <version>`, for example `--from 0.3.0`. That version can only be a guess, so `sync` doesn't merge on top of it: every file that matches neither version gets conflict markers instead.
+- macOS, git and Node.js 20 or later. `doctor` checks everything else.
 
-## What it adds
+## More
 
-- **Context for every AI tool:** `AGENTS.md` (plus a one-line `CLAUDE.md`), `docs/ai/` (product, tech, structure, conventions, decisions, known issues, React Native rules), spec templates in `specs/_templates/`, and a living spec in `specs/current/` that says what the app does now, one area at a time. Each feature lists the requirements it adds, changes and removes, and `scripts/ai/spec.js` folds them into the living spec and checks the format.
-- **Workflows:** the skills `m-explore`, `m-feature`, `m-bugfix`, `m-continue`, `m-pause`, `m-review`, `m-release` and `m-learn`. Invoke them with `/m-feature` in Claude Code and Antigravity, or `$m-feature` in Codex. Also Callstack's React Native skills.
-- **Guardrails in each tool:** a guard hook that blocks destructive commands and secret files, a stop hook that asks for a handoff update, permission rules and a read-only `m-reviewer` subagent, generated with rulesync.
-- **Releases:** `m-release` writes each release's changelog from real commits with git-cliff, plus store and client notes, all in `release-notes/<version>/`. It then runs `scripts/ai/release-check.js`, which catches what store review would reject. Signed builds come from `scripts/ai/release-build.sh` on a Mac: an app bundle signed with your upload key, and an `.ipa` signed through Xcode's account. With `--ci codemagic`, a version tag starts them on Codemagic instead (`codemagic.yaml`, one-time setup in `docs/ai/codemagic.md`).
-- **Checks no tool can skip:** git hooks (secrets, signing files, broken Xcode project files, lint, typecheck, tests) and, with `--ci github`, GitHub Actions CI (lint, typecheck, tests, secret scan, PR size, Android and iOS builds, nightly Android end-to-end tests).
-
-Work continues across tools and machines through `specs/<id>/progress.md`: run `m-pause` in one tool, then `m-continue` in another.
-
-For the day-to-day workflow, what's enforced, and a 1-hour training plan, see the [team guide](docs/team-guide.md).
+- [Team guide](docs/team-guide.md): day-to-day use, what's enforced, troubleshooting and a 1-hour training plan.
+- [Branch protection](docs/branch-protection.md): the GitHub settings that make the CI checks required.
+- [Tool matrix](docs/tool-matrix.md): how the kit was tested in each AI tool and on a real app.
+- Published from GitHub Actions with npm provenance.
 
 ## License
 
