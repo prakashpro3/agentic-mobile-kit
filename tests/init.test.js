@@ -36,8 +36,8 @@ function fakeApp({ files = {}, pkg = {} } = {}) {
 }
 const commitAll = dir => { git(dir, 'add', '-A'); git(dir, '-c', 'user.name=t', '-c', 'user.email=t@example.invalid', '-c', 'core.hooksPath=/dev/null', 'commit', '-qm', 'kit'); };
 
-test('fresh install: files, filled AGENTS.md and codemagic.yaml, links, hooks, scripts', () => {
-  const dir = fakeApp({ files: { 'ios/DemoApp.xcodeproj/project.pbxproj': 'PRODUCT_BUNDLE_IDENTIFIER = "org.reactjs.native.example.$(PRODUCT_NAME:rfc1034identifier)";\n' } });
+test('fresh install: files, filled AGENTS.md, links, hooks, scripts; no CI unless asked', () => {
+  const dir = fakeApp();
   const { report } = init(dir, { skipGenerate: true });
 
   const agents = read(dir, 'AGENTS.md');
@@ -45,7 +45,8 @@ test('fresh install: files, filled AGENTS.md and codemagic.yaml, links, hooks, s
   assert.match(agents, /Bare React Native 0\.87\.1/);
   assert.match(agents, /`yarn lint`/);
   assert.match(read(dir, 'CLAUDE.md'), /@AGENTS\.md/);
-  assert.match(read(dir, 'codemagic.yaml'), /bundle_identifier: org\.reactjs\.native\.example\.DemoApp\n/);
+  assert.match(agents, new RegExp(`KIT:START agentic-mobile-kit ${KIT_VERSION.replace(/\./g, '\\.')} ci=none `));
+  assert.ok(!fs.existsSync(path.join(dir, '.github')) && !fs.existsSync(path.join(dir, 'codemagic.yaml')), 'no CI files');
   assert.ok(fs.statSync(path.join(dir, '.githooks/pre-commit')).mode & 0o111, 'pre-commit is executable');
   assert.strictEqual(fs.readlinkSync(path.join(dir, '.claude/skills')), '../.agents/skills');
   assert.ok(fs.existsSync(path.join(dir, '.agents/skills/m-feature/SKILL.md')));
@@ -58,6 +59,18 @@ test('fresh install: files, filled AGENTS.md and codemagic.yaml, links, hooks, s
   assert.strictEqual(git(dir, 'config', 'core.hooksPath'), '.githooks');
   assert.match(read(dir, 'rulesync.jsonc'), /"targets": \["claudecode","codexcli","antigravity-ide","antigravity-cli"\]/);
   assert.ok(report.created.length > 40);
+});
+
+test('--ci github,codemagic adds the CI files, fills codemagic.yaml, and later runs keep the choice', () => {
+  const dir = fakeApp({ files: { 'ios/DemoApp.xcodeproj/project.pbxproj': 'PRODUCT_BUNDLE_IDENTIFIER = "org.reactjs.native.example.$(PRODUCT_NAME:rfc1034identifier)";\n' } });
+  init(dir, { ci: ['github', 'codemagic'], skipGenerate: true });
+  assert.ok(fs.existsSync(path.join(dir, '.github/workflows/ci.yml')) && fs.existsSync(path.join(dir, 'docs/ai/codemagic.md')));
+  assert.match(read(dir, 'codemagic.yaml'), /bundle_identifier: org\.reactjs\.native\.example\.DemoApp\n/);
+  assert.match(read(dir, 'AGENTS.md'), / ci=github,codemagic /);
+  commitAll(dir);
+  init(dir, { skipGenerate: true });
+  assert.match(read(dir, 'AGENTS.md'), / ci=github,codemagic /, 'a second init without --ci keeps the CI choice');
+  assert.throws(() => init(fakeApp(), { ci: ['jenkins'], skipGenerate: true }), /Unknown CI "jenkins"/);
 });
 
 test('running init twice changes nothing the second time', () => {
@@ -147,7 +160,7 @@ function oldKit() {
 test('sync: updates untouched kit files, merges the team\'s changes, flags conflicts, leaves filled-in docs alone', () => {
   const old = oldKit();
   const dir = fakeApp({ files: { 'AGENTS.md': '# Team notes\n' } });
-  init(dir, { template: old, skipGenerate: true });
+  init(dir, { template: old, ci: ['github'], skipGenerate: true });
   commitAll(dir);
   // the team's own edits after installing
   fs.appendFileSync(path.join(dir, '.github/workflows/ci.yml'), '      - run: echo team step\n');
@@ -196,7 +209,7 @@ test('sync needs the kit installed, and the installed version for kits before 0.
 
 test('uninstall: removes the kit and its sections, keeps changed files and the team\'s own content', () => {
   const dir = fakeApp({ files: { 'AGENTS.md': '# Team notes\n', 'CLAUDE.md': 'Be brief.\n' } });
-  init(dir, { skipGenerate: true });
+  init(dir, { ci: ['github', 'codemagic'], skipGenerate: true });
   commitAll(dir);
   fs.appendFileSync(path.join(dir, '.github/workflows/ci.yml'), '# team change\n');
   commitAll(dir);
@@ -219,7 +232,7 @@ test('uninstall: removes the kit and its sections, keeps changed files and the t
 test('sync with --from (no recorded version): a file matching neither kit version gets conflict markers, not a silent merge', () => {
   const old = oldKit();
   const dir = fakeApp();
-  init(dir, { template: old, skipGenerate: true });
+  init(dir, { template: old, ci: ['github'], skipGenerate: true });
   // installed from an even older kit than --from says: this file predates the "old" kit
   fs.writeFileSync(path.join(dir, '.github/workflows/ci.yml'), read(dir, '.github/workflows/ci.yml').replace('name: old ci\n', 'name: older ci\n'));
   commitAll(dir);
@@ -227,4 +240,26 @@ test('sync with --from (no recorded version): a file matching neither kit versio
   assert.match(read(dir, '.github/workflows/ci.yml'), /<<<<<<< your version\nname: older ci\n=======\nname: ci\n>>>>>>> kit /);
   assert.ok(report.conflicts.includes('.github/workflows/ci.yml'));
   assert.ok(report.updated.includes('scripts/ai/pm-run.sh'), 'files matching the old kit still update');
+});
+
+test('sync adds CI files only to projects that chose that CI, or when asked with --ci', () => {
+  const old = oldKit();
+  fs.unlinkSync(path.join(old, '.github/workflows/ios.yml'));
+  fs.unlinkSync(path.join(old, 'docs/ai/codemagic.md'));
+  const none = fakeApp();
+  init(none, { template: old, skipGenerate: true });
+  commitAll(none);
+  sync(none, { fromDir: old, skipGenerate: true });
+  assert.ok(!fs.existsSync(path.join(none, '.github')) && !fs.existsSync(path.join(none, 'docs/ai/codemagic.md')));
+
+  const github = fakeApp();
+  init(github, { template: old, ci: ['github'], skipGenerate: true });
+  commitAll(github);
+  const { report } = sync(github, { fromDir: old, skipGenerate: true });
+  assert.ok(report.added.includes('.github/workflows/ios.yml'), 'new CI file for a GitHub CI project');
+  assert.ok(!fs.existsSync(path.join(github, 'docs/ai/codemagic.md')), 'no Codemagic files');
+  git(github, 'checkout', '-q', '.');
+  git(github, 'clean', '-qfd');
+  sync(github, { fromDir: old, ci: ['codemagic'], skipGenerate: true });
+  assert.ok(fs.existsSync(path.join(github, 'codemagic.yaml')), '--ci adds Codemagic later');
 });

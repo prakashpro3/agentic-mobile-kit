@@ -9,10 +9,10 @@ Every AI tool reads the same rules (`AGENTS.md`), the same project facts (`docs/
 ## Setup
 
 **Once per project** (the lead):
-1. In the app's root, on a clean branch: `npx agentic-mobile-kit init`. To choose AI tools, add `--tools claude,codex,antigravity`.
+1. In the app's root, on a clean branch: `npx agentic-mobile-kit init`. To choose AI tools, add `--tools claude,codex,antigravity`. If the app uses GitHub Actions or Codemagic, add `--ci github`, `--ci codemagic` or both; without it, the kit adds no CI files. You can add CI later the same way.
 2. Fill in `docs/ai/product.md`, `tech.md`, `structure.md` and `conventions.md`. Agents are only as good as these four files.
 3. Open a PR with the `large-pr` label, merge it, and turn on branch protection (see `docs/branch-protection.md` in the kit repo).
-4. For signed store builds, do the one-time Codemagic setup in the app's `docs/ai/codemagic.md`.
+4. With `--ci codemagic`, do the one-time Codemagic setup in the app's `docs/ai/codemagic.md`.
 
 **When the kit has a new version** (the lead): on a clean branch, run `npx agentic-mobile-kit@latest sync`. The first time on an install older than 0.4.0, add `--from <the version you installed>`. Resolve any `<<<<<<<` conflicts, run the checks and open a PR.
 
@@ -63,7 +63,7 @@ If an agent says "done" without these, it isn't done. Open the screenshots yours
 | CI on every PR | Lint, typecheck, tests, secret scan, config drift, PR size ≤ 600 lines (`large-pr` label to override), Android build, and the iOS build when native files change |
 | Nightly, or the `e2e` label | Android emulator with the Maestro flows; the screenshots are attached to the run |
 | Inside AI tools | A guard hook blocks `rm -rf`, force pushes, `git reset --hard`, `--no-verify` and reading secret files. Permission rules ask before dependency and native config changes. A stop hook reminds the agent to update the handoff. |
-| Releases | `scripts/ai/release-check.js` before tagging, and again on Codemagic before every signed build |
+| Releases | `scripts/ai/release-check.js` before tagging, and again on Codemagic before every signed build (with `--ci codemagic`) |
 
 Never bypass a hook with `--no-verify`. If a hook is wrong, fix the hook in a PR.
 

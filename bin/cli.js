@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 const { version } = require('../package.json');
-const { init, sync, uninstall, printSummary, printSync, printUninstall, InitError, TOOLS } = require('../lib/init');
+const { init, sync, uninstall, printSummary, printSync, printUninstall, InitError, TOOLS, CI } = require('../lib/init');
 const { doctor, printDoctor } = require('../lib/doctor');
 
 const [cmd, ...rest] = process.argv.slice(2);
@@ -8,12 +8,13 @@ const flag = name => {
   const i = rest.indexOf(`--${name}`);
   return i >= 0 ? rest[i + 1] : undefined;
 };
+const list = name => (flag(name) ? flag(name).split(',').map(s => s.trim()).filter(Boolean) : undefined);
 
 const help = `agentic-mobile-kit ${version}
 
 Usage:
-  npx agentic-mobile-kit init [--tools claude,codex,antigravity] [--pm yarn|npm|pnpm|bun]
-  npx agentic-mobile-kit sync [--from <version>]
+  npx agentic-mobile-kit init [--tools claude,codex,antigravity] [--ci github,codemagic] [--pm yarn|npm|pnpm|bun]
+  npx agentic-mobile-kit sync [--ci github,codemagic] [--from <version>]
   npx agentic-mobile-kit uninstall [--from <version>]
   npx agentic-mobile-kit doctor
 
@@ -25,6 +26,7 @@ Commands:
 
 Options:
   --tools  AI tools your team uses: ${Object.keys(TOOLS).join(', ')} (default: claude,codex,antigravity)
+  --ci     CI to set up, only if the app uses it: ${Object.keys(CI).join(', ')} (GitHub Actions checks, Codemagic signed builds; default: none)
   --pm     Package manager, if it can't be detected from the lockfile
   --from   The kit version that installed the project; needed only for installs made before 0.4.0`;
 
@@ -41,11 +43,10 @@ if (cmd === '--version' || cmd === '-v') {
   console.log(version);
 } else if (cmd === 'init') {
   run('init', () => {
-    const tools = flag('tools') ? flag('tools').split(',').map(s => s.trim()).filter(Boolean) : undefined;
-    printSummary(init(process.cwd(), { tools, pm: flag('pm') }));
+    printSummary(init(process.cwd(), { tools: list('tools'), ci: list('ci'), pm: flag('pm') }));
   });
 } else if (cmd === 'sync') {
-  run('sync', () => printSync(sync(process.cwd(), { from: flag('from'), pm: flag('pm') })));
+  run('sync', () => printSync(sync(process.cwd(), { from: flag('from'), ci: list('ci'), pm: flag('pm') })));
 } else if (cmd === 'uninstall') {
   run('uninstall', () => printUninstall(uninstall(process.cwd(), { from: flag('from'), pm: flag('pm') })));
 } else if (cmd === 'doctor') {
