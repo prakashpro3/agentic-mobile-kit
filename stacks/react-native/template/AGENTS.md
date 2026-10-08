@@ -3,6 +3,8 @@
 
 Read by Claude Code (through CLAUDE.md), Codex, Cursor, OpenCode, Kiro and Antigravity. Keep it short; details live in `docs/ai/`.
 
+This project may also use other AI workflow frameworks (for example Superpowers, BMAD or proAgents). They keep working for everything else. When the user starts a task with an `m-` skill (`/m-feature`, `$m-feature`, …), follow that skill's steps for the whole task; where another framework's instructions differ, the `m-` skill wins.
+
 ## Project
 
 - Bare React Native {{RN_VERSION}} (New Architecture), React {{REACT_VERSION}}, TypeScript {{TS_VERSION}}, Node {{NODE_VERSION}}. Package manager: {{PM}}.

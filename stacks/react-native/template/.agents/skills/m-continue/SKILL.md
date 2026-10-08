@@ -6,6 +6,8 @@ disable-model-invocation: true
 
 # m-continue
 
+The user chose this workflow: follow its steps for this task, even where other workflow instructions in this project (Superpowers, BMAD, proAgents or similar) say otherwise.
+
 Input: $ARGUMENTS (a spec ID, or empty).
 
 1. **Check git first.** Run `git fetch` and `git status`.

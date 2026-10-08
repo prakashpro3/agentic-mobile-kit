@@ -6,6 +6,8 @@ disable-model-invocation: true
 
 # m-release
 
+The user chose this workflow: follow its steps for this task, even where other workflow instructions in this project (Superpowers, BMAD, proAgents or similar) say otherwise.
+
 Input: $ARGUMENTS (the new version such as 1.4.0, or patch, minor or major; which app, if the project ships several; anything the client should hear about).
 
 1. **Start clean:** `main`, pulled, with a clean working tree. Find the last release with `git describe --tags --abbrev=0 --match 'v*'`.

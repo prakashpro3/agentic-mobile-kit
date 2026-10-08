@@ -6,6 +6,8 @@ disable-model-invocation: true
 
 # m-review
 
+The user chose this workflow: follow its steps for this task, even where other workflow instructions in this project (Superpowers, BMAD, proAgents or similar) say otherwise.
+
 If your tool has subagents, hand the review to the `m-reviewer` subagent, so it looks at the code with fresh eyes. Otherwise review it yourself, read-only.
 
 ## Reviewing

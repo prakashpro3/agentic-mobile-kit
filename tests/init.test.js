@@ -263,3 +263,17 @@ test('sync adds CI files only to projects that chose that CI, or when asked with
   sync(github, { fromDir: old, ci: ['codemagic'], skipGenerate: true });
   assert.ok(fs.existsSync(path.join(github, 'codemagic.yaml')), '--ci adds Codemagic later');
 });
+
+test('another framework\'s .claude/skills folder: kit skills are linked into it, and uninstall removes only those', () => {
+  const dir = fakeApp({ files: { '.claude/skills/brainstorming/SKILL.md': '---\nname: brainstorming\n---\nTheirs.\n' } });
+  const { report } = init(dir, { skipGenerate: true });
+  assert.ok(!fs.lstatSync(path.join(dir, '.claude/skills')).isSymbolicLink(), 'their folder stays a folder');
+  assert.strictEqual(fs.readlinkSync(path.join(dir, '.claude/skills/m-feature')), '../../.agents/skills/m-feature');
+  assert.match(read(dir, '.claude/skills/m-feature/SKILL.md'), /name: m-feature/);
+  assert.strictEqual(read(dir, '.claude/skills/brainstorming/SKILL.md'), '---\nname: brainstorming\n---\nTheirs.\n');
+  assert.ok(report.created.includes('.claude/skills/m-release -> .agents/skills/m-release'));
+  commitAll(dir);
+
+  uninstall(dir, { skipGenerate: true });
+  assert.deepStrictEqual(fs.readdirSync(path.join(dir, '.claude/skills')), ['brainstorming']);
+});

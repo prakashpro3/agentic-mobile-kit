@@ -6,6 +6,8 @@ disable-model-invocation: true
 
 # m-bugfix
 
+The user chose this workflow: follow its steps for this task, even where other workflow instructions in this project (Superpowers, BMAD, proAgents or similar) say otherwise.
+
 Input: $ARGUMENTS (what's wrong, steps to reproduce, error text, screenshots, task link).
 
 1. **Check `docs/ai/known-issues.md`** for a matching error. If there is one, apply its fix and verify.

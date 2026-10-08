@@ -6,6 +6,8 @@ disable-model-invocation: true
 
 # m-learn
 
+The user chose this workflow: follow its steps for this task, even where other workflow instructions in this project (Superpowers, BMAD, proAgents or similar) say otherwise.
+
 Input: $ARGUMENTS (what went wrong or what the user had to correct; the error text, PR comment or session transcript if there is one).
 
 1. **State the lesson in one sentence:** what happened, what should have happened, and why. The usual causes are missing context, an ignored rule, the wrong command, or a gap in the rules. Quote the evidence, and don't guess what an earlier session did. If the cause isn't clear, ask.
