@@ -53,3 +53,14 @@ rulesync warnings: Antigravity CLI permissions are global-only, and Codex permis
 - Antigravity: package the guard as a plugin and test that; test the IDE's own permission file (`.antigravity/settings.json`).
 - Cursor, Kiro and OpenCode once installed.
 - A single `tests/matrix/run.sh` that runs all checks and prints this table.
+
+## Phase 3 checks (2026-10-08, bare React Native 0.87 test app)
+
+| Check | Claude Code | Codex CLI | Antigravity CLI |
+|---|---|---|---|
+| `m-continue` runs when invoked | ✅ `/m-continue` | ✅ `$m-continue` | ⏳ started, but its first step (`git fetch`) is a shell command, which headless mode refuses; approve it in interactive use |
+| Workflow skills don't trigger on their own | ✅ (`disable-model-invocation`) | ✅ a prompt starting "Continue:" didn't load the skill | ⏳ |
+| `guard.js` blocks `rm -r -f`, even when the user authorizes it | ✅ | ✅ in unit tests of its payload format; live run needs hook trust | ❌ project hooks don't run (Phase 0) |
+| `handoff-check.js` stop hook | ✅ fired on uncommitted code without a handoff update; the agent didn't invent a status; no loop | ⏳ | ❌ |
+| `m-reviewer` subagent | ✅ ran in its own context and found a real bug in `handoff-check.js` (since fixed) | ⏳ | ⏳ |
+| Generated configs match `.rulesync/` (CI drift check) | ✅ checked locally: in sync passes, an unregenerated edit fails | | |
