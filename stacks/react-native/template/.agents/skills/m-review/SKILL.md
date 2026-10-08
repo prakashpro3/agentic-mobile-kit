@@ -14,7 +14,7 @@ If your tool has subagents, hand the review to the `m-reviewer` subagent, so it 
 
 1. Get the changes: `git diff main...HEAD` and `git log main..HEAD --oneline`. If there's a spec, read its `requirements.md`.
 2. Check, in order:
-   - **Scope:** does the diff do what the spec asks, and nothing unrelated?
+   - **Scope:** does the diff do what the spec asks, and nothing unrelated? If behavior changed, was `specs/current/` updated to match?
    - **Tests:** were tests added for new logic? Were any tests deleted, skipped or weakened?
    - **Both platforms:** anything iOS-only or Android-only (insets, back button, permissions, keyboard)?
    - **Errors and states:** offline, server errors, empty and loading states.

@@ -8,7 +8,7 @@ This project may also use other AI workflow frameworks (for example Superpowers,
 ## Project
 
 - Bare React Native {{RN_VERSION}} (New Architecture), React {{REACT_VERSION}}, TypeScript {{TS_VERSION}}, Node {{NODE_VERSION}}. Package manager: {{PM}}.
-- What the app does: `docs/ai/product.md`. Stack and services: `docs/ai/tech.md`. Folders and layers: `docs/ai/structure.md`. Code style: `docs/ai/conventions.md`.
+- What the app does: `docs/ai/product.md`, and requirement by requirement, as it works now: `specs/current/`. Stack and services: `docs/ai/tech.md`. Folders and layers: `docs/ai/structure.md`. Code style: `docs/ai/conventions.md`.
 
 ## Commands
 

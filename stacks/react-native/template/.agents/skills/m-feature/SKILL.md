@@ -19,9 +19,10 @@ If the input describes a bug rather than new behavior, suggest `m-bugfix` and st
 ## 2. Requirements (then stop for approval)
 
 1. Pick an ID: the task's ID if it has one, otherwise `YYYYMMDD-<slug>`. Copy `specs/_templates/` to `specs/<id>/`.
-2. Fill `requirements.md`: goal, acceptance criteria as "WHEN … THE APP SHALL …", every edge-case line (or "n/a"), out of scope, open questions.
-3. If something is unclear, ask the user **one question at a time**. Don't fill gaps with guesses.
-4. Show the requirements and **stop until the user approves them**.
+2. Read `specs/current/` for the areas this touches, so new requirements build on what the app does now. Where they change a current requirement, say which one.
+3. Fill `requirements.md`: goal, acceptance criteria as "WHEN … THE APP SHALL …", every edge-case line (or "n/a"), out of scope, open questions.
+4. If something is unclear, ask the user **one question at a time**. Don't fill gaps with guesses.
+5. Show the requirements and **stop until the user approves them**.
 
 ## 3. Design and tasks (then stop for approval)
 
@@ -44,9 +45,13 @@ When all tasks are done:
 1. Run `sh scripts/ai/verify.sh all --spec <id>`. Then **open the screenshots** in `.ai/evidence/<id>/` and check each one against its criterion. Maestro can report a tap as passed when nothing happened, so the screenshots are the evidence, not the log.
 2. Go through every acceptance criterion and note the evidence for it (test name, command output, or screen checked). If one isn't met, fix the code or ask whether the spec should change.
 
-## 6. Review and pull request
+## 6. Update the living spec
+
+Add the acceptance criteria that are now true to `specs/current/<area>.md`, one file per area of the app (the format is in `specs/current/README.md`). Add new requirements, rewrite the ones this feature changed, and delete the ones it removed, each with `Source: specs/<id>`. The file describes only what the app does now. Commit it with the feature, so reviewers see the change in behavior.
+
+## 7. Review and pull request
 
 1. Run `m-review` (or ask the `m-reviewer` subagent, if your tool has subagents). Fix real problems only; skip style nits.
-2. Ask the user before pushing. Then push the feature branch (never `main`) and open a PR using `.github/pull_request_template.md`, with the evidence filled in.
+2. Ask the user before pushing. Then push the feature branch (never `main`) and open a PR with the evidence: lint, typecheck and test output, and the screenshots checked against each criterion. Use `.github/pull_request_template.md` if the repo has one.
 
 Never claim a check passed without running it in this session.

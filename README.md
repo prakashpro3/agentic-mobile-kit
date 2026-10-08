@@ -37,7 +37,7 @@ Installs older than 0.4.0 don't record which kit version made them, so their fir
 
 ## What it adds
 
-- **Context for every AI tool:** `AGENTS.md` (plus a one-line `CLAUDE.md`), `docs/ai/` (product, tech, structure, conventions, decisions, known issues, React Native rules) and spec templates in `specs/_templates/`.
+- **Context for every AI tool:** `AGENTS.md` (plus a one-line `CLAUDE.md`), `docs/ai/` (product, tech, structure, conventions, decisions, known issues, React Native rules), spec templates in `specs/_templates/`, and a living spec in `specs/current/` that says what the app does now, one area at a time.
 - **Workflows:** the skills `m-feature`, `m-bugfix`, `m-continue`, `m-pause`, `m-review`, `m-release` and `m-learn`. Invoke them with `/m-feature` in Claude Code and Antigravity, or `$m-feature` in Codex. Also Callstack's React Native skills.
 - **Guardrails in each tool:** a guard hook that blocks destructive commands and secret files, a stop hook that asks for a handoff update, permission rules and a read-only `m-reviewer` subagent, generated with rulesync.
 - **Releases:** `m-release` writes each release's changelog from real commits with git-cliff, plus store and client notes, all in `release-notes/<version>/`. It then runs `scripts/ai/release-check.js`, which catches what store review would reject. Signed builds come from `scripts/ai/release-build.sh` on a Mac: an app bundle signed with your upload key, and an `.ipa` signed through Xcode's account. With `--ci codemagic`, a version tag starts them on Codemagic instead (`codemagic.yaml`, one-time setup in `docs/ai/codemagic.md`).

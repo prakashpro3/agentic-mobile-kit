@@ -25,7 +25,7 @@ Every AI tool reads the same rules (`AGENTS.md`), the same project facts (`docs/
 
 | You want to | Run | What happens |
 |---|---|---|
-| Build a feature | `m-feature <task text or link>` | Requirements with acceptance criteria → **you approve** → design and tasks → **you approve** → one task at a time with tests and real command output → device check with screenshots → review → PR |
+| Build a feature | `m-feature <task text or link>` | Requirements with acceptance criteria → **you approve** → design and tasks → **you approve** → one task at a time with tests and real command output → device check with screenshots → living spec updated → review → PR |
 | Fix a bug | `m-bugfix <report>` | Checks known issues → reproduces → failing test → root cause → smallest fix → verifies |
 | Stop for now, or switch tool | `m-pause` | Writes the handoff in `progress.md`, moves decisions out of the chat, commits as `wip:` and pushes |
 | Carry on anywhere | `m-continue <id>` | Reads the spec and handoff, tells you the open question, the status and the next step, then waits for you |
@@ -34,6 +34,8 @@ Every AI tool reads the same rules (`AGENTS.md`), the same project facts (`docs/
 | Stop a mistake from repeating | `m-learn <what went wrong>` | The smallest lasting fix: a check, a known-issues entry, a docs line or a skill step |
 
 How to invoke a skill: `/m-feature` in Claude Code and Antigravity, and `$m-feature` in Codex. The skills only run when you invoke them; they never start on their own.
+
+`specs/current/` is the living spec: one file per area of the app, saying what it does now, requirement by requirement. `m-feature` adds to it when a feature is done, and `m-bugfix` corrects it when a fix changes behavior. It starts empty and grows with each change, so there's no need to write it all up front.
 
 Small changes don't need a skill. Ask the agent directly; the rules in `AGENTS.md` and the git hooks still apply.
 
