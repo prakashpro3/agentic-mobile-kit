@@ -3,6 +3,7 @@ name: ci
 
 on:
   pull_request:
+    types: [opened, synchronize, reopened, labeled, unlabeled] # re-run when the large-pr label changes
   push:
     branches: [main]
 
