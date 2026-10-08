@@ -49,7 +49,7 @@ const iosBuilds = t => all(/CURRENT_PROJECT_VERSION = ([^;]+);/g, t);
 const androidVersions = t => all(/versionName\s*=?\s*"([^"]+)"/g, stripComments(t));
 const androidBuilds = t => all(/versionCode\s*=?\s*(\d+)/g, stripComments(t));
 
-function compare(platform, now, before, kind) {
+function compare(platform, now, before, kind, versionChanged) {
   if (kind === 'build number' && ciBuildNumber[platform]) { info(`${platform} build number: set by Codemagic at build time`); return; }
   if (!now.length) { warn(`${platform} ${kind}: couldn't read it`, 'check it by hand before you ship'); return; }
   if (!before) { info(`${platform} ${kind}: ${now.join(', ')}`); return; }
@@ -57,6 +57,9 @@ function compare(platform, now, before, kind) {
     if (kind === 'build number' && before.length && maxNum(now) < maxNum(before)) {
       fail(`${platform} build number went down (${before.join(', ')} → ${now.join(', ')})`, 'stores reject a build number lower than the last upload');
     } else ok(`${platform} ${kind}`, `${before.join(', ') || '?'} → ${now.join(', ')}`);
+  } else if (kind === 'build number' && platform === 'iOS' && versionChanged) {
+    // the App Store needs a new build number only within a version, so 1 again for a new version is fine
+    ok(`${platform} build number (${now.join(', ')} again, for a new version)`);
   } else if (kind === 'build number') {
     warn(`${platform} build number unchanged since ${since} (${now.join(', ')})`, 'bump it, unless your CI sets it (for example Codemagic); stores reject a repeated build number');
   } else {
@@ -66,8 +69,9 @@ function compare(platform, now, before, kind) {
 
 if (!since) info('No previous release found (no git tag)', 'tag each release, e.g. v1.4.0, or pass --since <ref>, so the next check can compare');
 if (pbx) {
-  compare('iOS', iosVersions(pbx), since && iosVersions(readAt(since, pbxPath)), 'version');
-  compare('iOS', iosBuilds(pbx), since && iosBuilds(readAt(since, pbxPath)), 'build number');
+  const [now, before] = [iosVersions(pbx), since && iosVersions(readAt(since, pbxPath))];
+  compare('iOS', now, before, 'version');
+  compare('iOS', iosBuilds(pbx), since && iosBuilds(readAt(since, pbxPath)), 'build number', before && now.join() !== before.join());
 }
 if (gradle) {
   compare('Android', androidVersions(gradle), since && androidVersions(readAt(since, gradlePath)), 'version');
@@ -76,7 +80,7 @@ if (gradle) {
 if (pbx && gradle) {
   const a = iosVersions(pbx), b = androidVersions(gradle);
   if (a.length && b.length && !a.some(v => b.includes(v))) {
-    warn(`iOS shows version ${a.join(', ')}, Android shows ${b.join(', ')}`, 'users and support see different numbers; align them unless that\'s intended');
+    info(`iOS shows version ${a.join(', ')}, Android shows ${b.join(', ')}`, 'users and support see different numbers; fine if your team numbers the platforms separately');
   }
 }
 
@@ -168,7 +172,8 @@ const releaseBlock = block(block(gradle, 'buildTypes'), 'release');
 if (/debuggable\s*=?\s*true/.test(releaseBlock)) fail('Android release build is debuggable', 'remove "debuggable true" from buildTypes.release; Play rejects debuggable apps');
 if (/android\.injected\.signing/.test(codemagic)) ok('Android release signing', 'Codemagic signs with the upload key');
 else if (/signingConfig\s*=?\s*signingConfigs\.debug/.test(releaseBlock)) {
-  warn('Android release build is signed with the debug key', 'fine if you build releases with sh scripts/ai/release-build.sh or Codemagic, which sign with your upload key; Play rejects debug-signed uploads');
+  // the kit's release-build.sh (and Codemagic) sign with the upload key, and Play rejects debug-signed uploads anyway
+  info('build.gradle signs release builds with the debug key', 'build store releases with sh scripts/ai/release-build.sh android, which signs with your upload key');
 }
 if (/android:usesCleartextTraffic="true"/.test(readNow(manifestPath) || '')) {
   warn('Android allows cleartext (HTTP) traffic', 'allow only the domains that need it (network security config)');

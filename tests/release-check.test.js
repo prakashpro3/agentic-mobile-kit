@@ -126,13 +126,13 @@ test('new sensitive Android permissions since the last release are flagged', () 
   assert.match(out, /! New Android permissions since v1\.0\.0: android\.permission\.CAMERA/);
 });
 
-test('debuggable release fails; debug-key signing and arbitrary loads warn; signingConfigs.release is ignored', () => {
+test('debuggable release fails; debug-key signing is noted; arbitrary loads warn; signingConfigs.release is ignored', () => {
   const debuggable = check(app({ ...bumped, 'android/app/build.gradle': gradle(2, '1.1', 'debuggable true') }));
   assert.match(debuggable.out, /✗ Android release build is debuggable/);
   assert.strictEqual(debuggable.code, 1);
 
   const debugKey = check(app({ ...bumped, 'android/app/build.gradle': gradle(2, '1.1', 'signingConfig signingConfigs.debug') }));
-  assert.match(debugKey.out, /! Android release build is signed with the debug key/);
+  assert.match(debugKey.out, /· build\.gradle signs release builds with the debug key/);
 
   const clean = check(app(bumped));
   assert.doesNotMatch(clean.out, /debuggable|debug key|NSAllowsArbitraryLoads/);
@@ -174,4 +174,10 @@ test('build numbers and the upload key that Codemagic sets are not reported as p
   assert.match(out, /· Android build number: set by Codemagic at build time/);
   assert.match(out, /✓ Android release signing \(Codemagic signs with the upload key\)/);
   assert.doesNotMatch(out, /build number unchanged|debug key/);
+});
+
+test('iOS may reuse its build number for a new version; Android may not', () => {
+  const { out } = check(app({ 'ios/Demo.xcodeproj/project.pbxproj': pbx('1.1', 1), 'android/app/build.gradle': gradle(1, '1.1') }));
+  assert.match(out, /✓ iOS build number \(1 again, for a new version\)/);
+  assert.match(out, /! Android build number unchanged/);
 });
