@@ -1,0 +1,5 @@
+#!/bin/sh
+# agentic-mobile-kit pre-push: typecheck and tests before code leaves the machine.
+set -eu
+sh scripts/ai/pm-run.sh typecheck || { echo "pre-push: fix the type errors above" >&2; exit 1; }
+CI=true sh scripts/ai/pm-run.sh test || { echo "pre-push: fix the failing tests above" >&2; exit 1; }

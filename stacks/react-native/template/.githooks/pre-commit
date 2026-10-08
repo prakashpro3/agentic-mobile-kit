@@ -1,0 +1,49 @@
+#!/bin/sh
+# agentic-mobile-kit pre-commit: runs for every commit, whichever person or AI tool makes it.
+# Blocks secrets and broken Xcode project files, and lints the staged JS/TS files.
+set -eu
+
+staged=$(git diff --cached --name-only --diff-filter=ACMR)
+[ -n "$staged" ] || exit 0
+
+fail() { echo "pre-commit: $*" >&2; exit 1; }
+
+# 1. files that must never be committed
+if echo "$staged" | grep -E '(^|/)\.env(\..+)?$' | grep -qv '\.env\.example$'; then
+  fail "don't commit .env files; keep secrets out of git"
+fi
+if echo "$staged" | grep -qE '\.(keystore|jks|p8|p12|mobileprovision)$'; then
+  fail "don't commit signing keys or provisioning profiles"
+fi
+
+# 2. secrets inside staged changes
+if command -v gitleaks > /dev/null; then
+  gitleaks git --staged --no-banner --redact > /dev/null || fail "gitleaks found a possible secret (run: gitleaks git --staged)"
+elif git diff --cached -U0 | grep '^+' | grep -qE -- '-----BEGIN [A-Z ]*PRIVATE KEY-----|AKIA[0-9A-Z]{16}|ghp_[0-9A-Za-z]{36}|npm_[0-9A-Za-z]{36}|sk-[A-Za-z0-9_-]{20,}'; then
+  fail "possible secret in the staged changes (install gitleaks for a full scan)"
+fi
+
+# 3. Xcode project files must still parse (a broken one fails every build on the team)
+if command -v plutil > /dev/null; then
+  for f in $(echo "$staged" | grep 'project\.pbxproj$' || true); do
+    plutil -lint -s "$f" || fail "$f is not a valid Xcode project file"
+  done
+fi
+
+# 4. lint the staged JS/TS files with the project's own ESLint config
+files=$(echo "$staged" | grep -E '\.(js|jsx|ts|tsx)$' || true)
+if [ -n "$files" ]; then
+  if [ -x node_modules/.bin/eslint ]; then
+    # ponytail: file names with spaces aren't supported here; split on newlines if that ever matters
+    node_modules/.bin/eslint $files || fail "fix the ESLint errors above"
+  else
+    echo "pre-commit: ESLint isn't installed, so staged files weren't linted (Expo: run 'npx expo lint' once)" >&2
+  fi
+fi
+
+# 5. warn about large commits (the PR size check in CI is the hard limit)
+lines=$(git diff --cached --numstat -- . ':(exclude)*.lock' ':(exclude)package-lock.json' ':(exclude)pnpm-lock.yaml' ':(exclude)*.snap' |
+  awk '{ s += $1 + $2 } END { print s + 0 }')
+[ "$lines" -le 400 ] || echo "pre-commit: warning: $lines changed lines; consider smaller commits" >&2
+
+exit 0

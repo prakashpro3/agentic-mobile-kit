@@ -1,0 +1,57 @@
+# agentic-mobile-kit CI: checks every PR, whichever person or AI tool wrote it.
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0 # full history for the secret scan and PR size
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+      - run: sh scripts/ai/install-deps.sh
+      - run: sh scripts/ai/pm-run.sh lint
+      - run: sh scripts/ai/pm-run.sh typecheck
+      - run: CI=true sh scripts/ai/pm-run.sh test
+      - name: Secret scan
+        run: docker run --rm -v "$PWD:/repo" ghcr.io/gitleaks/gitleaks:v8.30.1 git /repo --no-banner --redact
+      - name: PR size (max 600 changed lines; label "large-pr" to override)
+        if: github.event_name == 'pull_request' && !contains(github.event.pull_request.labels.*.name, 'large-pr')
+        run: |
+          lines=$(git diff --numstat "origin/${{ github.base_ref }}...HEAD" -- . ':(exclude)*.lock' ':(exclude)package-lock.json' ':(exclude)pnpm-lock.yaml' ':(exclude)*.snap' | awk '{ s += $1 + $2 } END { print s + 0 }')
+          echo "$lines changed lines"
+          [ "$lines" -le 600 ] || { echo "This PR changes more than 600 lines. Split it, or add the 'large-pr' label."; exit 1; }
+
+  android:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+        with:
+          distribution: temurin
+          java-version: 17
+          cache: gradle
+      - run: sh scripts/ai/install-deps.sh
+      - name: Generate the native project (Expo apps without android/)
+        if: hashFiles('android/settings.gradle', 'android/settings.gradle.kts') == ''
+        run: npx expo prebuild --platform android --no-install
+      - name: Build debug APK
+        working-directory: android
+        run: ./gradlew assembleDebug --no-daemon

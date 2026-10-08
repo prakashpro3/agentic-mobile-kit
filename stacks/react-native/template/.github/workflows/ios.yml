@@ -1,0 +1,43 @@
+# agentic-mobile-kit iOS build check. macOS runners cost several times more than Linux,
+# so this runs only when native code, dependencies or app config change.
+name: ios
+
+on:
+  pull_request:
+    paths: &ios-paths
+      - "ios/**"
+      - "package.json"
+      - "package-lock.json"
+      - "yarn.lock"
+      - "pnpm-lock.yaml"
+      - "app.json"
+      - "app.config.*"
+      - ".github/workflows/ios.yml"
+  push:
+    branches: [main]
+    paths: *ios-paths
+
+concurrency:
+  group: ios-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+      - run: sh scripts/ai/install-deps.sh
+      - name: Generate the native project (Expo apps without ios/)
+        if: hashFiles('ios/Podfile') == ''
+        run: npx expo prebuild --platform ios --no-install
+      - name: Install pods
+        working-directory: ios
+        run: pod install
+      - name: Build for the simulator (no signing)
+        run: sh scripts/ai/ios-build.sh
