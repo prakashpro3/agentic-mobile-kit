@@ -114,3 +114,21 @@ Tested on PR #4 of the test repo: about 8 minutes per run; two consecutive runs 
 **Problems found and fixed on the way:**
 - **"Passed" with 0 screenshots:** Maestro 2.11 saves screenshots in its test output folder, not the current folder (2.2 did). `verify` now passes `--test-output-dir`, and **fails when flows produce no screenshots**, since a pass with no evidence isn't a pass.
 - **Flaky emulator:** "Pixel Launcher isn't responding" covered the app and failed the flow. `verify` now hides Android's system error dialogs before running flows (app crashes still fail the flow), and the CI emulator gets 4 GB of memory and 4 cores.
+
+## Phase 5: releases (2026-10-08)
+
+| Check | Result |
+|---|---|
+| `release-check.js` unit tests (11) | ✅ |
+| `release-check.js` on the test app | ✅ no problems. Warns that React Native's template ships an empty location text no library needs. |
+| `release-check.js` on a real two-app project (main and kiosk) | ✅ no problems. Warns that the kiosk app lacks the NFC text the main app has, and that iOS and Android version names differ. |
+| `codemagic.yaml` Android step, run locally with Codemagic's variables and a throwaway upload key | ✅ signed with the upload key; build number 7 (Codemagic's counter, used when Play can't be reached) in the bundle; `build.gradle` left unchanged in git |
+| git-cliff 2.14.2 with the kit's `cliff.toml` | ✅ first release (`-o`) and next release (`--prepend`, header kept) |
+| `set-version.sh` on the test app and on the two-app project | ✅ set 1.1.0 on both platforms and passed `plutil -lint`; ✅ refused the two-app project |
+| Codemagic build of the test app (PR #5) | ⏳ waiting for the keystore upload |
+| Signed iOS build on Codemagic | ⏳ not tested (needs an Apple Developer team) |
+
+**Findings:**
+- **AGP 9 ignores `android.injected.version.code`.** The bundle kept versionCode 1, while `android.injected.signing.*` still works. So `codemagic.yaml` signs with injected properties (`build.gradle` keeps debug signing for `verify.sh` and e2e) but writes the build number into `build.gradle` on the build machine only.
+- **A tag build in CI compared the release with itself:** `git describe` returns the tag at HEAD. `release-check` now compares a clean checkout of a tag with the tag before it.
+- **On a fresh clone, `pre-push` blamed type errors** when the dependencies simply weren't installed; it now says so.
