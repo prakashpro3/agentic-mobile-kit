@@ -34,5 +34,8 @@
     "opencode",
     "kiro",
     "antigravity"
-  ]
+  ],
+  "scripts": {
+    "release": "sh scripts/release.sh"
+  }
 }
