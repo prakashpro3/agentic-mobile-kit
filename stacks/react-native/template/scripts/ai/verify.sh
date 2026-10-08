@@ -2,11 +2,12 @@
 # Checks the app the way a user would: lint, typecheck and tests, then release builds on the iOS simulator
 # and Android emulator, running Maestro flows and saving screenshots as evidence.
 #
-# Usage: sh scripts/ai/verify.sh [quick|ios|android|all] [--spec <id>] [--flow <file>]
+# Usage: sh scripts/ai/verify.sh [quick|ios|android|all] [--spec <id>] [--flow <file>] [--label <name>]
 #   quick       lint, typecheck, tests
 #   ios|android release build, install, run flows, screenshots
 #   all         everything (default)
 #   --spec <id> run .maestro/<id>*.yaml and save evidence in .ai/evidence/<id>/
+#   --label <n> evidence folder name (default: the spec id, or a timestamp)
 #   (no flows found: a smoke check that launches the app and takes a screenshot)
 # Env: AMK_IOS_DEVICE (simulator name or UDID), AMK_ANDROID_AVD (emulator name)
 set -eu
@@ -15,16 +16,18 @@ mode=${1:-all}
 [ $# -gt 0 ] && shift
 spec=""
 flow=""
+label=""
 while [ $# -gt 0 ]; do
   case $1 in
     --spec) spec=$2; shift 2 ;;
     --flow) flow=$2; shift 2 ;;
+    --label) label=$2; shift 2 ;;
     *) echo "verify: unknown option $1"; exit 2 ;;
   esac
 done
 
 root=$(pwd)
-evidence="$root/.ai/evidence/${spec:-$(date +%Y%m%d-%H%M%S)}"
+evidence="$root/.ai/evidence/${label:-${spec:-$(date +%Y%m%d-%H%M%S)}}"
 mkdir -p "$evidence"
 status=0
 
@@ -48,8 +51,8 @@ run_flows() { # platform device app_id
   for f in $files; do
     total=$((total + 1))
     name=$(basename "$f" .yaml)
-    # screenshots in flows use relative names, so run Maestro from the evidence folder
-    if (cd "$out" && maestro --device "$2" test -e APP_ID="$3" "$f" > "$out/$name.log" 2>&1); then
+    # screenshots use relative names: older Maestro saves them in the current folder, newer in --test-output-dir
+    if (cd "$out" && maestro --device "$2" test --test-output-dir "$out" -e APP_ID="$3" "$f" > "$out/$name.log" 2>&1); then
       passed=$((passed + 1))
     else
       echo "  $1: flow $name failed, see ${out#"$root"/}/$name.log"
@@ -58,6 +61,10 @@ run_flows() { # platform device app_id
   done
   shots=$(find "$out" -name '*.png' | wc -l | tr -d ' ')
   echo "$1: flows $passed/$total passed, $shots screenshots in ${out#"$root"/}"
+  if [ "$shots" = 0 ]; then
+    echo "  $1: no screenshots were saved, so there's no evidence; treating this as a failure"
+    status=1
+  fi
 }
 
 quick() {
@@ -114,6 +121,9 @@ android() {
     device=$("$adb" devices | awk 'NR > 1 && $2 == "device" { print $1; exit }')
   fi
   "$adb" -s "$device" install -r "$apk" > /dev/null
+  # system "isn't responding" pop-ups (common on busy emulators) cover the app and fail flows; app crashes still fail them
+  "$adb" -s "$device" shell settings put global hide_error_dialogs 1
+  "$adb" -s "$device" shell am broadcast -a android.intent.action.CLOSE_SYSTEM_DIALOGS > /dev/null 2>&1 || true
   run_flows android "$device" "$app_id"
 }
 
