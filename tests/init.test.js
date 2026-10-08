@@ -166,6 +166,7 @@ test('sync: updates untouched kit files, merges the team\'s changes, flags confl
   fs.appendFileSync(path.join(dir, '.github/workflows/ci.yml'), '      - run: echo team step\n');
   fs.writeFileSync(path.join(dir, 'cliff.toml'), read(dir, 'cliff.toml').replace('header = "# Old\\n"', 'header = "# Team\\n"'));
   fs.writeFileSync(path.join(dir, 'docs/ai/product.md'), 'This app books meeting rooms.\n');
+  fs.appendFileSync(path.join(dir, '.gitleaks.toml'), '# team addition\n');
   commitAll(dir);
 
   const { report } = sync(dir, { fromDir: old, skipGenerate: true });
@@ -183,6 +184,7 @@ test('sync: updates untouched kit files, merges the team\'s changes, flags confl
   assert.ok(report.added.includes('scripts/ai/set-version.sh'));
   assert.ok(!fs.existsSync(path.join(dir, 'scripts/ai/retired.sh')), 'dropped file removed');
   assert.strictEqual(read(dir, 'docs/ai/product.md'), 'This app books meeting rooms.\n');
+  assert.ok(!Object.values(report).flat().includes('.gitleaks.toml'), 'a file only the team changed is left out of the report');
   const agents = read(dir, 'AGENTS.md');
   assert.match(agents, /^# Team notes\n/);
   assert.match(agents, /^## Rules$/m);
