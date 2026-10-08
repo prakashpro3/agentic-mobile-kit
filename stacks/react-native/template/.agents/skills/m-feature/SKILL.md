@@ -8,11 +8,11 @@ disable-model-invocation: true
 
 Input: $ARGUMENTS (the requirement text, a file path, or a task link plus pasted details).
 
-## 1. Size it first
+## 1. Always use the full flow
 
-- **Quick change** (1 file, about 20 lines or fewer): make the change, run lint, typecheck and tests, show the output, commit. No spec. Stop here.
-- **Bug**: tell the user to use `m-bugfix` instead, and stop.
-- **Feature** (anything bigger): continue. If the work grows past its size later, stop and say so.
+The user chose `m-feature`, so follow every step below, however small the change looks. Never skip the spec or the approval stops on your own judgment. (Tiny changes don't need this skill; the user can just ask for them directly.)
+
+If the input describes a bug rather than new behavior, suggest `m-bugfix` and stop.
 
 ## 2. Requirements (then stop for approval)
 

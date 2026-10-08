@@ -1,5 +1,5 @@
 ## Handoff  (updated <date time> · <tool> / <model> · branch <branch>)
-Status:        <not started | in progress — task N of M | done>
+Status:        <exactly one of: not started | in progress — task N of M | done>  (keep these words; the stop hook reads them)
 Done:          <tasks finished, with their check results>
 In progress:   <current task, what's half-done, file paths>
 Next step:     <the very next action>

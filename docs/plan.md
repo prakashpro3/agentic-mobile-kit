@@ -497,7 +497,7 @@ Tested on one Mac with Claude Code 2.1.292, Codex CLI 0.160.1 and Antigravity CL
 | Codex runs project hooks only after each person approves them on each machine; then the guard worked | `doctor` checks Codex trust and hook approval and prints the exact steps. Onboarding includes this one-time step. |
 | Antigravity ignored the project-level hooks rulesync wrote, even in a trusted folder | For Antigravity, the guard has to ship as an Antigravity plugin (to be tested). Until then, its own permission prompts are the guard, so "skip permissions" and auto-run modes stay off (team rule in 5.11). |
 | Codex and the Antigravity CLI read `.env` despite the deny rules | Real secrets stay out of the project folder and are injected at run time (password manager or shell environment). `guard.sh` also blocks shell commands that touch `.env`. The "Deny reading" row in 5.4 is a second layer, not a barrier. |
-| Codex ran a skill on its own because a folder name matched the skill's name | Workflow skills get a prefix (`amk-feature`, `amk-bugfix`, `amk-continue`, …) and have implicit invocation turned off |
+| Codex ran a skill on its own because a folder name matched the skill's name | Workflow skills get a prefix (`m-feature`, `m-bugfix`, `m-continue`, `m-pause`, `m-review`) and have implicit invocation turned off |
 | Antigravity CLI 1.1.9 ignored `AGENTS.md`; 1.3.1 reads it | `doctor` checks minimum tool versions |
 
 Still open from Phase 0: Cursor, Kiro and OpenCode (not installed yet), the Antigravity IDE and plugin route, and a single `tests/matrix/run.sh` for re-runs after tool updates.
