@@ -1,6 +1,6 @@
 {
   "name": "agentic-mobile-kit",
-  "version": "0.0.2",
+  "version": "0.1.0",
   "description": "One setup for AI-assisted mobile development that works the same in Claude Code, Codex, Cursor, OpenCode, Kiro and Antigravity. Early development.",
   "license": "MIT",
   "author": "prakashpro1",
