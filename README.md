@@ -21,6 +21,19 @@ npx agentic-mobile-kit doctor
 
 `init` never overwrites your files. It adds its section to an existing `AGENTS.md` between `KIT` markers, and it's safe to run again. Undo it with git.
 
+## Update or remove it
+
+```sh
+npx agentic-mobile-kit@latest sync   # update the kit's files; your own changes to them are merged in
+npx agentic-mobile-kit uninstall     # remove the kit; files you changed are kept and listed
+```
+
+Both need a clean working tree, and both leave the result for you to review with `git diff`.
+
+`sync` reports what it updated, added, removed and merged. If you and the kit changed the same lines, the file gets `<<<<<<<` conflict markers to resolve. The docs your team filled in (`docs/ai/product.md`, `tech.md`, `structure.md`, `conventions.md`) are never changed.
+
+Installs older than 0.4.0 don't record which kit version made them, so their first `sync` or `uninstall` needs `--from <version>`, for example `--from 0.3.0`. That version can only be a guess, so `sync` doesn't merge on top of it: every file that matches neither version gets conflict markers instead.
+
 ## What it adds
 
 - **Context for every AI tool:** `AGENTS.md` (plus a one-line `CLAUDE.md`), `docs/ai/` (product, tech, structure, conventions, decisions, known issues, React Native rules) and spec templates in `specs/_templates/`.

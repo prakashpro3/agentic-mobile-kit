@@ -14,6 +14,8 @@ Every AI tool reads the same rules (`AGENTS.md`), the same project facts (`docs/
 3. Open a PR with the `large-pr` label, merge it, and turn on branch protection (see `docs/branch-protection.md` in the kit repo).
 4. For signed store builds, do the one-time Codemagic setup in the app's `docs/ai/codemagic.md`.
 
+**When the kit has a new version** (the lead): on a clean branch, run `npx agentic-mobile-kit@latest sync`. The first time on an install older than 0.4.0, add `--from <the version you installed>`. Resolve any `<<<<<<<` conflicts, run the checks and open a PR.
+
 **Once per machine** (every developer):
 1. Clone, then `sh scripts/ai/install-deps.sh`. This also turns on the git hooks.
 2. Run `npx agentic-mobile-kit doctor` and fix what it lists. It checks Node, Xcode, CocoaPods, simulators, the Android SDK, Java, Maestro, gitleaks and each AI tool's trust settings.

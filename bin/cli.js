@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 const { version } = require('../package.json');
-const { init, printSummary, InitError, TOOLS } = require('../lib/init');
+const { init, sync, uninstall, printSummary, printSync, printUninstall, InitError, TOOLS } = require('../lib/init');
 const { doctor, printDoctor } = require('../lib/doctor');
 
 const [cmd, ...rest] = process.argv.slice(2);
@@ -13,27 +13,41 @@ const help = `agentic-mobile-kit ${version}
 
 Usage:
   npx agentic-mobile-kit init [--tools claude,codex,antigravity] [--pm yarn|npm|pnpm|bun]
+  npx agentic-mobile-kit sync [--from <version>]
+  npx agentic-mobile-kit uninstall [--from <version>]
   npx agentic-mobile-kit doctor
 
 Commands:
-  init     Install the kit into a bare React Native project (run in the app's root).
-  doctor   Check the project and this machine, with a fix for each problem.
+  init       Install the kit into a bare React Native project (run in the app's root).
+  sync       Update the kit's files to this version. Your own changes to them are merged in, not lost.
+  uninstall  Remove the kit's files and sections. Files you changed are kept and listed.
+  doctor     Check the project and this machine, with a fix for each problem.
 
 Options:
   --tools  AI tools your team uses: ${Object.keys(TOOLS).join(', ')} (default: claude,codex,antigravity)
-  --pm     Package manager, if it can't be detected from the lockfile`;
+  --pm     Package manager, if it can't be detected from the lockfile
+  --from   The kit version that installed the project; needed only for installs made before 0.4.0`;
+
+// init, sync and uninstall stop with a plain message when the project isn't ready for them
+function run(name, fn) {
+  try { fn(); } catch (e) {
+    if (!(e instanceof InitError)) throw e;
+    console.error(`${name} stopped: ${e.message}`);
+    process.exitCode = 1;
+  }
+}
 
 if (cmd === '--version' || cmd === '-v') {
   console.log(version);
 } else if (cmd === 'init') {
-  try {
+  run('init', () => {
     const tools = flag('tools') ? flag('tools').split(',').map(s => s.trim()).filter(Boolean) : undefined;
     printSummary(init(process.cwd(), { tools, pm: flag('pm') }));
-  } catch (e) {
-    if (!(e instanceof InitError)) throw e;
-    console.error(`init stopped: ${e.message}`);
-    process.exitCode = 1;
-  }
+  });
+} else if (cmd === 'sync') {
+  run('sync', () => printSync(sync(process.cwd(), { from: flag('from'), pm: flag('pm') })));
+} else if (cmd === 'uninstall') {
+  run('uninstall', () => printUninstall(uninstall(process.cwd(), { from: flag('from'), pm: flag('pm') })));
 } else if (cmd === 'doctor') {
   if (printDoctor(doctor(process.cwd())) > 0) process.exitCode = 1;
 } else {

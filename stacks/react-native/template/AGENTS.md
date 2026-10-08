@@ -1,4 +1,4 @@
-<!-- KIT:START agentic-mobile-kit (edit outside these markers; the kit updates what's inside) -->
+<!-- KIT:START agentic-mobile-kit {{KIT_VERSION}} (edit outside these markers; the kit updates what's inside) -->
 # {{APP_NAME}}: instructions for AI agents
 
 Read by Claude Code (through CLAUDE.md), Codex, Cursor, OpenCode, Kiro and Antigravity. Keep it short; details live in `docs/ai/`.

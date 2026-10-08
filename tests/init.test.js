@@ -5,7 +5,9 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const { execFileSync } = require('child_process');
-const { init, InitError } = require('../lib/init');
+const { init, sync, uninstall, InitError, KIT_VERSION } = require('../lib/init');
+
+const TEMPLATE = path.join(__dirname, '../stacks/react-native/template');
 
 const git = (cwd, ...a) => execFileSync('git', a, { cwd, encoding: 'utf8' }).trim();
 const read = (cwd, f) => fs.readFileSync(path.join(cwd, f), 'utf8');
@@ -125,4 +127,104 @@ test('an existing postinstall keeps failing when it fails (hooks command is grou
   const post = JSON.parse(read(dir, 'package.json')).scripts.postinstall;
   assert.strictEqual(post, 'patch-package && (git config core.hooksPath .githooks || true)');
   assert.notStrictEqual(require('child_process').spawnSync('sh', ['-c', post.replace('patch-package', 'false')]).status, 0);
+});
+
+// an older kit: today's template with a few differences, as if those files changed between versions
+function oldKit() {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'amk-oldkit-'));
+  fs.cpSync(TEMPLATE, dir, { recursive: true });
+  const edit = (f, change) => fs.writeFileSync(path.join(dir, f), change(fs.readFileSync(path.join(dir, f), 'utf8')));
+  edit('scripts/ai/pm-run.sh', t => `${t}# old line\n`);
+  edit('.github/workflows/ci.yml', t => t.replace('name: ci\n', 'name: old ci\n'));
+  edit('cliff.toml', t => t.replace('header = "# Changelog\\n"', 'header = "# Old\\n"'));
+  edit('docs/ai/product.md', t => `${t}Old prompt.\n`);
+  edit('AGENTS.md', t => t.replace('## Rules', '## Old rules'));
+  fs.unlinkSync(path.join(dir, 'scripts/ai/set-version.sh'));
+  fs.writeFileSync(path.join(dir, 'scripts/ai/retired.sh'), 'echo old\n');
+  return dir;
+}
+
+test('sync: updates untouched kit files, merges the team\'s changes, flags conflicts, leaves filled-in docs alone', () => {
+  const old = oldKit();
+  const dir = fakeApp({ files: { 'AGENTS.md': '# Team notes\n' } });
+  init(dir, { template: old, skipGenerate: true });
+  commitAll(dir);
+  // the team's own edits after installing
+  fs.appendFileSync(path.join(dir, '.github/workflows/ci.yml'), '      - run: echo team step\n');
+  fs.writeFileSync(path.join(dir, 'cliff.toml'), read(dir, 'cliff.toml').replace('header = "# Old\\n"', 'header = "# Team\\n"'));
+  fs.writeFileSync(path.join(dir, 'docs/ai/product.md'), 'This app books meeting rooms.\n');
+  commitAll(dir);
+
+  const { report } = sync(dir, { fromDir: old, skipGenerate: true });
+  const kit = f => fs.readFileSync(path.join(TEMPLATE, f), 'utf8');
+
+  assert.strictEqual(read(dir, 'scripts/ai/pm-run.sh'), kit('scripts/ai/pm-run.sh'));
+  assert.ok(report.updated.includes('scripts/ai/pm-run.sh'));
+  const ci = read(dir, '.github/workflows/ci.yml');
+  assert.match(ci, /^name: ci$/m, 'kit change applied');
+  assert.match(ci, /echo team step/, 'team change kept');
+  assert.ok(report.merged.includes('.github/workflows/ci.yml'));
+  assert.match(read(dir, 'cliff.toml'), new RegExp(`<<<<<<< your version[\\s\\S]*# Team[\\s\\S]*>>>>>>> kit ${KIT_VERSION.replace(/\./g, '\\.')}`));
+  assert.ok(report.conflicts.includes('cliff.toml'));
+  assert.ok(fs.statSync(path.join(dir, 'scripts/ai/set-version.sh')).mode & 0o111, 'new file added, executable');
+  assert.ok(report.added.includes('scripts/ai/set-version.sh'));
+  assert.ok(!fs.existsSync(path.join(dir, 'scripts/ai/retired.sh')), 'dropped file removed');
+  assert.strictEqual(read(dir, 'docs/ai/product.md'), 'This app books meeting rooms.\n');
+  const agents = read(dir, 'AGENTS.md');
+  assert.match(agents, /^# Team notes\n/);
+  assert.match(agents, /^## Rules$/m);
+  assert.doesNotMatch(agents, /Old rules/);
+  assert.match(agents, new RegExp(`KIT:START agentic-mobile-kit ${KIT_VERSION.replace(/\./g, '\\.')} `));
+});
+
+test('sync right after init changes nothing', () => {
+  const dir = fakeApp();
+  init(dir, { skipGenerate: true });
+  commitAll(dir);
+  const { report } = sync(dir, { skipGenerate: true });
+  assert.ok(Object.values(report).every(a => a.length === 0), JSON.stringify(report));
+  assert.strictEqual(git(dir, 'status', '--porcelain'), '');
+});
+
+test('sync needs the kit installed, and the installed version for kits before 0.4.0', () => {
+  assert.throws(() => sync(fakeApp(), { skipGenerate: true }), /Run init instead/);
+  const before040 = '<!-- KIT:START agentic-mobile-kit (edit outside these markers; the kit updates what\'s inside) -->\nold\n<!-- KIT:END agentic-mobile-kit -->\n';
+  assert.throws(() => sync(fakeApp({ files: { 'AGENTS.md': before040 } }), { skipGenerate: true }), /--from/);
+  const fromTheFuture = before040.replace('agentic-mobile-kit (', 'agentic-mobile-kit 99.0.0 (');
+  assert.throws(() => sync(fakeApp({ files: { 'AGENTS.md': fromTheFuture } }), { skipGenerate: true }), /newer than this one/);
+});
+
+test('uninstall: removes the kit and its sections, keeps changed files and the team\'s own content', () => {
+  const dir = fakeApp({ files: { 'AGENTS.md': '# Team notes\n', 'CLAUDE.md': 'Be brief.\n' } });
+  init(dir, { skipGenerate: true });
+  commitAll(dir);
+  fs.appendFileSync(path.join(dir, '.github/workflows/ci.yml'), '# team change\n');
+  commitAll(dir);
+
+  const { report } = uninstall(dir, { skipGenerate: true });
+  assert.strictEqual(read(dir, 'AGENTS.md'), '# Team notes\n');
+  assert.strictEqual(read(dir, 'CLAUDE.md'), 'Be brief.\n');
+  assert.ok(report.kept.includes('.github/workflows/ci.yml') && fs.existsSync(path.join(dir, '.github/workflows/ci.yml')));
+  for (const gone of ['scripts', '.githooks', '.agents', '.rulesync', 'specs', 'docs', '.claude', 'rulesync.jsonc', 'codemagic.yaml', '.github/workflows/e2e.yml']) {
+    assert.ok(!fs.existsSync(path.join(dir, gone)), `${gone} removed`);
+  }
+  const pkg = JSON.parse(read(dir, 'package.json'));
+  assert.strictEqual(pkg.scripts.postinstall, undefined);
+  assert.strictEqual(pkg.scripts.test, 'jest');
+  assert.throws(() => git(dir, 'config', 'core.hooksPath'), 'hooks path unset');
+  assert.ok(fs.existsSync(path.join(dir, 'App.tsx')));
+  assert.match(read(dir, '.gitignore'), /^\.env$/m, '.gitignore left alone');
+});
+
+test('sync with --from (no recorded version): a file matching neither kit version gets conflict markers, not a silent merge', () => {
+  const old = oldKit();
+  const dir = fakeApp();
+  init(dir, { template: old, skipGenerate: true });
+  // installed from an even older kit than --from says: this file predates the "old" kit
+  fs.writeFileSync(path.join(dir, '.github/workflows/ci.yml'), read(dir, '.github/workflows/ci.yml').replace('name: old ci\n', 'name: older ci\n'));
+  commitAll(dir);
+  const { report } = sync(dir, { fromDir: old, from: '0.2.0', skipGenerate: true });
+  assert.match(read(dir, '.github/workflows/ci.yml'), /<<<<<<< your version\nname: older ci\n=======\nname: ci\n>>>>>>> kit /);
+  assert.ok(report.conflicts.includes('.github/workflows/ci.yml'));
+  assert.ok(report.updated.includes('scripts/ai/pm-run.sh'), 'files matching the old kit still update');
 });
