@@ -255,4 +255,14 @@ Tested on new apps from `create-expo-app` 5.0.0 (Expo SDK 57, React Native 0.86.
 - A fresh Expo app fails `tsc --noEmit` until `expo start` writes `expo-env.d.ts`, so `pm-run.sh` writes the same file before a type check.
 - The first `expo lint` installs ESLint and edits `package.json`. `pm-run.sh` skips lint until the team sets it up.
 
+**Expo SDK 55** (a `create-expo-app` app on the SDK 55 template: React Native 0.83.10, React 19.2.0, TypeScript 5.9):
+
+| Check | Result |
+|---|---|
+| `init`, `doctor`, `uninstall` | ✅ the same results as on SDK 57 |
+| `verify.sh` quick checks and iOS | ✅ the type check passed, lint and tests were skipped with their reasons, and the iOS screenshot shows the app |
+| Prebuild skip, `release-check`, `set-version.sh` | ✅ |
+| Android release builds (`verify.sh`, `release-build.sh`) | ❌ an Expo SDK 55 bug, which fails the same way without the kit (plain `expo prebuild`, then `./gradlew assembleRelease`). The newest SDK 55 `expo-modules-core` (55.0.26) looks for `libworklets.so` in an older build-output folder than the one `react-native-worklets` 0.7.4 builds it into. The cause and the workaround are in the Expo `known-issues.md` |
+| Android, with that workaround | ✅ `verify.sh android` showed the app; `release-build.sh android` signed with a throwaway upload key, and without a key it stopped on the debug key |
+
 **Not tested:** anything on EAS (no Expo account), and signed iOS builds (no Apple Developer team).
