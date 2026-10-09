@@ -39,20 +39,24 @@ Tested with Claude Code, Codex and Antigravity. `--tools` also sets up Cursor, O
 
 Invoke a skill with `/m-feature` in Claude Code and Antigravity, or `$m-feature` in Codex. The skills are set to run only when you invoke them.
 
-## What it adds to the app
+## How it compares
 
-| Area | What you get |
-|---|---|
-| Project knowledge | `AGENTS.md` (with a one-line `CLAUDE.md`): commands, the definition of done and the rules. `docs/ai/`: product, tech stack, structure, conventions, decisions, known issues, React Native rules and team process. Callstack's React Native skills. |
-| Specs | `specs/<id>/` for each feature: requirements, design, tasks, a Maestro flow and a handoff file. A living spec of what the app does now, in `specs/current/`. `spec.js`: `check`, `merge`, `status`. |
-| Device checks | `verify.sh`: lint and tests, release builds on an iPhone simulator and an Android emulator, the feature's Maestro flow, and screenshots in `.ai/evidence/<id>/` |
-| Releases | `release-check.js` catches what store review would reject. Changelog and store notes come from commits (git-cliff). `set-version.sh` sets versions. Signed builds come from `release-build.sh` or Codemagic (`--ci codemagic`). |
-| Guardrails in AI tools | Hooks that block destructive commands and secret files and remind the agent about the handoff, permission rules, and a read-only reviewer, generated with rulesync |
-| Git hooks | Before a commit: secrets, signing files, Xcode project files, ESLint, spec format. Before a push: typecheck and tests. |
-| CI (`--ci github`) | Lint, typecheck, tests, a secret scan, a tool-config check, a 600-line PR limit (`large-pr` label), Android and iOS builds, nightly end-to-end tests (`e2e` label), and a PR template |
-| Everyday scripts | `install-deps.sh`, `pm-run.sh`, `ios-build.sh` |
+Superpowers, BMAD Method and Spec Kit are general methods for working with AI coding agents, for any stack. This kit is narrower. It's built for bare React Native apps, and it adds the checks a mobile team needs around the AI.
 
-All scripts are in `scripts/ai/`. The [team guide](docs/team-guide.md) has the details.
+| | agentic-mobile-kit | Superpowers | BMAD Method | Spec Kit |
+|---|---|---|---|---|
+| What it is | Workflows, checks and release tools for bare React Native apps | A development method built from composable skills | An agile method with product, architecture, UX, development and testing perspectives | GitHub's toolkit for spec-driven development |
+| Stack | Bare React Native: iOS and Android | Any | Any | Any |
+| How work flows | Explore → requirements and design you approve → tasks with tests → device checks → review → PR, plus release and learning workflows | Brainstorm a spec → write a plan → subagents build and review each task | Clarify → plan → build and verify → learn, with more planning for bigger work | Constitution → specify → plan → tasks → implement → converge |
+| Where it lives | In the app's repo, committed, so the whole team and every AI tool share one copy | A plugin installed in each AI tool on each machine | Skills, or a Claude Code or Codex plugin | The `specify` CLI and files in the project |
+| How it starts | You invoke an `m-` skill | Its skills trigger on their own | The `bmad` skill | `/speckit-*` commands |
+| Git hooks and CI it adds to your project | Secrets, signing files, lint, typecheck, tests, spec format, builds | — | — | — |
+| Mobile-specific | Device checks with screenshots, a store-review check, store notes, signed builds | — | — | — |
+| License | MIT | MIT | MIT | MIT |
+
+— means the project's README (October 2026) doesn't describe it.
+
+You don't have to pick one. The kit runs alongside the others, as the next section explains. Its workflows adapt ideas from Superpowers and Spec Kit, and its spec format from OpenSpec, all MIT.
 
 ## Alongside other AI workflows
 
@@ -78,6 +82,7 @@ Both need a clean working tree and leave the result for you to review with `git 
 
 ## More
 
+- [What the kit adds to an app](docs/what-it-adds.md): every file, script, hook and check it installs.
 - [Team guide](docs/team-guide.md): day-to-day use, what's enforced, troubleshooting and a 1-hour training plan.
 - [Branch protection](docs/branch-protection.md): the GitHub settings that make the CI checks required.
 - [Tool matrix](docs/tool-matrix.md): how the kit was tested in each AI tool and on a real app.
