@@ -184,3 +184,14 @@ OpenSpec (Fission-AI, v1.14.1) is a planning-only layer: living specs that each 
 | Headless `/m-feature` in Claude Code | ✅ wrote `## ADDED Requirements: home` with a SHALL requirement and two GIVEN/WHEN/THEN scenarios, dropped the empty sections, ran `spec.js check`, and asked one question at a time. 113 s. |
 
 **Bug found:** `sync` reported a file as "merged with your changes" when only the team had edited it and the kit hadn't changed it. The file was left as it was, but the report was noise. Such files are now left out of the report.
+
+## macOS, Windows and Linux (2026-10-09)
+
+`.github/workflows/test.yml` runs the unit tests and the guard tests on every change, then installs the kit on a fresh app: `init` with real tool-config generation, a commit through the kit's hooks, `doctor` and `uninstall`. It runs on macOS, Windows and Linux. All three pass.
+
+**Found by the Windows runs, all fixed:**
+- **Starting `npm`/`npx`:** Node starts these `.cmd` files only through a shell. Worse, a quoted `.cmd` name found on PATH gets the wrong `%~dp0`, so `npx` failed with `MODULE_NOT_FOUND`.
+- **Paths:** kit file paths and link targets came back with backslashes. Reports were wrong, and `uninstall` missed the skill links.
+- **The executable flag:** files have none on Windows, so `init` stages the hooks as executable for Mac and Linux clones.
+- **Line endings:** Git for Windows checks files out with CRLF. `init` adds `.gitattributes` rules that keep shell scripts in LF, and `sync` compares files ignoring CRLF.
+- **Symbolic links** need Developer Mode. A refused link is now a warning with the fix.
