@@ -3,14 +3,16 @@
 # A person runs it, because it uses the signing keys, which agents must never handle.
 #
 #   sh scripts/ai/release-build.sh android [flavor]   signed app bundle (.aab) for Google Play
-#   sh scripts/ai/release-build.sh ios [scheme]       signed .ipa for App Store Connect (TestFlight)
+#   sh scripts/ai/release-build.sh ios [scheme]       signed .ipa for App Store Connect, or as ios/ExportOptions.plist says
 # Defaults: AMK_ANDROID_FLAVOR and AMK_IOS_SCHEME. An app with product flavors must name the one to build.
 #
 # Android signs with your upload key. Set its path in your shell, never in the repo:
 #   export AMK_UPLOAD_KEYSTORE=~/keys/myapp-upload.jks AMK_UPLOAD_KEY_ALIAS=upload
 # The passwords are asked for, unless AMK_UPLOAD_STORE_PASSWORD and AMK_UPLOAD_KEY_PASSWORD are set.
 # Without AMK_UPLOAD_KEYSTORE it uses the app's own signing setup, and stops if that's the debug key.
-# iOS signs with the Apple account in Xcode (Settings > Accounts) and automatic signing; Xcode may
+# iOS archives with the scheme's archive configuration and exports with the project's ios/ExportOptions.plist
+# (or the one AMK_IOS_EXPORT_OPTIONS names): manual signing, ad hoc or enterprise. Without one, it exports for
+# App Store Connect with automatic signing, using the Apple account in Xcode (Settings > Accounts); Xcode may
 # create a distribution certificate or profile in that team if one is missing.
 # Version and build numbers come from the repo, so set them first (the m-release skill does).
 # Output: .ai/release/
@@ -68,13 +70,17 @@ android)
 ios)
   workspace=$(ls -d ios/*.xcworkspace | head -n 1)
   scheme=${target:-${AMK_IOS_SCHEME:-$(basename "$workspace" .xcworkspace)}}
-  [ -d ios/Pods ] || (cd ios && pod install)
+  [ -d ios/Pods ] || sh scripts/ai/pod-install.sh
   log="$out/$scheme-ios.log"
   echo "Archiving $scheme (several minutes; log: $log)"
-  xcodebuild -workspace "$workspace" -scheme "$scheme" -configuration Release -destination 'generic/platform=iOS' \
+  xcodebuild -workspace "$workspace" -scheme "$scheme" -destination 'generic/platform=iOS' \
     -archivePath "$out/$scheme.xcarchive" -allowProvisioningUpdates archive > "$log" 2>&1 \
     || { grep -E 'error:|BUILD FAILED|ARCHIVE FAILED' "$log" | head -n 20; exit 1; }
-  cat > "$out/ExportOptions.plist" <<'PLIST'
+  options=${AMK_IOS_EXPORT_OPTIONS:-ios/ExportOptions.plist}
+  if [ ! -f "$options" ]; then
+    [ -z "${AMK_IOS_EXPORT_OPTIONS:-}" ] || { echo "AMK_IOS_EXPORT_OPTIONS: no file at $options" >&2; exit 1; }
+    options="$out/ExportOptions.plist"
+    cat > "$options" <<'PLIST'
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0"><dict>
@@ -83,8 +89,10 @@ ios)
   <key>signingStyle</key><string>automatic</string>
 </dict></plist>
 PLIST
+  fi
+  echo "Exporting with $options"
   xcodebuild -exportArchive -archivePath "$out/$scheme.xcarchive" -exportPath "$out/$scheme" \
-    -exportOptionsPlist "$out/ExportOptions.plist" -allowProvisioningUpdates >> "$log" 2>&1 \
+    -exportOptionsPlist "$options" -allowProvisioningUpdates >> "$log" 2>&1 \
     || { grep -E 'error:|EXPORT FAILED' "$log" | head -n 20; exit 1; }
   ipa=$(ls "$out/$scheme"/*.ipa | head -n 1)
   # the export re-signs for distribution, so check the app inside the .ipa, not the archive
@@ -93,7 +101,7 @@ PLIST
   echo "$ipa"
   ;;
 *)
-  sed -n '2,16p' "$0"
+  sed -n '2,18p' "$0"
   exit 1
   ;;
 esac

@@ -1,11 +1,12 @@
-# React Native rules (bare, New Architecture)
+# React Native rules (bare)
 
 Rules for things AI agents commonly get wrong in current React Native. Each one comes from a documented platform change.
 
 ## Architecture
 
-- The New Architecture is the only architecture since React Native 0.82. Never set `newArchEnabled=false`; it's ignored.
-- Write native modules as Turbo Modules and native views as Fabric components, with TypeScript codegen specs. Don't use the old bridge APIs (`NativeModules`, `requireNativeComponent`) in new code.
+- `AGENTS.md` says which architecture this app runs.
+- New Architecture (the only one since React Native 0.82): write native modules as Turbo Modules and native views as Fabric components, with TypeScript codegen specs. Don't use the old bridge APIs (`NativeModules`, `requireNativeComponent`) in new code. From 0.82, `newArchEnabled=false` is ignored.
+- Old Architecture (`newArchEnabled=false`): before adding a library, check that it still supports the Old Architecture; Reanimated 4 and FlashList 2, for example, don't. Moving to the New Architecture is a task of its own, needed before React Native 0.82; don't mix it into other work.
 
 ## Screens and layout
 
@@ -17,7 +18,7 @@ Rules for things AI agents commonly get wrong in current React Native. Each one 
 
 ## Native changes
 
-- After adding or removing a native dependency: `cd ios && pod install`, then rebuild both apps. Restart Metro with `--reset-cache` if the bundle looks stale.
+- After adding or removing a native dependency: `sh scripts/ai/pod-install.sh`, then rebuild both apps. Restart Metro with `--reset-cache` if the bundle looks stale.
 - Don't hand-edit `project.pbxproj`. Let CocoaPods or Xcode change it.
 - Don't bump the Android Gradle Plugin, Gradle, Kotlin or the iOS deployment target one by one. Upgrade React Native as a whole with the `upgrading-react-native` skill and the React Native Upgrade Helper.
 

@@ -214,3 +214,19 @@ Checked on a new React Native 0.87 app and on three production apps on React Nat
 - Building a fresh clone showed that one app imports `./Storage` while git has `storage.ts`, a case-only rename made on a Mac. It builds on the developer's machine and fails everywhere else. Added to `known-issues.md`.
 - One app's Gradle wrapper jar didn't match its `gradlew` after a React Native upgrade, so every Gradle command failed. Added to `known-issues.md`.
 - One app's `npm ci` failed on a peer-dependency conflict that the team gets past with `--legacy-peer-deps` on their machines. `install-deps.sh` now says to commit `legacy-peer-deps=true` in `.npmrc`.
+
+## Setups beyond the test apps (2026-10-09)
+
+Common React Native setups that the first test apps didn't have, each checked against the kit.
+
+| Setup | Before | Now | Checked |
+|---|---|---|---|
+| husky, lefthook, simple-git-hooks, or a team's own hooks folder | Two tools set `core.hooksPath`. husky's `prepare` script runs after the kit's `postinstall`, so the kit's hooks were off after every install | The kit's hooks run from the team's: one line in their hook files, an entry in `lefthook.yml`, or a command in `package.json`. `core.hooksPath` stays theirs; `doctor` and `uninstall` handle it | Unit tests for each manager. Real commits with husky 9.1.7, lefthook 1.13.6 and lefthook 2.1.14 (`commands:` and `jobs:`) ran the kit's checks next to the team's, and a staged `.env` stopped the commit |
+| Android check builds | Native code compiled for four CPU types | Only the device's CPU type (`-PreactNativeArchitectures`, as `run-android --active-arch-only` does); the emulator boots during the build; with per-CPU APK splits, the matching APK is installed; `AMK_ANDROID_DEVICE` picks a device | A production app with 4 flavors, cold Gradle builds: 224 s for one CPU type, 733 s for all four. `verify.sh android` then started the emulator itself, built for its arm64-v8a, and the screenshot showed the app |
+| Old Architecture apps (React Native 0.81 or older, `newArchEnabled=false`) | `AGENTS.md` said New Architecture for every app | `AGENTS.md` names the app's architecture; `docs/ai/react-native.md` has rules for each | Unit tests for 0.73 to 0.84, with and without the flag |
+| iOS: configurations per environment, manual or ad hoc signing, a Gemfile | Check builds always used `Release`; exports always used automatic signing for the App Store; `pod install` ignored the Gemfile | Release builds use the scheme's archive configuration; `release-build.sh` exports with `ios/ExportOptions.plist` (or `AMK_IOS_EXPORT_OPTIONS`) when there is one; `pod-install.sh` uses Bundler when the Gemfile's gems are installed | A fresh clone of the test app: `pod-install.sh` fell back to the CocoaPods on PATH with a hint (the Gemfile's gems weren't installed); `verify.sh ios` built the scheme's Release configuration and the feature flow's 4 screenshots showed the app; a scheme that archives in Debug built in Debug; the smoke check on iOS showed the app |
+| fastlane or another CI setting build numbers | `release-check` warned "build number unchanged" on every release | Recognized in Fastfiles and the usual CI files; `m-release` hands the build to the team's lanes | Unit test with `increment_build_number` and `increment_version_code` |
+| An app in a monorepo subfolder | `init` ran, but the hooks never ran and GitHub ignored the workflows | `init` stops and says why | Unit test; the CLI exits 1 with the message |
+| Files renamed only in letter case | Built on the developer's Mac, failed in CI and fresh clones | `pre-commit` blocks it and shows the `git mv` fix; `doctor` reports it | Unit tests, including a renamed folder |
+
+`release-build.sh ios` with an export options file isn't tested yet: it needs an Apple Developer team.

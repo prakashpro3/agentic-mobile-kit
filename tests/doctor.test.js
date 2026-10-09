@@ -62,3 +62,34 @@ test('filled-in docs stop the warning', () => {
   for (const n of ['product', 'tech', 'structure', 'conventions']) fs.appendFileSync(path.join(dir, `docs/ai/${n}.md`), '\nReal content.\n');
   assert.strictEqual(levelOf(projectChecks(dir, { skipNetwork: true }), /docs\/ai/), 'ok');
 });
+
+test('with husky, the hooks check reads husky\'s files and whether husky is set up on this clone', () => {
+  const dir = installedApp();
+  const pkg = JSON.parse(fs.readFileSync(path.join(dir, 'package.json'), 'utf8'));
+  fs.writeFileSync(path.join(dir, 'package.json'), JSON.stringify({ ...pkg, devDependencies: { husky: '^9.1.7' } }));
+  fs.mkdirSync(path.join(dir, '.husky'));
+  fs.writeFileSync(path.join(dir, '.husky/pre-commit'), 'npx lint-staged\n');
+  git(dir, 'add', '-A');
+  git(dir, '-c', 'user.name=t', '-c', 'user.email=t@example.invalid', 'commit', '-qm', 'husky');
+  init(dir, { skipGenerate: true });
+  const hooks = () => projectChecks(dir, { skipNetwork: true }).find(c => /husky|Git hooks/.test(c.label));
+  assert.match(hooks().label, /husky isn't set up on this clone/);
+  // what husky's install does
+  fs.mkdirSync(path.join(dir, '.husky/_'));
+  fs.writeFileSync(path.join(dir, '.husky/_/pre-commit'), '');
+  git(dir, 'config', 'core.hooksPath', '.husky/_');
+  assert.deepStrictEqual([hooks().level, hooks().detail], ['ok', 'the kit\'s checks run from husky']);
+  fs.writeFileSync(path.join(dir, '.husky/pre-commit'), 'npx lint-staged\n');
+  assert.match(hooks().label, /The kit's checks aren't in your husky hooks/);
+});
+
+test('reports files renamed only in letter case, which git missed', () => {
+  const dir = installedApp();
+  init(dir, { skipGenerate: true });
+  assert.strictEqual(levelOf(projectChecks(dir, { skipNetwork: true }), /File names match git/), 'ok');
+  fs.renameSync(path.join(dir, 'package.json'), path.join(dir, 'Package.json'));
+  const c = projectChecks(dir, { skipNetwork: true }).find(x => /letter case/.test(x.label));
+  assert.strictEqual(c.level, 'fail');
+  assert.match(c.label, /package\.json {2}\(on disk: Package\.json\)/);
+  assert.match(c.fix, /git mv/);
+});

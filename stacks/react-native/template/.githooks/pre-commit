@@ -1,6 +1,6 @@
 #!/bin/sh
 # agentic-mobile-kit pre-commit: runs for every commit, whichever person or AI tool makes it.
-# Blocks secrets and broken Xcode project files, and lints the staged JS/TS files.
+# Blocks secrets, broken Xcode project files and case-only renames git missed, and lints the staged JS/TS files.
 set -eu
 
 staged=$(git diff --cached --name-only --diff-filter=ACMR)
@@ -47,7 +47,12 @@ if [ -n "$specs" ] && [ -f scripts/ai/spec.js ]; then
   node scripts/ai/spec.js check --skip-drafts $specs || fail "fix the spec format above (format: specs/current/README.md)"
 fi
 
-# 6. warn about large commits (the PR size check in CI is the hard limit)
+# 6. files renamed only in letter case on macOS or Windows: git still has the old name, so other machines can't find them
+if [ -f scripts/ai/case-check.js ]; then
+  node scripts/ai/case-check.js || fail "rename them through git as shown above"
+fi
+
+# 7. warn about large commits (the PR size check in CI is the hard limit)
 lines=$(git diff --cached --numstat -- . ':(exclude)*.lock' ':(exclude)package-lock.json' ':(exclude)pnpm-lock.yaml' ':(exclude)*.snap' |
   awk '{ s += $1 + $2 } END { print s + 0 }')
 [ "$lines" -le 400 ] || echo "pre-commit: warning: $lines changed lines; consider smaller commits" >&2

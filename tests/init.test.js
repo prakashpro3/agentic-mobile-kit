@@ -309,3 +309,123 @@ test('a clone with Windows line endings (autocrlf): hooks keep LF and run, and s
   const { report } = sync(clone, { skipGenerate: true });
   assert.ok(Object.values(report).every(a => a.length === 0), JSON.stringify(report));
 });
+
+// ---------- the project's own git hook manager ----------
+const sh = (cwd, cmd) => require('child_process').spawnSync('sh', ['-c', cmd], { cwd, encoding: 'utf8' });
+const localHooks = dir => { try { return git(dir, 'config', '--local', 'core.hooksPath'); } catch { return null; } };
+
+test('husky 9: the kit runs from husky\'s files, core.hooksPath stays husky\'s, and uninstall takes it out again', () => {
+  const lintStaged = 'npx lint-staged\n';
+  const dir = fakeApp({ pkg: { devDependencies: { husky: '^9.1.7' }, scripts: { prepare: 'husky' } }, files: { '.husky/pre-commit': lintStaged, '.husky/_/h': '' } });
+  git(dir, 'config', 'core.hooksPath', '.husky/_');
+  const { report } = init(dir, { skipGenerate: true });
+  assert.strictEqual(read(dir, '.husky/pre-commit'), `sh .githooks/pre-commit || exit 1 # agentic-mobile-kit\n${lintStaged}`);
+  assert.strictEqual(read(dir, '.husky/pre-push'), '#!/usr/bin/env sh\nsh .githooks/pre-push "$@" || exit 1 # agentic-mobile-kit\n');
+  if (process.platform !== 'win32') assert.ok(fs.statSync(path.join(dir, '.husky/pre-push')).mode & 0o111, 'executable, for husky 5 to 8');
+  assert.ok(report.merged.includes('.husky/pre-commit') && report.created.includes('.husky/pre-push'));
+  assert.strictEqual(localHooks(dir), '.husky/_');
+  assert.doesNotMatch(read(dir, 'package.json'), /core\.hooksPath/, 'no postinstall fighting husky');
+  // the kit's checks run through husky's file: a staged .env stops the commit
+  fs.writeFileSync(path.join(dir, '.env'), 'SECRET=1\n');
+  git(dir, 'add', '-f', '.env');
+  const hook = sh(dir, 'sh -e .husky/pre-commit');
+  assert.notStrictEqual(hook.status, 0);
+  assert.match(hook.stderr, /don't commit \.env files/);
+  git(dir, 'rm', '-q', '--cached', '.env');
+  fs.unlinkSync(path.join(dir, '.env'));
+  commitAll(dir);
+  assert.ok(Object.values(sync(dir, { skipGenerate: true }).report).every(a => a.length === 0), 'sync adds nothing twice');
+  uninstall(dir, { skipGenerate: true });
+  assert.strictEqual(read(dir, '.husky/pre-commit'), lintStaged);
+  assert.ok(!fs.existsSync(path.join(dir, '.husky/pre-push')), 'the hook file the kit created is gone');
+});
+
+test('husky 8 and a team\'s own hooks folder: the kit\'s line goes after the setup lines and before any exit', () => {
+  const dir = fakeApp({ pkg: { devDependencies: { husky: '^8.0.3' } }, files: { '.husky/pre-commit': '#!/usr/bin/env sh\n. "$(dirname -- "$0")/_/husky.sh"\n\nnpx lint-staged\n' } });
+  git(dir, 'config', 'core.hooksPath', '.husky');
+  init(dir, { skipGenerate: true });
+  assert.strictEqual(read(dir, '.husky/pre-commit'), '#!/usr/bin/env sh\n. "$(dirname -- "$0")/_/husky.sh"\n\nsh .githooks/pre-commit || exit 1 # agentic-mobile-kit\nnpx lint-staged\n');
+  assert.strictEqual(localHooks(dir), '.husky');
+
+  const own = fakeApp({ files: { '.hooks/pre-commit': '#!/bin/sh\n# team checks\nset -e\n./scripts/check.sh\nexit 0\n' } });
+  git(own, 'config', 'core.hooksPath', '.hooks/');
+  init(own, { skipGenerate: true });
+  assert.strictEqual(read(own, '.hooks/pre-commit'), '#!/bin/sh\n# team checks\nsh .githooks/pre-commit || exit 1 # agentic-mobile-kit\nset -e\n./scripts/check.sh\nexit 0\n');
+  assert.ok(fs.existsSync(path.join(own, '.hooks/pre-push')));
+  assert.strictEqual(localHooks(own), '.hooks/');
+});
+
+test('husky 4 and simple-git-hooks: the kit\'s command goes first in package.json, and uninstall removes it', () => {
+  const dir = fakeApp({ pkg: { devDependencies: { husky: '^4.3.8' }, husky: { hooks: { 'pre-commit': 'lint-staged' } } } });
+  init(dir, { skipGenerate: true });
+  assert.deepStrictEqual(JSON.parse(read(dir, 'package.json')).husky.hooks, { 'pre-commit': 'sh .githooks/pre-commit && lint-staged', 'pre-push': 'sh .githooks/pre-push' });
+  assert.strictEqual(localHooks(dir), null, 'husky 4 hooks live in .git/hooks, so core.hooksPath stays unset');
+  commitAll(dir);
+  uninstall(dir, { skipGenerate: true });
+  assert.deepStrictEqual(JSON.parse(read(dir, 'package.json')).husky.hooks, { 'pre-commit': 'lint-staged' });
+
+  const sgh = fakeApp({ pkg: { 'simple-git-hooks': { 'pre-commit': 'npx lint-staged' } } });
+  const { warnings } = init(sgh, { skipGenerate: true });
+  assert.strictEqual(JSON.parse(read(sgh, 'package.json'))['simple-git-hooks']['pre-commit'], 'sh .githooks/pre-commit && npx lint-staged');
+  assert.match(warnings.join('\n'), /run "npx simple-git-hooks" once/);
+});
+
+test('lefthook: the kit\'s command goes under commands: or jobs:, or into a new hook; uninstall restores the file', () => {
+  const yml = 'pre-commit:\n  parallel: true\n  commands:\n    lint:\n      run: npx eslint {staged_files}\n';
+  const dir = fakeApp({ files: { 'lefthook.yml': yml } });
+  init(dir, { skipGenerate: true });
+  assert.strictEqual(read(dir, 'lefthook.yml'), 'pre-commit:\n  parallel: true\n  commands:\n    agentic-mobile-kit:\n      run: sh .githooks/pre-commit\n    lint:\n      run: npx eslint {staged_files}\n'
+    + 'pre-push: # agentic-mobile-kit\n  commands: # agentic-mobile-kit\n    agentic-mobile-kit:\n      run: sh .githooks/pre-push\n');
+  assert.strictEqual(localHooks(dir), null);
+  commitAll(dir);
+  uninstall(dir, { skipGenerate: true });
+  assert.strictEqual(read(dir, 'lefthook.yml'), yml);
+
+  const jobs = 'pre-commit:\n  jobs:\n  - name: lint\n    run: yarn lint\npre-push:\n  scripts:\n    "check.sh":\n      runner: bash\n';
+  const dir2 = fakeApp({ files: { '.lefthook.yml': jobs } });
+  const { warnings } = init(dir2, { skipGenerate: true });
+  assert.strictEqual(read(dir2, '.lefthook.yml'), 'pre-commit:\n  jobs:\n  - name: agentic-mobile-kit\n    run: sh .githooks/pre-commit\n  - name: lint\n    run: yarn lint\npre-push:\n  scripts:\n    "check.sh":\n      runner: bash\n');
+  assert.match(warnings.join('\n'), /couldn't add the kit's pre-push check to \.lefthook\.yml/);
+});
+
+test('hooks another tool installed in .git/hooks: the kit leaves core.hooksPath alone and says what to add', () => {
+  const dir = fakeApp();
+  fs.writeFileSync(path.join(dir, '.git/hooks/pre-commit'), '#!/bin/sh\npre-commit run\n');
+  const { warnings } = init(dir, { skipGenerate: true });
+  assert.match(warnings.join('\n'), /git hooks already run from \.git\/hooks, so the kit left core\.hooksPath alone/);
+  assert.strictEqual(localHooks(dir), null);
+  assert.doesNotMatch(read(dir, 'package.json'), /core\.hooksPath/);
+});
+
+test('an earlier kit install next to husky: core.hooksPath goes back to husky and the kit\'s postinstall goes', () => {
+  const dir = fakeApp({
+    pkg: { devDependencies: { husky: '^9.1.7' }, scripts: { prepare: 'husky', postinstall: 'patch-package && (git config core.hooksPath .githooks || true)' } },
+    files: { '.husky/pre-commit': 'npx lint-staged\n', '.husky/_/h': '' },
+  });
+  git(dir, 'config', 'core.hooksPath', '.githooks');
+  init(dir, { skipGenerate: true });
+  assert.strictEqual(localHooks(dir), '.husky/_');
+  assert.strictEqual(JSON.parse(read(dir, 'package.json')).scripts.postinstall, 'patch-package');
+});
+
+test('refuses an app in a subfolder of its repository, as in a monorepo', () => {
+  const root = fakeApp();
+  const app = path.join(root, 'apps/mobile');
+  fs.mkdirSync(app, { recursive: true });
+  for (const f of ['package.json', 'App.tsx', 'yarn.lock', 'ios/.keep', 'android/.keep']) fs.cpSync(path.join(root, f), path.join(app, f));
+  commitAll(root);
+  assert.throws(() => init(app, { skipGenerate: true }), e => e instanceof InitError && /subfolder of its git repository \(apps\/mobile\)/.test(e.message));
+});
+
+test('AGENTS.md names the architecture: the Old one only before React Native 0.82 without the New one turned on', () => {
+  const arch = (rn, props) => {
+    const dir = fakeApp({ pkg: { dependencies: { 'react-native': rn, react: '18.3.1' } }, files: props ? { 'android/gradle.properties': props } : {} });
+    init(dir, { skipGenerate: true });
+    return read(dir, 'AGENTS.md').match(/Bare React Native ([^,]*)/)[1];
+  };
+  assert.strictEqual(arch('0.75.4', 'org.gradle.jvmargs=-Xmx2048m\nnewArchEnabled=false\n'), '0.75.4 (Old Architecture: newArchEnabled=false)');
+  assert.strictEqual(arch('0.73.6'), '0.73.6 (Old Architecture: newArchEnabled=false)', 'opt-in before 0.76');
+  assert.strictEqual(arch('0.74.5', 'newArchEnabled=true\n'), '0.74.5 (New Architecture)');
+  assert.strictEqual(arch('0.80.2'), '0.80.2 (New Architecture)', 'the default from 0.76');
+  assert.strictEqual(arch('0.84.1', 'newArchEnabled=false\n'), '0.84.1 (New Architecture)', 'ignored from 0.82');
+});

@@ -19,11 +19,11 @@ Every AI tool reads the same rules (`AGENTS.md`), the same project facts (`docs/
 - records the kit version and CI choice there, so `sync` knows what's installed;
 - adds `.env`, `.env.*` and `.ai/` to `.gitignore`;
 - adds a `typecheck` script for TypeScript apps;
-- adds a `postinstall` script that turns on the git hooks for every clone, and turns them on for this clone too;
+- turns on the kit's git hooks: with a `postinstall` script that does it for every clone, and for this clone right away. If the app already uses husky, lefthook, simple-git-hooks or its own hooks folder, it adds one line to those hooks instead, and leaves `core.hooksPath` to them;
 - generates each chosen tool's permissions, hooks and reviewer agent, and links the skills folder for Claude Code and Kiro.
 
 **What `doctor` checks**, with a fix for each problem:
-- **The project:** the kit is installed, `AGENTS.md` is within its size limit, the git hooks are active, no `.env` file is in git, the tool configs are current, and `docs/ai/` is filled in.
+- **The project:** the kit is installed, `AGENTS.md` is within its size limit, the git hooks are active (also through husky or lefthook), git and the disk agree on file names, no `.env` file is in git, the tool configs are current, and `docs/ai/` is filled in.
 - **This Mac:** Node, installed dependencies, Xcode, CocoaPods and pods, an iPhone simulator, the Android SDK and an emulator, Java, Maestro (the same version as CI) and gitleaks.
 - **The AI tools:** whether Codex and Antigravity trust the project, the Antigravity version, and an `ANTHROPIC_API_KEY` in the shell that would override a Claude subscription.
 
@@ -75,7 +75,7 @@ If an agent says "done" without these, it isn't done. Open the screenshots yours
 
 | Where | What |
 |---|---|
-| `pre-commit` hook | Blocks `.env` files, keystores and signing files, and secrets (gitleaks). Checks Xcode project files. Lints staged files. Warns above 400 changed lines. |
+| `pre-commit` hook | Blocks `.env` files, keystores and signing files, and secrets (gitleaks). Checks Xcode project files, and files renamed only in letter case that git missed. Lints staged files. Warns above 400 changed lines. |
 | `pre-push` hook | Typecheck and tests |
 | CI on every PR | Lint, typecheck, tests, secret scan, config drift, PR size ≤ 600 lines (`large-pr` label to override), Android build, and the iOS build when native files change |
 | Nightly, or the `e2e` label | Android emulator with the Maestro flows; the screenshots are attached to the run |
@@ -112,12 +112,15 @@ From `docs/ai/team-process.md`:
 | A build error | Check `docs/ai/known-issues.md` first; `m-bugfix` does this too |
 | The agent made a mistake you had to correct | `m-learn`, so it doesn't happen again |
 | `pre-commit` says to fix the spec format | Each requirement needs a SHALL sentence and a scenario with WHEN and THEN; see `specs/current/README.md` |
-| Hooks don't run | `git config core.hooksPath` must print `.githooks`; `sh scripts/ai/install-deps.sh` sets it |
+| Hooks don't run | `npx agentic-mobile-kit doctor` says why. Without a hook manager, `git config core.hooksPath` must print `.githooks` (`sh scripts/ai/install-deps.sh` sets it). With husky or lefthook, your install sets them up |
+| `pre-commit` says a file was renamed only in letter case | Rename it through git in two steps, as the message shows. macOS and Windows don't tell the two names apart, so git kept the old one and the app fails on other machines |
 | `pre-push` says dependencies aren't installed | `sh scripts/ai/install-deps.sh` |
 | `verify.sh` checks the wrong Android flavor or iOS app | Add `--flavor <name>` or `--scheme <name>`, or set `AMK_ANDROID_FLAVOR` / `AMK_IOS_SCHEME` in your shell |
+| `verify.sh` uses the wrong Android device | Set `AMK_ANDROID_DEVICE` to its serial from `adb devices`, or `AMK_ANDROID_AVD` to the emulator to start |
+| `release-build.sh ios` should sign manually, or export ad hoc or enterprise | Commit your `ios/ExportOptions.plist`, or point `AMK_IOS_EXPORT_OPTIONS` at one |
 | `release-check` says signing keys are in git | Move the keystores out of the repo into a password manager, read the passwords from the environment or `~/.gradle/gradle.properties`, and reset the upload key in Play Console if Play App Signing is on |
 | Metro's port 8081 is busy | Nothing to do: `verify.sh` uses release builds, which don't need Metro |
-| iOS build fails after a native dependency change | `cd ios && pod install` |
+| iOS build fails after a native dependency change | `sh scripts/ai/pod-install.sh` |
 
 ## Once a month (30 minutes)
 

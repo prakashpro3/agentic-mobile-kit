@@ -7,7 +7,7 @@ This project may also use other AI workflow frameworks (for example Superpowers,
 
 ## Project
 
-- Bare React Native {{RN_VERSION}} (New Architecture), React {{REACT_VERSION}}, TypeScript {{TS_VERSION}}, Node {{NODE_VERSION}}. Package manager: {{PM}}.
+- Bare React Native {{RN_VERSION}} ({{RN_ARCH}}), React {{REACT_VERSION}}, TypeScript {{TS_VERSION}}, Node {{NODE_VERSION}}. Package manager: {{PM}}.
 - What the app does: `docs/ai/product.md`, and requirement by requirement, as it works now: `specs/current/`. Stack and services: `docs/ai/tech.md`. Folders and layers: `docs/ai/structure.md`. Code style: `docs/ai/conventions.md`.
 
 ## Commands
@@ -16,7 +16,7 @@ This project may also use other AI workflow frameworks (for example Superpowers,
 |---|---|
 | Install dependencies | `sh scripts/ai/install-deps.sh` |
 | Lint, typecheck, test | `{{PM_RUN}} lint`, `{{PM_RUN}} typecheck`, `{{PM_RUN}} test` |
-| iOS pods (after native dependency changes) | `cd ios && pod install` |
+| iOS pods (after native dependency changes) | `sh scripts/ai/pod-install.sh` |
 | iOS build (simulator, no signing) | `sh scripts/ai/ios-build.sh` |
 | Android build | `cd android && ./gradlew assembleDebug` |
 | Check on devices (release builds, Maestro flows, screenshots) | `sh scripts/ai/verify.sh all --spec <id>`; with product flavors it checks the first unless `--flavor <name>`; another iOS scheme: `--scheme <name>` |

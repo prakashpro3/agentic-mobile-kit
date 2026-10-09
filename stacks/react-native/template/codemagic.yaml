@@ -66,7 +66,7 @@ workflows:
       - name: Release check
         script: node scripts/ai/release-check.js
       - name: Install dependencies
-        script: sh scripts/ai/install-deps.sh && cd ios && pod install
+        script: sh scripts/ai/install-deps.sh && sh scripts/ai/pod-install.sh
       - name: Store release notes
         script: |
           notes="release-notes/${CM_TAG#v}/app-store.txt"

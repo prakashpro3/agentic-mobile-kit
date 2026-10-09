@@ -170,10 +170,23 @@ test('a clean checkout of a release tag (a CI release build) is compared with th
 test('build numbers and the upload key that Codemagic sets are not reported as problems', () => {
   const yaml = fs.readFileSync(path.join(__dirname, '../stacks/react-native/template/codemagic.yaml'), 'utf8');
   const { out } = check(app({ 'codemagic.yaml': yaml, 'src/index.js': 'export default 2;\n', 'android/app/build.gradle': gradle(1, '1.0', 'signingConfig signingConfigs.debug') }));
-  assert.match(out, /· iOS build number: set by Codemagic at build time/);
-  assert.match(out, /· Android build number: set by Codemagic at build time/);
+  assert.match(out, /· iOS build number: set at build time \(codemagic\.yaml\)/);
+  assert.match(out, /· Android build number: set at build time \(codemagic\.yaml\)/);
   assert.match(out, /✓ Android release signing \(Codemagic signs with the upload key\)/);
   assert.doesNotMatch(out, /build number unchanged|debug key/);
+});
+
+test('build numbers that fastlane sets at build time are not reported as unchanged', () => {
+  const fastfile = `lane :beta do
+  increment_build_number(build_number: latest_testflight_build_number + 1)
+  build_app(scheme: "Demo")
+end
+`;
+  const androidFastfile = 'lane :beta do\n  increment_version_code(gradle_file_path: "app/build.gradle")\nend\n';
+  const { out } = check(app({ 'ios/fastlane/Fastfile': fastfile, 'android/fastlane/Fastfile': androidFastfile, 'src/index.js': 'export default 2;\n' }));
+  assert.match(out, /· iOS build number: set at build time \(ios\/fastlane\/Fastfile\)/);
+  assert.match(out, /· Android build number: set at build time \(android\/fastlane\/Fastfile\)/);
+  assert.doesNotMatch(out, /build number unchanged/);
 });
 
 test('iOS may reuse its build number for a new version; Android may not', () => {

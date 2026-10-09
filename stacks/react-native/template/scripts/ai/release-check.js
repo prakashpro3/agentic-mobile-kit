@@ -40,7 +40,15 @@ const manifestPath = 'android/app/src/main/AndroidManifest.xml';
 const pkg = JSON.parse(readNow('package.json') || '{}');
 // this kit's codemagic.yaml sets build numbers and the Android upload key on the build machine
 const codemagic = readNow('codemagic.yaml') || '';
-const ciBuildNumber = { iOS: /agvtool new-version/.test(codemagic), Android: /versionCode[^\n]*\$code/.test(codemagic) };
+// build numbers set at build time (by CI or fastlane, as this kit's codemagic.yaml does) never change in the repo
+const workflows = fs.existsSync('.github/workflows') ? fs.readdirSync('.github/workflows').map(f => `.github/workflows/${f}`) : [];
+const buildFiles = ['codemagic.yaml', 'bitrise.yml', '.gitlab-ci.yml', '.circleci/config.yml', 'azure-pipelines.yml', ...workflows,
+  ...['fastlane', 'ios/fastlane', 'android/fastlane'].map(d => `${d}/Fastfile`)];
+const setsBuild = {
+  iOS: /agvtool new-version|increment_build_number|set-xcode-build-number|Set :CFBundleVersion/,
+  Android: /versionCode[^\n]*\$|increment_version_code|android_set_version_code|change-android-versioncode/,
+};
+const ciBuildNumber = Object.fromEntries(Object.entries(setsBuild).map(([p, re]) => [p, buildFiles.find(f => re.test(readNow(f) || ''))]));
 const deps = { ...pkg.dependencies, ...pkg.devDependencies };
 
 // ---------- 1. versions ----------
@@ -50,7 +58,7 @@ const androidVersions = t => all(/versionName\s*=?\s*"([^"]+)"/g, stripComments(
 const androidBuilds = t => all(/versionCode\s*=?\s*(\d+)/g, stripComments(t));
 
 function compare(platform, now, before, kind, versionChanged) {
-  if (kind === 'build number' && ciBuildNumber[platform]) { info(`${platform} build number: set by Codemagic at build time`); return; }
+  if (kind === 'build number' && ciBuildNumber[platform]) { info(`${platform} build number: set at build time (${ciBuildNumber[platform]})`); return; }
   if (!now.length) { warn(`${platform} ${kind}: couldn't read it`, 'check it by hand before you ship'); return; }
   if (!before) { info(`${platform} ${kind}: ${now.join(', ')}`); return; }
   if (!before.length || now.join() !== before.join()) {
@@ -61,7 +69,7 @@ function compare(platform, now, before, kind, versionChanged) {
     // the App Store needs a new build number only within a version, so 1 again for a new version is fine
     ok(`${platform} build number (${now.join(', ')} again, for a new version)`);
   } else if (kind === 'build number') {
-    warn(`${platform} build number unchanged since ${since} (${now.join(', ')})`, 'bump it, unless your CI sets it (for example Codemagic); stores reject a repeated build number');
+    warn(`${platform} build number unchanged since ${since} (${now.join(', ')})`, 'bump it, unless CI or fastlane sets it at build time; stores reject a repeated build number');
   } else {
     warn(`${platform} version unchanged since ${since} (${now.join(', ')})`, 'fine for a re-upload of the same version; otherwise bump it');
   }

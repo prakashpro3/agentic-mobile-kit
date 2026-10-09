@@ -37,7 +37,6 @@ jobs:
         if: hashFiles('ios/Podfile') == ''
         run: npx expo prebuild --platform ios --no-install
       - name: Install pods
-        working-directory: ios
-        run: pod install
+        run: sh scripts/ai/pod-install.sh
       - name: Build for the simulator (no signing)
         run: sh scripts/ai/ios-build.sh

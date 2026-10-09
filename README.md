@@ -58,6 +58,7 @@ Both need a clean working tree and leave the result for you to review with `git 
 ## Requirements
 
 - Git and Node.js 20 or later, on macOS, Windows or Linux. The kit's tests run on all three for every change.
+- The app at the root of its git repository.
 - Android work needs the Android SDK and Java. iOS work needs a Mac with Xcode and CocoaPods. `doctor` checks the rest.
 - On Windows, turn on Developer Mode (Settings > System > For developers) and run `git config --global core.symlinks true`. Then `init` can link the Claude Code skills folder, and clones keep the link.
 

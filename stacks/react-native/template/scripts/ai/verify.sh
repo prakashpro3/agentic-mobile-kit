@@ -13,7 +13,7 @@
 #   --scheme <name> iOS scheme to check (default: the one named like the workspace)
 #   (no flows found: a smoke check that launches the app and takes a screenshot)
 # Env: AMK_ANDROID_FLAVOR, AMK_IOS_SCHEME (defaults for the two options), AMK_IOS_DEVICE (simulator name
-#      or UDID), AMK_ANDROID_AVD (emulator name)
+#      or UDID), AMK_ANDROID_DEVICE (adb serial, when several are connected), AMK_ANDROID_AVD (emulator to start)
 set -eu
 
 mode=${1:-all}
@@ -95,12 +95,12 @@ ios() {
   fi
   command -v maestro > /dev/null || { echo "ios: Maestro isn't installed (https://maestro.dev)"; status=1; return; }
   # pod install also generates React Native codegen files into ios/build/generated
-  if [ ! -d ios/Pods ] || [ ! -d ios/build/generated ]; then (cd ios && pod install > "$evidence/pod-install.log" 2>&1); fi
+  if [ ! -d ios/Pods ] || [ ! -d ios/build/generated ]; then sh scripts/ai/pod-install.sh > "$evidence/pod-install.log" 2>&1; fi
   if ! CONFIGURATION=Release sh scripts/ai/ios-build.sh > "$evidence/ios-build.log" 2>&1; then
     echo "ios: release build FAILED, see ${evidence#"$root"/}/ios-build.log"; status=1; return
   fi
   # the newest app: the scheme just built (another scheme's app may still be there from an earlier build)
-  app=$(ls -dt ios/DerivedData/Build/Products/Release-iphonesimulator/*.app | head -n 1)
+  app=$(ls -dt ios/DerivedData/Build/Products/*-iphonesimulator/*.app | head -n 1)
   app_id=$(/usr/libexec/PlistBuddy -c 'Print CFBundleIdentifier' "$app/Info.plist")
   device=$(xcrun simctl list devices available -j | node -e '
     const all = Object.entries(JSON.parse(require("fs").readFileSync(0, "utf8")).devices)
@@ -139,30 +139,38 @@ android() {
     [ -z "$flavor" ] || echo "android: checking the \"$flavor\" flavor (the app has: $(echo $flavors)); --flavor <name> checks another"
   fi
   variant=$(printf %s "$flavor" | awk '{ print toupper(substr($0, 1, 1)) substr($0, 2) }')
-  # signed with the project's debug key, so the check build installs whatever key its real release needs
-  set --
-  if [ -f android/app/debug.keystore ]; then
-    keystore=$(cd android/app && { pwd -W 2> /dev/null || pwd; })/debug.keystore # pwd -W: a Windows path in Git Bash
-    set -- -Pandroid.injected.signing.store.file="$keystore" -Pandroid.injected.signing.store.password=android \
-      -Pandroid.injected.signing.key.alias=androiddebugkey -Pandroid.injected.signing.key.password=android
-  fi
-  if ! (cd android && ./gradlew "assemble${variant}Release" --no-daemon -q "$@") > "$evidence/android-build.log" 2>&1; then
-    echo "android: release build FAILED, see ${evidence#"$root"/}/android-build.log"; status=1; return
-  fi
-  apk=$(ls android/app/build/outputs/apk/${flavor:+$flavor/}release/*.apk | head -n 1)
-  # the app ID from the built APK, which includes flavor suffixes such as .dev
-  aapt2="$(ls -d "$sdk"/build-tools/*/ 2> /dev/null | sort -V | tail -n 1)aapt2"
-  app_id=$("$aapt2" dump badging "$apk" 2> /dev/null | sed -n "s/^package: name='\([^']*\)'.*/\1/p")
-  [ -n "$app_id" ] || app_id=$(sed -n 's/.*applicationId *=\{0,1\} *"\([^"]*\)".*/\1/p' android/app/build.gradle* | head -n 1)
-  device=$("$adb" devices | awk 'NR > 1 && $2 == "device" { print $1; exit }')
+  # the device first: the build only needs its CPU type, and an emulator boots while Gradle builds
+  device=${AMK_ANDROID_DEVICE:-$("$adb" devices | awk 'NR > 1 && $2 == "device" { print $1; exit }')}
   if [ -z "$device" ]; then
     avd=${AMK_ANDROID_AVD:-$("$sdk/emulator/emulator" -list-avds | head -n 1)}
     [ -n "$avd" ] || { echo "android: no emulator found (create one in Android Studio)"; status=1; return; }
     nohup "$sdk/emulator/emulator" -avd "$avd" -no-snapshot-save -no-boot-anim > /dev/null 2>&1 &
     "$adb" wait-for-device
-    until [ "$("$adb" shell getprop sys.boot_completed 2> /dev/null | tr -d '\r')" = 1 ]; do sleep 3; done
     device=$("$adb" devices | awk 'NR > 1 && $2 == "device" { print $1; exit }')
   fi
+  abi=$("$adb" -s "$device" shell getprop ro.product.cpu.abi 2> /dev/null | tr -d '\r')
+  [ -n "$abi" ] || { echo "android: device $device isn't connected (see: adb devices)"; status=1; return; }
+  # native code for that CPU type only, as run-android --active-arch-only does: much faster than all four
+  set -- -PreactNativeArchitectures="$abi"
+  # signed with the project's debug key, so the check build installs whatever key its real release needs
+  if [ -f android/app/debug.keystore ]; then
+    keystore=$(cd android/app && { pwd -W 2> /dev/null || pwd; })/debug.keystore # pwd -W: a Windows path in Git Bash
+    set -- "$@" -Pandroid.injected.signing.store.file="$keystore" -Pandroid.injected.signing.store.password=android \
+      -Pandroid.injected.signing.key.alias=androiddebugkey -Pandroid.injected.signing.key.password=android
+  fi
+  if ! (cd android && ./gradlew "assemble${variant}Release" --no-daemon -q "$@") > "$evidence/android-build.log" 2>&1; then
+    echo "android: release build FAILED, see ${evidence#"$root"/}/android-build.log"; status=1; return
+  fi
+  # apps that split APKs by CPU type get one per type: take this device's, else the universal one
+  apks=$(ls android/app/build/outputs/apk/${flavor:+$flavor/}release/*.apk)
+  apk=$(echo "$apks" | grep -e "-$abi-" | head -n 1)
+  [ -n "$apk" ] || apk=$(echo "$apks" | grep universal | head -n 1)
+  [ -n "$apk" ] || apk=$(echo "$apks" | head -n 1)
+  # the app ID from the built APK, which includes flavor suffixes such as .dev
+  aapt2="$(ls -d "$sdk"/build-tools/*/ 2> /dev/null | sort -V | tail -n 1)aapt2"
+  app_id=$("$aapt2" dump badging "$apk" 2> /dev/null | sed -n "s/^package: name='\([^']*\)'.*/\1/p")
+  [ -n "$app_id" ] || app_id=$(sed -n 's/.*applicationId *=\{0,1\} *"\([^"]*\)".*/\1/p' android/app/build.gradle* | head -n 1)
+  until [ "$("$adb" -s "$device" shell getprop sys.boot_completed 2> /dev/null | tr -d '\r')" = 1 ]; do sleep 3; done
   "$adb" -s "$device" install -r "$apk" > /dev/null
   # system "isn't responding" pop-ups (common on busy emulators) cover the app and fail flows; app crashes still fail them
   "$adb" -s "$device" shell settings put global hide_error_dialogs 1
