@@ -14,6 +14,19 @@ Every AI tool reads the same rules (`AGENTS.md`), the same project facts (`docs/
 3. Open a PR with the `large-pr` label, merge it, and turn on branch protection (see `docs/branch-protection.md` in the kit repo).
 4. With `--ci codemagic`, do the one-time Codemagic setup in the app's `docs/ai/codemagic.md`.
 
+**What `init` changes.** It never overwrites a file. Besides adding the kit's files, it:
+- adds its section to an existing `AGENTS.md` between `KIT` markers, and an `@AGENTS.md` line to an existing `CLAUDE.md`;
+- records the kit version and CI choice there, so `sync` knows what's installed;
+- adds `.env`, `.env.*` and `.ai/` to `.gitignore`;
+- adds a `typecheck` script for TypeScript apps;
+- adds a `postinstall` script that turns on the git hooks for every clone, and turns them on for this clone too;
+- generates each chosen tool's permissions, hooks and reviewer agent, and links the skills folder for Claude Code and Kiro.
+
+**What `doctor` checks**, with a fix for each problem:
+- **The project:** the kit is installed, `AGENTS.md` is within its size limit, the git hooks are active, no `.env` file is in git, the tool configs are current, and `docs/ai/` is filled in.
+- **This Mac:** Node, installed dependencies, Xcode, CocoaPods and pods, an iPhone simulator, the Android SDK and an emulator, Java, Maestro (the same version as CI) and gitleaks.
+- **The AI tools:** whether Codex and Antigravity trust the project, the Antigravity version, and an `ANTHROPIC_API_KEY` in the shell that would override a Claude subscription.
+
 **When the kit has a new version** (the lead): on a clean branch, run `npx agentic-mobile-kit@latest sync`. The first time on an install older than 0.4.0, add `--from <the version you installed>`. Resolve any `<<<<<<<` conflicts, run the checks and open a PR.
 
 **Once per machine** (every developer):

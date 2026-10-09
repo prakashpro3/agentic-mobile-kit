@@ -6,39 +6,23 @@ Tested with Claude Code, Codex and Antigravity. `--tools` also sets up Cursor, O
 
 ## Install
 
-In the root of a bare React Native app (one with `ios/` and `android/` folders), on a clean git working tree:
+1. In your app's root folder, on a clean git branch, run:
 
-```sh
-npx agentic-mobile-kit init
-```
+   ```sh
+   npx agentic-mobile-kit init
+   ```
 
-| Option | What it does |
-|---|---|
-| `--tools claude,codex,antigravity` | The AI tools your team uses (this is the default) |
-| `--ci github,codemagic` | Adds GitHub Actions checks, Codemagic signed builds, or both. Leave it out if the app has no CI. |
-| `--pm yarn` | The package manager, if the lockfile doesn't show it |
+   If the app uses CI, add `--ci github`, `--ci codemagic` or both. To pick AI tools, add `--tools claude,codex,antigravity`, which is the default. `--help` lists every option.
 
-`init` never overwrites a file. Besides adding the kit's files, it:
-- adds its section to an existing `AGENTS.md` between `KIT` markers, and an `@AGENTS.md` line to an existing `CLAUDE.md`;
-- records the kit version and CI choice in that section, so `sync` knows what's installed;
-- adds `.env`, `.env.*` and `.ai/` to `.gitignore`;
-- adds a `typecheck` script for TypeScript apps;
-- adds a `postinstall` script that turns on the git hooks for every clone;
-- turns on the git hooks for this clone too;
-- generates each chosen tool's permissions, hooks and reviewer agent, and links the skills folder for Claude Code and Kiro.
+2. Check the project and your Mac. `doctor` lists each problem with its fix:
 
-It's safe to run again. Undo it with git.
+   ```sh
+   npx agentic-mobile-kit doctor
+   ```
 
-Then check the project and your machine:
+3. Fill in `docs/ai/product.md`, `tech.md`, `structure.md` and `conventions.md`, then commit and open a PR.
 
-```sh
-npx agentic-mobile-kit doctor
-```
-
-`doctor` gives a fix for each problem it finds, in three groups:
-- **The project:** the kit is installed, `AGENTS.md` is within its size limit, the git hooks are active, no `.env` file is in git, the tool configs are current, and `docs/ai/` is filled in.
-- **This Mac:** Node, installed dependencies, Xcode, CocoaPods and pods, an iPhone simulator, the Android SDK and an emulator, Java, Maestro (the same version as CI) and gitleaks.
-- **The AI tools:** whether Codex and Antigravity trust the project, the Antigravity version, and an `ANTHROPIC_API_KEY` in the shell that would override a Claude subscription.
+`init` never overwrites your files, is safe to run again, and can be undone with git. The [team guide](docs/team-guide.md#setup) lists everything it changes.
 
 ## How work flows
 
