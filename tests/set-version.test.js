@@ -47,3 +47,23 @@ test('rejects something that is not a version', () => {
   assert.strictEqual(r.status, 1);
   assert.match(r.stderr, /usage/);
 });
+
+test('Expo apps without native folders: sets expo.version in app.json, keeping its layout', () => {
+  const dir = tmpDir('amk-version-');
+  fs.writeFileSync(path.join(dir, 'package.json'), JSON.stringify({ dependencies: { expo: '~57.0.27', 'react-native': '0.86.3' } }));
+  const appJson = '{\n    "expo": {\n        "name": "Demo",\n        "version": "1.0.0",\n        "ios": { "buildNumber": "7" }\n    }\n}\n';
+  fs.writeFileSync(path.join(dir, 'app.json'), appJson);
+  spawnSync('git', ['init', '-q'], { cwd: dir });
+  const r = run(dir, '1.4.0');
+  assert.strictEqual(r.status, 0, r.stderr);
+  assert.match(r.stdout, /Version 1\.4\.0 set in app\.json/);
+  const json = JSON.parse(read(dir, 'app.json'));
+  assert.strictEqual(json.expo.version, '1.4.0');
+  assert.strictEqual(json.expo.ios.buildNumber, '7', 'build numbers are left alone');
+  assert.match(read(dir, 'app.json'), /^ {4}"expo"/m, 'keeps the 4-space indent');
+
+  fs.writeFileSync(path.join(dir, 'app.config.ts'), 'export default ({ config }) => ({ ...config, version: process.env.APP_VERSION });\n');
+  const computed = run(dir, '1.5.0');
+  assert.strictEqual(computed.status, 1);
+  assert.match(computed.stderr, /computes its config in app\.config\.ts: set the version there by hand/);
+});

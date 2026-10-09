@@ -1,6 +1,6 @@
 # agentic-mobile-kit
 
-One setup for AI-assisted development of bare React Native apps. Every AI tool on the team reads the same rules, project knowledge and workflows. Git hooks and CI check the work, whichever person or tool wrote it. A task started in one tool, or on one machine, carries on in another.
+One setup for AI-assisted development of React Native apps, bare or Expo. Every AI tool on the team reads the same rules, project knowledge and workflows. Git hooks and CI check the work, whichever person or tool wrote it. A task started in one tool, or on one machine, carries on in another.
 
 Tested with Claude Code, Codex and Antigravity. `--tools` also sets up Cursor, OpenCode and Kiro.
 
@@ -42,6 +42,10 @@ Invoke a skill with `/m-feature` in Claude Code and Antigravity, or `$m-feature`
 ## Alongside other AI workflows
 
 Apps that already use Superpowers, BMAD, proAgents or similar keep them as they are. The kit adds its section next to theirs and links its skills into an existing `.claude/skills` folder. A task started with an `m-` skill follows the kit's steps, and everything else keeps working as before.
+
+## Expo apps
+
+`init` recognizes Expo apps that generate `ios/` and `android/` with `npx expo prebuild`. Agents get Expo's rules and skills, and never edit the generated folders. The kit's scripts generate them before each build, so device checks, release checks and signed builds work as they do in bare apps, with no Expo account. Teams that build with EAS run `eas build` and `eas submit` themselves. Expo apps that keep `ios/` and `android/` in git are set up like bare apps.
 
 ## Update or remove
 

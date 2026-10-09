@@ -50,8 +50,9 @@ run_flows() { # platform device app_id
   mkdir -p "$out"
   files=$(flow_files)
   if [ -z "$files" ]; then
-    # launchApp returns before the app has drawn: without the wait, the screenshot can show the home screen
-    printf 'appId: %s\n---\n- launchApp\n- waitForAnimationToEnd\n- takeScreenshot: smoke-launch\n' "$3" > "$out/smoke.yaml"
+    # launchApp returns before the app has drawn, and a splash screen stays up until the JavaScript has loaded:
+    # a fixed wait (for text that never appears), then for the screen to settle, so the screenshot shows the app
+    printf 'appId: %s\n---\n- launchApp\n- extendedWaitUntil:\n    visible: "agentic-mobile-kit: waiting for the app to draw"\n    timeout: 5000\n    optional: true\n- waitForAnimationToEnd\n- takeScreenshot: smoke-launch\n' "$3" > "$out/smoke.yaml"
     files="$out/smoke.yaml"
   fi
   passed=0
@@ -80,6 +81,8 @@ quick() {
     sh scripts/ai/pm-run.sh typecheck > "$evidence/typecheck.log" 2>&1 &&
     CI=true sh scripts/ai/pm-run.sh test > "$evidence/test.log" 2>&1; then
     echo "quick: lint, typecheck and tests passed"
+    # what didn't run (no such script, or an Expo app without ESLint yet)
+    cat "$evidence/lint.log" "$evidence/typecheck.log" "$evidence/test.log" | sed -n 's/^skip: /  skipped: /p'
   else
     echo "quick: FAILED, see the logs in ${evidence#"$root"/}"
     status=1
@@ -94,8 +97,14 @@ ios() {
     return
   fi
   command -v maestro > /dev/null || { echo "ios: Maestro isn't installed (https://maestro.dev)"; status=1; return; }
-  # pod install also generates React Native codegen files into ios/build/generated
-  if [ ! -d ios/Pods ] || [ ! -d ios/build/generated ]; then sh scripts/ai/pod-install.sh > "$evidence/pod-install.log" 2>&1; fi
+  # Expo apps without native folders in git: generate ios/ first
+  if ! sh scripts/ai/prebuild.sh ios > "$evidence/prebuild-ios.log" 2>&1; then
+    echo "ios: expo prebuild FAILED, see ${evidence#"$root"/}/prebuild-ios.log"; status=1; return
+  fi
+  # pod install also generates React Native codegen files into ios/build/generated; a newer Podfile needs it again
+  if [ ! -d ios/Pods ] || [ ! -d ios/build/generated ] || [ ios/Podfile -nt ios/Pods/Manifest.lock ]; then
+    sh scripts/ai/pod-install.sh > "$evidence/pod-install.log" 2>&1
+  fi
   if ! CONFIGURATION=Release sh scripts/ai/ios-build.sh > "$evidence/ios-build.log" 2>&1; then
     echo "ios: release build FAILED, see ${evidence#"$root"/}/ios-build.log"; status=1; return
   fi
@@ -126,6 +135,10 @@ android() {
   esac
   sdk=${ANDROID_HOME:-${ANDROID_SDK_ROOT:-$default_sdk}}
   adb="$sdk/platform-tools/adb"
+  # Expo apps without native folders in git: generate android/ first
+  if ! sh scripts/ai/prebuild.sh android > "$evidence/prebuild-android.log" 2>&1; then
+    echo "android: expo prebuild FAILED, see ${evidence#"$root"/}/prebuild-android.log"; status=1; return
+  fi
   # apps with product flavors: check one, the first in build.gradle unless --flavor names another
   if [ -z "$flavor" ]; then
     code=0

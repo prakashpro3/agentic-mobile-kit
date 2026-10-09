@@ -33,9 +33,8 @@ jobs:
         with:
           node-version: 24
       - run: sh scripts/ai/install-deps.sh
-      - name: Generate the native project (Expo apps without ios/)
-        if: hashFiles('ios/Podfile') == ''
-        run: npx expo prebuild --platform ios --no-install
+      - name: Generate the native project (Expo apps without ios/ in git)
+        run: sh scripts/ai/prebuild.sh ios
       - name: Install pods
         run: sh scripts/ai/pod-install.sh
       - name: Build for the simulator (no signing)

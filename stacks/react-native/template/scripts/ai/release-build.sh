@@ -14,6 +14,8 @@
 # (or the one AMK_IOS_EXPORT_OPTIONS names): manual signing, ad hoc or enterprise. Without one, it exports for
 # App Store Connect with automatic signing, using the Apple account in Xcode (Settings > Accounts); Xcode may
 # create a distribution certificate or profile in that team if one is missing.
+# Expo apps without native folders in git: it generates them first (expo prebuild). iOS signing then needs the
+# Apple team in app.json (expo.ios.appleTeamId).
 # Version and build numbers come from the repo, so set them first (the m-release skill does).
 # Output: .ai/release/
 set -eu
@@ -32,6 +34,7 @@ secret() {
 
 case "$platform" in
 android)
+  sh scripts/ai/prebuild.sh android
   target=${target:-${AMK_ANDROID_FLAVOR:-}}
   if [ -z "$target" ]; then
     code=0
@@ -68,9 +71,10 @@ android)
   done
   ;;
 ios)
+  sh scripts/ai/prebuild.sh ios
+  if [ ! -d ios/Pods ] || [ ios/Podfile -nt ios/Pods/Manifest.lock ]; then sh scripts/ai/pod-install.sh; fi
   workspace=$(ls -d ios/*.xcworkspace | head -n 1)
   scheme=${target:-${AMK_IOS_SCHEME:-$(basename "$workspace" .xcworkspace)}}
-  [ -d ios/Pods ] || sh scripts/ai/pod-install.sh
   log="$out/$scheme-ios.log"
   echo "Archiving $scheme (several minutes; log: $log)"
   xcodebuild -workspace "$workspace" -scheme "$scheme" -destination 'generic/platform=iOS' \
@@ -101,7 +105,7 @@ PLIST
   echo "$ipa"
   ;;
 *)
-  sed -n '2,18p' "$0"
+  sed -n '2,20p' "$0"
   exit 1
   ;;
 esac

@@ -17,7 +17,7 @@ Every AI tool reads the same rules (`AGENTS.md`), the same project facts (`docs/
 **What `init` changes.** It never overwrites a file. Besides adding the kit's files, it:
 - adds its section to an existing `AGENTS.md` between `KIT` markers, and an `@AGENTS.md` line to an existing `CLAUDE.md`;
 - records the kit version and CI choice there, so `sync` knows what's installed;
-- adds `.env`, `.env.*` and `.ai/` to `.gitignore`;
+- adds `.env`, `.env.*` and `.ai/` to `.gitignore`, and in Expo apps also `/ios` and `/android`, which `expo prebuild` generates;
 - adds a `typecheck` script for TypeScript apps;
 - turns on the kit's git hooks: with a `postinstall` script that does it for every clone, and for this clone right away. If the app already uses husky, lefthook, simple-git-hooks or its own hooks folder, it adds one line to those hooks instead, and leaves `core.hooksPath` to them;
 - generates each chosen tool's permissions, hooks and reviewer agent, and links the skills folder for Claude Code and Kiro.
@@ -121,6 +121,8 @@ From `docs/ai/team-process.md`:
 | `release-check` says signing keys are in git | Move the keystores out of the repo into a password manager, read the passwords from the environment or `~/.gradle/gradle.properties`, and reset the upload key in Play Console if Play App Signing is on |
 | Metro's port 8081 is busy | Nothing to do: `verify.sh` uses release builds, which don't need Metro |
 | iOS build fails after a native dependency change | `sh scripts/ai/pod-install.sh` |
+| Expo: `verify.sh` says lint was skipped | Run `npx expo lint` once: it installs ESLint and writes `eslint.config.js`. Commit what it adds |
+| Expo: a native change doesn't show up in the build | Delete `ios/.amk-fingerprint` and `android/.amk-fingerprint`, then check again. The scripts regenerate the native folders only when Expo's fingerprint changes |
 
 ## Once a month (30 minutes)
 

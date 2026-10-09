@@ -7,6 +7,7 @@ Rules for things AI agents commonly get wrong in Expo apps. Each one comes from 
 - Expo APIs are renamed and moved between SDKs, so don't write them from memory. Use the docs for this app's SDK (the version is in `AGENTS.md`): `https://docs.expo.dev/versions/v<SDK>.0.0/`. `https://docs.expo.dev/llms.txt` indexes all of Expo's docs.
 - Add libraries with `npx expo install <package>`: it picks the version that matches the SDK. `npx expo install --check` lists the ones that don't match.
 - Upgrade the SDK as a whole with the `expo-upgrade` skill, never one Expo package at a time.
+- Without an ESLint config (`eslint.config.js`), the first `npx expo lint` installs ESLint and writes one, changing `package.json`. Ask before running it then.
 
 ## Native projects
 

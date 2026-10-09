@@ -6,7 +6,7 @@
 'use strict';
 const fs = require('fs');
 const path = require('path');
-const { execFileSync } = require('child_process');
+const { execFileSync, spawnSync } = require('child_process');
 
 const args = process.argv.slice(2);
 const argSince = args.includes('--since') ? args[args.indexOf('--since') + 1] : null;
@@ -30,14 +30,34 @@ const atTag = git('tag', '--points-at', 'HEAD') && git('status', '--porcelain') 
 const since = argSince || git('describe', '--tags', '--abbrev=0', ...(atTag ? ['HEAD^'] : []));
 
 // ---------- files ----------
-const xcodeproj = (fs.readdirSync('ios', { withFileTypes: true }).find(e => e.isDirectory() && e.name.endsWith('.xcodeproj')) || {}).name;
+const pkg = JSON.parse(readNow('package.json') || '{}');
+const deps = { ...pkg.dependencies, ...pkg.devDependencies };
+// Expo apps without native folders in git: ios/ and android/ are generated (and may be stale), so the checks read
+// the app config instead, as `expo prebuild` applies it, with every config plugin
+const expo = deps.expo && !git('ls-files', 'ios', 'android') ? expoConfig() : null;
+function expoConfig() {
+  let cli;
+  try {
+    const dir = path.dirname(require.resolve('expo/package.json', { paths: [process.cwd()] }));
+    cli = path.join(dir, require(path.join(dir, 'package.json')).bin.expo);
+  } catch {
+    fail('Expo isn\'t installed, so the app config can\'t be read', 'install dependencies first: sh scripts/ai/install-deps.sh');
+    return null;
+  }
+  const r = spawnSync(process.execPath, [cli, 'config', '--type', 'introspect', '--json'], { encoding: 'utf8', maxBuffer: 1 << 28 });
+  try { return JSON.parse(r.stdout); } catch {
+    fail('Couldn\'t read the Expo app config', (r.stderr || '').trim().split('\n').pop() || 'run: npx expo config');
+    return null;
+  }
+}
+const expoResults = ((expo || {})._internal || {}).modResults || {};
+const xcodeproj = !expo && fs.existsSync('ios') ? (fs.readdirSync('ios', { withFileTypes: true }).find(e => e.isDirectory() && e.name.endsWith('.xcodeproj')) || {}).name : null;
 const pbxPath = xcodeproj ? `ios/${xcodeproj}/project.pbxproj` : null;
 const pbx = pbxPath ? readNow(pbxPath) : null;
 const plists = all(/INFOPLIST_FILE = ([^;]+);/g, pbx).map(p => `ios/${p}`).filter(p => fs.existsSync(p));
-const gradlePath = ['android/app/build.gradle', 'android/app/build.gradle.kts'].find(f => fs.existsSync(f));
+const gradlePath = expo ? null : ['android/app/build.gradle', 'android/app/build.gradle.kts'].find(f => fs.existsSync(f));
 const gradle = stripComments(readNow(gradlePath));
-const manifestPath = 'android/app/src/main/AndroidManifest.xml';
-const pkg = JSON.parse(readNow('package.json') || '{}');
+const manifestPath = expo ? null : 'android/app/src/main/AndroidManifest.xml';
 // this kit's codemagic.yaml sets build numbers and the Android upload key on the build machine
 const codemagic = readNow('codemagic.yaml') || '';
 // build numbers set at build time (by CI or fastlane, as this kit's codemagic.yaml does) never change in the repo
@@ -49,7 +69,11 @@ const setsBuild = {
   Android: /versionCode[^\n]*\$|increment_version_code|android_set_version_code|change-android-versioncode/,
 };
 const ciBuildNumber = Object.fromEntries(Object.entries(setsBuild).map(([p, re]) => [p, buildFiles.find(f => re.test(readNow(f) || ''))]));
-const deps = { ...pkg.dependencies, ...pkg.devDependencies };
+// EAS sets them itself with autoIncrement, or keeps them on its servers (appVersionSource: remote)
+const eas = (() => { try { return JSON.parse(readNow('eas.json') || '{}'); } catch { return {}; } })();
+if ((eas.cli || {}).appVersionSource === 'remote' || Object.values(eas.build || {}).some(b => b && b.autoIncrement)) {
+  for (const p of ['iOS', 'Android']) ciBuildNumber[p] = ciBuildNumber[p] || 'eas.json';
+}
 
 // ---------- 1. versions ----------
 const iosVersions = t => all(/MARKETING_VERSION = ([^;]+);/g, t);
@@ -84,6 +108,17 @@ if (pbx) {
 if (gradle) {
   compare('Android', androidVersions(gradle), since && androidVersions(readAt(since, gradlePath)), 'version');
   compare('Android', androidBuilds(gradle), since && androidBuilds(readAt(since, gradlePath)), 'build number');
+}
+if (expo) {
+  // the release before, from app.json at its tag (an app.config.* can't be evaluated at an old commit)
+  let old = null;
+  try { const j = JSON.parse(readAt(since, 'app.json')); old = j.expo || j; } catch {}
+  const now = [expo.version].filter(Boolean);
+  const before = since && (old ? [old.version].filter(Boolean) : null);
+  compare('App', now, before, 'version');
+  const builds = c => c && { iOS: [String((c.ios || {}).buildNumber || 1)], Android: [String((c.android || {}).versionCode || 1)] };
+  compare('iOS', builds(expo).iOS, since && old && builds(old).iOS, 'build number', before && now.join() !== before.join());
+  compare('Android', builds(expo).Android, since && old && builds(old).Android, 'build number');
 }
 if (pbx && gradle) {
   const a = iosVersions(pbx), b = androidVersions(gradle);
@@ -120,12 +155,23 @@ const NEEDS = {
   'react-native-touch-id': ['NSFaceIDUsageDescription'],
   'react-native-audio-recorder-player': ['NSMicrophoneUsageDescription'],
   '@react-native-voice/voice': ['NSMicrophoneUsageDescription', 'NSSpeechRecognitionUsageDescription'],
+  'expo-camera': ['NSCameraUsageDescription'],
+  'expo-image-picker': ['NSPhotoLibraryUsageDescription'],
+  'expo-media-library': ['NSPhotoLibraryUsageDescription'],
+  'expo-location': ['NSLocationWhenInUseUsageDescription'],
+  'expo-contacts': ['NSContactsUsageDescription'],
+  'expo-local-authentication': ['NSFaceIDUsageDescription'],
 };
+// the texts Expo's config plugins write when app.json gives none: too vague for App Review
+const EXPO_DEFAULT = /^Allow \$\(PRODUCT_NAME\) to /;
 const PLACEHOLDER = /^\s*$|\b(todo|tbd|lorem|placeholder|description here|your text)\b/i;
 const usageTexts = f => Object.fromEntries([...(readNow(f) || '').matchAll(/<key>(\w+UsageDescription)<\/key>\s*<string>([^<]*)<\/string>/g)].map(m => [m[1], m[2]]));
-const textsByPlist = Object.fromEntries(plists.map(f => [f, usageTexts(f)]));
+const expoPlist = (expoResults.ios || {}).infoPlist || {};
+const textsByPlist = expo
+  ? { 'app config (ios.infoPlist)': Object.fromEntries(Object.entries(expoPlist).filter(([k, v]) => /UsageDescription$/.test(k) && typeof v === 'string')) }
+  : Object.fromEntries(plists.map(f => [f, usageTexts(f)]));
 const needed = Object.entries(NEEDS).filter(([lib]) => deps[lib]).flatMap(([lib, keys]) => keys.map(key => ({ lib, key })));
-for (const plistPath of plists) {
+for (const plistPath of Object.keys(textsByPlist)) {
   const texts = textsByPlist[plistPath];
   const problems = [];
   for (const { lib, key } of needed) {
@@ -141,9 +187,12 @@ for (const plistPath of plists) {
     if (neededKeys.includes(key)) fail(`${plistPath}: ${key} is ${text.trim() ? `a placeholder ("${text.trim()}")` : 'empty'}`, 'write a real reason users can understand');
     else warn(`${plistPath}: ${key} is ${text.trim() ? 'a placeholder' : 'empty'}`, 'remove the key if the app doesn\'t use this permission; otherwise write a real reason');
   }
-  if (!problems.length && !Object.values(texts).some(t => PLACEHOLDER.test(t))) ok(`${plistPath}: permission texts`, `${Object.keys(texts).length} present`);
-  const plist = readNow(plistPath);
-  if (/<key>NSAllowsArbitraryLoads<\/key>\s*<true\s*\/>/.test(plist)) {
+  const vague = Object.entries(texts).filter(([, t]) => EXPO_DEFAULT.test(t)).map(([k]) => k);
+  if (vague.length) warn(`${plistPath}: Expo's default text for ${vague.join(', ')}`, 'App Review asks why the app needs each permission: set the text in the library\'s plugin options or ios.infoPlist in app.json');
+  if (!problems.length && !vague.length && !Object.values(texts).some(t => PLACEHOLDER.test(t))) ok(`${plistPath}: permission texts`, `${Object.keys(texts).length} present`);
+  const arbitrary = expo ? (expoPlist.NSAppTransportSecurity || {}).NSAllowsArbitraryLoads === true
+    : /<key>NSAllowsArbitraryLoads<\/key>\s*<true\s*\/>/.test(readNow(plistPath) || '');
+  if (arbitrary) {
     warn(`${plistPath}: NSAllowsArbitraryLoads is true (any HTTP allowed)`, 'App Review may ask why; allow only the domains that need it (NSExceptionDomains)');
   }
 }
@@ -151,8 +200,10 @@ for (const plistPath of plists) {
 // ---------- 4. Android permissions ----------
 const SENSITIVE = /\.(ACCESS_(FINE|COARSE|BACKGROUND)_LOCATION|CAMERA|RECORD_AUDIO|READ_CONTACTS|WRITE_CONTACTS|READ_EXTERNAL_STORAGE|WRITE_EXTERNAL_STORAGE|READ_MEDIA_\w+|BLUETOOTH_SCAN|BLUETOOTH_CONNECT|POST_NOTIFICATIONS|READ_PHONE_STATE|BODY_SENSORS|READ_CALENDAR|WRITE_CALENDAR|ACCESS_MEDIA_LOCATION)$/;
 const perms = t => all(/<uses-permission[^>]*android:name="([^"]+)"/g, t);
-const permsNow = perms(readNow(manifestPath));
-if (since && readAt(since, manifestPath) !== null) {
+// Expo: the manifest prebuild would write, as JSON
+const expoManifest = ((expoResults.android || {}).manifest || {}).manifest;
+const permsNow = expo ? uniq(((expoManifest || {})['uses-permission'] || []).map(p => p.$['android:name'])) : perms(readNow(manifestPath));
+if (manifestPath && since && readAt(since, manifestPath) !== null) {
   const before = perms(readAt(since, manifestPath));
   const added = permsNow.filter(p => !before.includes(p));
   const removed = before.filter(p => !permsNow.includes(p));
@@ -183,7 +234,9 @@ else if (/signingConfig\s*=?\s*signingConfigs\.debug/.test(releaseBlock)) {
   // the kit's release-build.sh (and Codemagic) sign with the upload key, and Play rejects debug-signed uploads anyway
   info('build.gradle signs release builds with the debug key', 'build store releases with sh scripts/ai/release-build.sh android, which signs with your upload key');
 }
-if (/android:usesCleartextTraffic="true"/.test(readNow(manifestPath) || '')) {
+const cleartext = expo ? ((((expoManifest || {}).application || [])[0] || {}).$ || {})['android:usesCleartextTraffic'] === 'true'
+  : /android:usesCleartextTraffic="true"/.test(readNow(manifestPath) || '');
+if (cleartext) {
   warn('Android allows cleartext (HTTP) traffic', 'allow only the domains that need it (network security config)');
 }
 const debuggers = (git('grep', '-n', '-E', '^[[:space:]]*debugger;?[[:space:]]*$', '--', '*.js', '*.jsx', '*.ts', '*.tsx') || '').split('\n').filter(Boolean);
@@ -198,7 +251,8 @@ const storeFiles = [
   ...all(/storeFile\s*=?\s*file\(\s*["']([^"']+)["']\s*\)/g, gradleCode).map(f => path.posix.join('android/app', f)),
   ...all(/storeFile\s*=?\s*rootProject\.file\(\s*["']([^"']+)["']\s*\)/g, gradleCode).map(f => path.posix.join('android', f)),
 ];
-const keys = tracked.filter(f => (/\.(jks|keystore|p12|p8|mobileprovision)$/.test(f) || storeFiles.includes(f)) && path.basename(f) !== 'debug.keystore');
+// credentials.json: EAS's local credentials, with the keystore passwords
+const keys = tracked.filter(f => (/\.(jks|keystore|p12|p8|mobileprovision)$/.test(f) || storeFiles.includes(f) || f === 'credentials.json') && path.basename(f) !== 'debug.keystore');
 // React Native's docs suggest android/gradle.properties for these passwords, and that file is usually committed
 const propsPasswords = tracked.includes('android/gradle.properties')
   ? (readNow('android/gradle.properties') || '').split('\n').filter(l => /^[^#]*password[^=]*=\s*\S/i.test(l)).length : 0;

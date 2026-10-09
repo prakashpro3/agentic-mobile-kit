@@ -19,7 +19,7 @@ Usage:
   npx agentic-mobile-kit doctor
 
 Commands:
-  init       Install the kit into a bare React Native project (run in the app's root).
+  init       Install the kit into a React Native or Expo app (run in the app's root).
   sync       Update the kit's files to this version. Your own changes to them are merged in, not lost.
   uninstall  Remove the kit's files and sections. Files you changed are kept and listed.
   doctor     Check the project and this machine, with a fix for each problem.

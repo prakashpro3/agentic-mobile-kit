@@ -214,3 +214,66 @@ test('signing keys and passwords in git warn; the standard debug keystore does n
   assert.doesNotMatch(out, /s3cret|abc/, 'never prints the passwords');
   assert.doesNotMatch(check(app(bumped)).out, /Signing keys|signing password/, 'a clean app has no warning');
 });
+
+// ---------- Expo apps without native folders ----------
+// a released Expo app (tagged v1.0.0) whose Expo CLI is a stand-in that prints app.json resolved with `results`,
+// the way `expo config --type introspect` does after the config plugins ran
+function expoApp(appJson, results, change = {}) {
+  const dir = tmpDir('amk-release-');
+  const cli = `const app = JSON.parse(require('fs').readFileSync('app.json', 'utf8')).expo;
+console.log(JSON.stringify({ ...app, _internal: { modResults: ${JSON.stringify(results)} } }));
+`;
+  const files = {
+    'package.json': JSON.stringify({ name: 'demo', dependencies: { expo: '~57.0.27', 'expo-camera': '~57.0.3', 'react-native': '0.86.3' } }),
+    'app.json': JSON.stringify({ expo: appJson }, null, 2),
+    'node_modules/expo/package.json': JSON.stringify({ name: 'expo', bin: { expo: 'bin/cli' } }),
+    'node_modules/expo/bin/cli': cli,
+    '.gitignore': 'node_modules/\n/ios\n/android\n',
+    'src/index.js': 'export default 1;\n',
+  };
+  for (const [f, t] of Object.entries(files)) write(dir, f, t);
+  git(dir, 'init', '-q');
+  commit(dir, 'release 1.0');
+  git(dir, 'tag', 'v1.0.0');
+  for (const [f, t] of Object.entries(change)) write(dir, f, t);
+  return dir;
+}
+const perm = name => ({ $: { 'android:name': `android.permission.${name}` } });
+const camera = text => ({ ios: { infoPlist: { NSCameraUsageDescription: text } }, android: { manifest: { manifest: { 'uses-permission': [perm('INTERNET'), perm('CAMERA')], application: [{ $: {} }] } } } });
+
+test('Expo: versions and build numbers come from the app config, compared with app.json at the last tag', () => {
+  const v1 = { name: 'Demo', version: '1.0.0', ios: { buildNumber: '3' }, android: { versionCode: 3 } };
+  const dir = expoApp(v1, camera('Scans receipts so you can file expenses.'), {
+    'app.json': JSON.stringify({ expo: { ...v1, version: '1.1.0', android: { versionCode: 4 } } }),
+    // stale generated folders must not be read
+    'ios/Old.xcodeproj/project.pbxproj': pbx('0.1', 1),
+    'android/app/build.gradle': gradle(1, '0.1'),
+  });
+  const { out, code } = check(dir);
+  assert.match(out, /✓ App version \(1\.0\.0 → 1\.1\.0\)/);
+  assert.match(out, /✓ iOS build number \(3 again, for a new version\)/);
+  assert.match(out, /✓ Android build number \(3 → 4\)/);
+  assert.match(out, /✓ app config \(ios\.infoPlist\): permission texts/);
+  assert.match(out, /Android permissions that the Play data safety form must cover \(CAMERA\)/);
+  assert.doesNotMatch(out, /0\.1|Old\.xcodeproj/, 'the generated folders are ignored');
+  assert.strictEqual(code, 0, out);
+});
+
+test('Expo: a missing or default permission text, EAS build numbers and EAS credentials in git', () => {
+  const app = { name: 'Demo', version: '1.0.0' };
+  const missing = check(expoApp(app, { ios: { infoPlist: {} }, android: { manifest: { manifest: {} } } }, { 'src/index.js': 'export default 2;\n' }));
+  assert.match(missing.out, /✗ app config \(ios\.infoPlist\): missing permission texts: NSCameraUsageDescription \(expo-camera\)/);
+  assert.strictEqual(missing.code, 1);
+
+  const dir = expoApp(app, camera('Allow $(PRODUCT_NAME) to access your camera'), {
+    'eas.json': JSON.stringify({ cli: { appVersionSource: 'remote' }, build: { production: { autoIncrement: true } } }),
+    'credentials.json': '{"android":{"keystore":{"keystorePassword":"x"}}}',
+  });
+  git(dir, 'add', '-A');
+  const { out } = check(dir);
+  assert.match(out, /! app config \(ios\.infoPlist\): Expo's default text for NSCameraUsageDescription/);
+  assert.match(out, /· iOS build number: set at build time \(eas\.json\)/);
+  assert.match(out, /· Android build number: set at build time \(eas\.json\)/);
+  assert.match(out, /! Signing keys are in git: credentials\.json/);
+  assert.doesNotMatch(out, /keystorePassword|"x"/);
+});

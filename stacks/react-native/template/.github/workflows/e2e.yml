@@ -43,6 +43,8 @@ jobs:
           echo "$MAESTRO_SHA256  maestro.zip" | sha256sum -c -
           unzip -q maestro.zip -d "$HOME" && rm maestro.zip
           echo "$HOME/maestro/bin" >> "$GITHUB_PATH"
+      - name: Generate the native project (Expo apps without android/ in git)
+        run: sh scripts/ai/prebuild.sh android
       - name: Build release APK
         working-directory: android
         run: ./gradlew assembleRelease --no-daemon

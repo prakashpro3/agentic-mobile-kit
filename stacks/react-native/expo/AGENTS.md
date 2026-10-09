@@ -17,7 +17,7 @@ This project may also use other AI workflow frameworks (for example Superpowers,
 |---|---|
 | Install dependencies | `sh scripts/ai/install-deps.sh` |
 | Add a library (ask first) | `npx expo install <package>`: the version that matches the SDK |
-| Lint, typecheck, test | `{{PM_RUN}} lint`, `{{PM_RUN}} typecheck`, `{{PM_RUN}} test` |
+| Lint, typecheck, test (each skips what the app doesn't have yet) | `sh scripts/ai/pm-run.sh lint`, `sh scripts/ai/pm-run.sh typecheck`, `sh scripts/ai/pm-run.sh test` |
 | Check dependency versions and the app config | `npx expo install --check`, `npx expo-doctor` |
 | Check on devices (release builds, Maestro flows, screenshots) | `sh scripts/ai/verify.sh all --spec <id>`; another iOS scheme: `--scheme <name>` |
 | Specs: progress, format check, fold a finished feature into the living spec | `node scripts/ai/spec.js status`, `node scripts/ai/spec.js check`, `node scripts/ai/spec.js merge <id>` |
