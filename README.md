@@ -9,18 +9,16 @@ Tested with Claude Code, Codex and Antigravity. `--tools` also sets up Cursor, O
 1. In your app's root folder, on a clean git branch, run:
 
    ```sh
-   npx agentic-mobile-kit init
+   npx agentic-mobile-kit
    ```
 
-   If the app uses CI, add `--ci github`, `--ci codemagic` or both. To pick AI tools, add `--tools claude,codex,antigravity`, which is the default. `--help` lists every option.
+   It asks what to do, one step at a time: install with the recommended setup (Claude Code, Codex and Antigravity, no CI), or choose the AI tools and CI. There's nothing to `npm install`: the kit copies its files into the app and isn't a dependency. If you ran `npm i agentic-mobile-kit`, commit or undo that first, because the kit needs a clean working tree.
 
-2. Check the project and your machine. `doctor` lists each problem with its fix:
-
-   ```sh
-   npx agentic-mobile-kit doctor
-   ```
+2. Run it again and choose **Check this project and machine**. It lists each problem with its fix.
 
 3. Fill in `docs/ai/product.md`, `tech.md`, `structure.md` and `conventions.md`, then commit and open a PR.
+
+Each choice prints the command it runs, for scripts and CI: `init` (with `--ci github`, `--ci codemagic` or `--tools claude,codex,antigravity`), `sync`, `doctor` and `uninstall`. `--help` lists every option.
 
 `init` never overwrites your files, is safe to run again, and can be undone with git. The [team guide](docs/team-guide.md#setup) lists everything it changes.
 
@@ -48,6 +46,8 @@ Apps that already use Superpowers, BMAD, proAgents or similar keep them as they 
 `init` recognizes Expo apps that generate `ios/` and `android/` with `npx expo prebuild`. Agents get Expo's rules and skills, and never edit the generated folders. The kit's scripts generate them before each build, so device checks, release checks and signed builds work as they do in bare apps, with no Expo account. Teams that build with EAS run `eas build` and `eas submit` themselves. Expo apps that keep `ios/` and `android/` in git are set up like bare apps.
 
 ## Update or remove
+
+Run `npx agentic-mobile-kit` in an app that has the kit. It offers to update it, add CI, check the setup or remove the kit, and tells you when a newer version is out. The same as commands:
 
 ```sh
 npx agentic-mobile-kit@latest sync   # update the kit's files, merging in your own changes

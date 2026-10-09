@@ -9,7 +9,7 @@ Every AI tool reads the same rules (`AGENTS.md`), the same project facts (`docs/
 ## Setup
 
 **Once per project** (the lead):
-1. In the app's root, on a clean branch: `npx agentic-mobile-kit init`. To choose AI tools, add `--tools claude,codex,antigravity`. If the app uses GitHub Actions or Codemagic, add `--ci github`, `--ci codemagic` or both; without it, the kit adds no CI files. You can add CI later the same way.
+1. In the app's root, on a clean branch, run `npx agentic-mobile-kit` and choose an install: the recommended setup, or your own choice of AI tools and CI. Choose CI only if the app uses GitHub Actions or Codemagic; without it, the kit adds no CI files. You can add CI later from the same menu. In scripts: `npx agentic-mobile-kit init`, with `--tools claude,codex,antigravity` and `--ci github`, `--ci codemagic` or both.
 2. Fill in `docs/ai/product.md`, `tech.md`, `structure.md` and `conventions.md`. Agents are only as good as these four files.
 3. Open a PR with the `large-pr` label, merge it, and turn on branch protection (see `docs/branch-protection.md` in the kit repo).
 4. With `--ci codemagic`, do the one-time Codemagic setup in the app's `docs/ai/codemagic.md`.
@@ -27,7 +27,7 @@ Every AI tool reads the same rules (`AGENTS.md`), the same project facts (`docs/
 - **This Mac:** Node, installed dependencies, Xcode, CocoaPods and pods, an iPhone simulator, the Android SDK and an emulator, Java, Maestro (the same version as CI) and gitleaks.
 - **The AI tools:** whether Codex and Antigravity trust the project, the Antigravity version, and an `ANTHROPIC_API_KEY` in the shell that would override a Claude subscription.
 
-**When the kit has a new version** (the lead): on a clean branch, run `npx agentic-mobile-kit@latest sync`. The first time on an install older than 0.4.0, add `--from <the version you installed>`. Resolve any `<<<<<<<` conflicts, run the checks and open a PR.
+**When the kit has a new version** (the lead): on a clean branch, run `npx agentic-mobile-kit` and choose the update, or run `npx agentic-mobile-kit@latest sync`. The first time on an install older than 0.4.0, add `--from <the version you installed>`. Resolve any `<<<<<<<` conflicts, run the checks and open a PR.
 
 **Once per machine** (every developer):
 1. On Windows, first turn on Developer Mode (Settings > System > For developers) and run `git config --global core.symlinks true`, so the Claude Code skills link works. Run the kit's scripts from Git Bash. iOS work needs a Mac.

@@ -2,17 +2,12 @@
 const { version } = require('../package.json');
 const { init, sync, uninstall, printSummary, printSync, printUninstall, InitError, TOOLS, CI } = require('../lib/init');
 const { doctor, printDoctor } = require('../lib/doctor');
-
-const [cmd, ...rest] = process.argv.slice(2);
-const flag = name => {
-  const i = rest.indexOf(`--${name}`);
-  return i >= 0 ? rest[i + 1] : undefined;
-};
-const list = name => (flag(name) ? flag(name).split(',').map(s => s.trim()).filter(Boolean) : undefined);
+const { menu } = require('../lib/menu');
 
 const help = `agentic-mobile-kit ${version}
 
 Usage:
+  npx agentic-mobile-kit             In a terminal: pick what to do in this app, step by step
   npx agentic-mobile-kit init [--tools claude,codex,antigravity] [--ci github,codemagic] [--pm yarn|npm|pnpm|bun]
   npx agentic-mobile-kit sync [--ci github,codemagic] [--from <version>]
   npx agentic-mobile-kit uninstall [--from <version>]
@@ -39,19 +34,32 @@ function run(name, fn) {
   }
 }
 
-if (cmd === '--version' || cmd === '-v') {
-  console.log(version);
-} else if (cmd === 'init') {
-  run('init', () => {
-    printSummary(init(process.cwd(), { tools: list('tools'), ci: list('ci'), pm: flag('pm') }));
-  });
-} else if (cmd === 'sync') {
-  run('sync', () => printSync(sync(process.cwd(), { from: flag('from'), ci: list('ci'), pm: flag('pm') })));
-} else if (cmd === 'uninstall') {
-  run('uninstall', () => printUninstall(uninstall(process.cwd(), { from: flag('from'), pm: flag('pm') })));
-} else if (cmd === 'doctor') {
-  if (printDoctor(doctor(process.cwd())) > 0) process.exitCode = 1;
-} else {
-  console.log(help);
-  if (cmd && cmd !== 'help' && cmd !== '--help' && cmd !== '-h') process.exitCode = 1;
+function main([cmd, ...rest]) {
+  const flag = name => {
+    const i = rest.indexOf(`--${name}`);
+    return i >= 0 ? rest[i + 1] : undefined;
+  };
+  const list = name => (flag(name) ? flag(name).split(',').map(s => s.trim()).filter(Boolean) : undefined);
+
+  if (cmd === '--version' || cmd === '-v') {
+    console.log(version);
+  } else if (cmd === 'init') {
+    run('init', () => {
+      printSummary(init(process.cwd(), { tools: list('tools'), ci: list('ci'), pm: flag('pm') }));
+    });
+  } else if (cmd === 'sync') {
+    run('sync', () => printSync(sync(process.cwd(), { from: flag('from'), ci: list('ci'), pm: flag('pm') })));
+  } else if (cmd === 'uninstall') {
+    run('uninstall', () => printUninstall(uninstall(process.cwd(), { from: flag('from'), pm: flag('pm') })));
+  } else if (cmd === 'doctor') {
+    if (printDoctor(doctor(process.cwd())) > 0) process.exitCode = 1;
+  } else {
+    console.log(help);
+    if (cmd && cmd !== 'help' && cmd !== '--help' && cmd !== '-h') process.exitCode = 1;
+  }
 }
+
+// no command: the menu, but only for a person at a terminal. CI and AI agents get the help instead of a question
+const args = process.argv.slice(2);
+if (!args.length && process.stdin.isTTY && process.stdout.isTTY) menu(process.cwd()).then(chosen => chosen && main(chosen));
+else main(args);
