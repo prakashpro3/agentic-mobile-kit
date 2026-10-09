@@ -1,6 +1,6 @@
 {
   "name": "agentic-mobile-kit",
-  "version": "0.5.6",
+  "version": "0.6.0",
   "description": "One setup for AI-assisted development of React Native apps, bare or Expo: shared rules and workflows for Claude Code, Codex and Antigravity, git hooks, device checks with screenshots, and release tooling for the App Store and Google Play.",
   "license": "MIT",
   "author": "prakashpro1",
