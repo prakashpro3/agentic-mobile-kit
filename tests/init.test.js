@@ -119,10 +119,10 @@ test('refuses: uncommitted changes, not React Native, no native folders, unknown
   const notRn = fakeApp({ pkg: { dependencies: { react: '19.2.3' } } });
   assert.throws(() => init(notRn, { skipGenerate: true }), /not a React Native project/);
 
-  const expo = fakeApp();
-  fs.rmSync(path.join(expo, 'ios'), { recursive: true });
-  commitAll(expo);
-  assert.throws(() => init(expo, { skipGenerate: true }), /Only bare React Native/);
+  const noIos = fakeApp();
+  fs.rmSync(path.join(noIos, 'ios'), { recursive: true });
+  commitAll(noIos);
+  assert.throws(() => init(noIos, { skipGenerate: true }), /isn.t an Expo app/);
 
   assert.throws(() => init(fakeApp(), { skipGenerate: true, tools: ['vscode'] }), /Unknown tool/);
 });
@@ -428,4 +428,58 @@ test('AGENTS.md names the architecture: the Old one only before React Native 0.8
   assert.strictEqual(arch('0.74.5', 'newArchEnabled=true\n'), '0.74.5 (New Architecture)');
   assert.strictEqual(arch('0.80.2'), '0.80.2 (New Architecture)', 'the default from 0.76');
   assert.strictEqual(arch('0.84.1', 'newArchEnabled=false\n'), '0.84.1 (New Architecture)', 'ignored from 0.82');
+});
+
+// ---------- Expo ----------
+// an app as create-expo-app makes it: no ios/ or android/, Expo's own AGENTS.md, and its Claude Code plugin setting
+function expoApp(files = {}) {
+  const dir = fakeApp({
+    pkg: { dependencies: { expo: '~57.0.27', 'expo-router': '~57.0.25', 'react-native': '0.86.3', react: '19.2.3' }, devDependencies: { typescript: '~6.0.3' }, scripts: { start: 'expo start', lint: 'expo lint' } },
+    files: {
+      'app.json': JSON.stringify({ expo: { name: 'Demo', slug: 'demo', version: '1.0.0', ios: { bundleIdentifier: 'com.example.demo' }, android: { package: 'com.example.demo' } } }, null, 2),
+      'AGENTS.md': 'This is an Expo/React Native mobile application.\n\n## Rules\n\n- Never edit ios/ or android/ by hand.\n',
+      '.claude/settings.json': '{\n  "enabledPlugins": {\n    "expo@claude-plugins-official": true\n  }\n}\n',
+      ...files,
+    },
+  });
+  fs.rmSync(path.join(dir, 'ios'), { recursive: true });
+  fs.rmSync(path.join(dir, 'android'), { recursive: true });
+  commitAll(dir);
+  return dir;
+}
+
+test('Expo app without native folders: Expo instructions, rules, skills and permissions next to Expo\'s own text', () => {
+  const dir = expoApp();
+  const { values } = init(dir, { skipGenerate: true });
+  assert.strictEqual(values.KIT_STACK, 'expo');
+  const agents = read(dir, 'AGENTS.md');
+  assert.match(agents, /^This is an Expo\/React Native mobile application\./, 'Expo\'s own text stays first');
+  assert.match(agents, /KIT:START agentic-mobile-kit [^ ]+ ci=none stack=expo /);
+  assert.match(agents, /Expo SDK 57, React Native 0\.86\.3 \(New Architecture\)/);
+  assert.match(agents, /Never edit `ios\/` or `android\/`/);
+  assert.doesNotMatch(agents, /\{\{/);
+  assert.ok(fs.existsSync(path.join(dir, 'docs/ai/expo.md')) && !fs.existsSync(path.join(dir, 'docs/ai/react-native.md')));
+  for (const s of ['expo-router', 'expo-upgrade', 'expo-module', 'react-native-best-practices', 'react-navigation', 'm-feature']) {
+    assert.ok(fs.existsSync(path.join(dir, `.agents/skills/${s}/SKILL.md`)), s);
+  }
+  assert.ok(!fs.existsSync(path.join(dir, '.agents/skills/upgrading-react-native')), 'Expo upgrades with expo-upgrade');
+  assert.match(read(dir, '.rulesync/permissions.jsonc'), /"ios\/\*\*": "deny"/);
+  assert.match(read(dir, '.gitignore'), /^\/ios$/m);
+  assert.match(read(dir, '.gitignore'), /^\/android$/m);
+  assert.strictEqual(read(dir, '.claude/settings.json'), '{\n  "enabledPlugins": {\n    "expo@claude-plugins-official": true\n  }\n}\n', 'Expo\'s plugin setting is kept');
+  assert.ok(fs.existsSync(path.join(dir, '.claude/skills/expo-router/SKILL.md')), 'skills linked into the existing .claude folder');
+
+  commitAll(dir);
+  assert.ok(Object.values(sync(dir, { skipGenerate: true }).report).every(a => a.length === 0), 'sync right after init changes nothing');
+  uninstall(dir, { skipGenerate: true });
+  assert.strictEqual(read(dir, 'AGENTS.md'), 'This is an Expo/React Native mobile application.\n\n## Rules\n\n- Never edit ios/ or android/ by hand.\n');
+  assert.ok(!fs.existsSync(path.join(dir, 'docs/ai/expo.md')) && !fs.existsSync(path.join(dir, '.agents/skills/expo-router')));
+});
+
+test('an Expo app that keeps ios/ and android/ in git is set up like a bare app', () => {
+  const dir = fakeApp({ pkg: { dependencies: { expo: '~57.0.27', 'react-native': '0.86.3', react: '19.2.3' } } });
+  const { values } = init(dir, { skipGenerate: true });
+  assert.strictEqual(values.KIT_STACK, 'bare');
+  assert.match(read(dir, 'AGENTS.md'), /Bare React Native 0\.86\.3/);
+  assert.ok(fs.existsSync(path.join(dir, 'docs/ai/react-native.md')));
 });

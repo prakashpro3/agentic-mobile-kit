@@ -43,3 +43,19 @@ jobs:
           node "$GITHUB_WORKSPACE/bin/cli.js" doctor || true
           node "$GITHUB_WORKSPACE/bin/cli.js" uninstall
           git status --short
+      - name: The same for an Expo app without ios/ and android/
+        run: |
+          app=$(mktemp -d)
+          cd "$app"
+          printf '{"name":"DemoExpo","dependencies":{"expo":"~57.0.27","react-native":"0.86.3"}}' > package.json
+          printf '{"expo":{"name":"DemoExpo","slug":"demo-expo"}}' > app.json
+          git init -q && git add -A && git commit -qm app
+          node "$GITHUB_WORKSPACE/bin/cli.js" init
+          grep -q 'stack=expo' AGENTS.md
+          test -f .agents/skills/expo-router/SKILL.md
+          test -f .claude/skills/expo-router/SKILL.md
+          grep -q 'ios/\*\*' .claude/settings.json # Expo's permissions: generated folders aren't edited
+          git add -A && git commit -qm kit # runs the kit's pre-commit hook
+          node "$GITHUB_WORKSPACE/bin/cli.js" doctor || true
+          node "$GITHUB_WORKSPACE/bin/cli.js" uninstall
+          git status --short
