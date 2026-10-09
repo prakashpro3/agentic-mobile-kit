@@ -50,7 +50,7 @@ If building shows the plan is wrong: when the intent is the same, update `requir
 ## 5. Check against the spec
 
 When all tasks are done:
-1. Run `sh scripts/ai/verify.sh all --spec <id>`. Then **open the screenshots** in `.ai/evidence/<id>/` and check each one against its scenario. Maestro can report a tap as passed when nothing happened, so the screenshots are the evidence, not the log.
+1. Run `sh scripts/ai/verify.sh all --spec <id>`. Off a Mac it checks Android only: record in `progress.md` that iOS still needs `verify.sh ios --spec <id>` on a Mac, and say so in the PR. Then **open the screenshots** in `.ai/evidence/<id>/` and check each one against its scenario. Maestro can report a tap as passed when nothing happened, so the screenshots are the evidence, not the log.
 2. Go through every scenario and note its evidence: a test name, command output, or the screen checked. Where the code and the spec disagree, fix whichever is wrong, asking first if it's the spec. The spec must describe what ships.
 
 ## 6. Update the living spec

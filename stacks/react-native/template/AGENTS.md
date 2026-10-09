@@ -28,7 +28,7 @@ This project may also use other AI workflow frameworks (for example Superpowers,
 
 A task is done only when:
 1. lint, typecheck and tests pass, and you show the command output from this session;
-2. UI changes were checked with `sh scripts/ai/verify.sh all --spec <id>` on both iOS and Android, and you looked at the screenshots;
+2. UI changes were checked with `sh scripts/ai/verify.sh all --spec <id>` on both iOS and Android, and you looked at the screenshots. On Windows or Linux, that covers Android only: write in `progress.md` and the PR that iOS still needs checking on a Mac, and the PR isn't merged until a teammate with a Mac has done it;
 3. the change stays inside the task's scope;
 4. `specs/<id>/progress.md` is updated, when working from a spec.
 

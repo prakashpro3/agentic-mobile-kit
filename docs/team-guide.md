@@ -65,7 +65,7 @@ Everything in git carries over: the spec, the handoff and the code. Chat history
 
 An agent's work is done only when:
 1. lint, typecheck and tests pass, with the command output from that session;
-2. UI changes were checked on both platforms with `sh scripts/ai/verify.sh all --spec <id>`, and the screenshots were looked at (they're in `.ai/evidence/<id>/`);
+2. UI changes were checked on both platforms with `sh scripts/ai/verify.sh all --spec <id>`, and the screenshots were looked at (they're in `.ai/evidence/<id>/`). On Windows or Linux, `verify.sh` checks Android only; a teammate with a Mac runs `verify.sh ios` before the PR is merged;
 3. the diff stays inside the task;
 4. `specs/<id>/progress.md` is updated.
 

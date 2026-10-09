@@ -79,6 +79,12 @@ quick() {
 }
 
 ios() {
+  # iOS builds need Xcode, so off a Mac "all" checks Android and says who has to check iOS
+  if [ "$(uname -s)" != Darwin ]; then
+    echo "ios: not checked here: iOS builds need a Mac with Xcode. A teammate with a Mac runs: sh scripts/ai/verify.sh ios${spec:+ --spec $spec}"
+    [ "$mode" = ios ] && status=1
+    return
+  fi
   command -v maestro > /dev/null || { echo "ios: Maestro isn't installed (https://maestro.dev)"; status=1; return; }
   # pod install also generates React Native codegen files into ios/build/generated
   if [ ! -d ios/Pods ] || [ ! -d ios/build/generated ]; then (cd ios && pod install > "$evidence/pod-install.log" 2>&1); fi
