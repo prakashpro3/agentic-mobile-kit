@@ -39,25 +39,6 @@ Tested with Claude Code, Codex and Antigravity. `--tools` also sets up Cursor, O
 
 Invoke a skill with `/m-feature` in Claude Code and Antigravity, or `$m-feature` in Codex. The skills are set to run only when you invoke them.
 
-## How it compares
-
-Superpowers, BMAD Method and Spec Kit are general methods for working with AI coding agents, for any stack. This kit is narrower. It's built for bare React Native apps, and it adds the checks a mobile team needs around the AI.
-
-| | agentic-mobile-kit | Superpowers | BMAD Method | Spec Kit |
-|---|---|---|---|---|
-| What it is | Workflows, checks and release tools for bare React Native apps | A development method built from composable skills | An agile method with product, architecture, UX, development and testing perspectives | GitHub's toolkit for spec-driven development |
-| Stack | Bare React Native: iOS and Android | Any | Any | Any |
-| How work flows | Explore → requirements and design you approve → tasks with tests → device checks → review → PR, plus release and learning workflows | Brainstorm a spec → write a plan → subagents build and review each task | Clarify → plan → build and verify → learn, with more planning for bigger work | Constitution → specify → plan → tasks → implement → converge |
-| Where it lives | In the app's repo, committed, so the whole team and every AI tool share one copy | A plugin installed in each AI tool on each machine | Skills, or a Claude Code or Codex plugin | The `specify` CLI and files in the project |
-| How it starts | You invoke an `m-` skill | Its skills trigger on their own | The `bmad` skill | `/speckit-*` commands |
-| Git hooks and CI it adds to your project | Secrets, signing files, lint, typecheck, tests, spec format, builds | — | — | — |
-| Mobile-specific | Device checks with screenshots, a store-review check, store notes, signed builds | — | — | — |
-| License | MIT | MIT | MIT | MIT |
-
-— means the project's README (October 2026) doesn't describe it.
-
-You don't have to pick one. The kit runs alongside the others, as the next section explains. Its workflows adapt ideas from Superpowers and Spec Kit, and its spec format from OpenSpec, all MIT.
-
 ## Alongside other AI workflows
 
 Apps that already use Superpowers, BMAD, proAgents or similar keep them as they are. The kit adds its section next to theirs and links its skills into an existing `.claude/skills` folder. A task started with an `m-` skill follows the kit's steps, and everything else keeps working as before.
