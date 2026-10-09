@@ -15,7 +15,15 @@ if [ "$config" = Release ]; then
   [ -n "$config" ] || config=Release
 fi
 
+# only this Mac's simulator architecture: a Release build would otherwise compile Intel and Apple silicon both,
+# and fail to link libraries that ship without an Intel simulator slice. Not when the project or a pod excludes it
+# for the simulator (Google's ML Kit pods exclude arm64): then Xcode builds what the project allows.
+arch=x86_64
+[ "$(sysctl -n hw.optional.arm64 2> /dev/null)" != 1 ] || arch=arm64
+set -- ARCHS="$arch"
+! grep -rqsE "EXCLUDED_ARCHS\[sdk=iphonesimulator\*\]\"? = [^;]*$arch" ios/*.xcodeproj/project.pbxproj "ios/Pods/Target Support Files" || set --
+
 xcodebuild -workspace "$workspace" -scheme "$scheme" -configuration "$config" \
   -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' \
-  -derivedDataPath ios/DerivedData CODE_SIGNING_ALLOWED=NO -quiet build
+  -derivedDataPath ios/DerivedData "$@" CODE_SIGNING_ALLOWED=NO -quiet build
 echo "iOS simulator build OK ($scheme, $config)"
