@@ -4,6 +4,13 @@ appId: ${APP_ID}  # set by verify.sh
 ---
 - launchApp:
     clearState: true
+# After every launchApp: a splash screen can still cover the app while assertions already pass (the app's views
+# exist under it), so wait a moment (for text that never appears), then for the screen to settle.
+- extendedWaitUntil:
+    visible: "flow: waiting for the app to draw"
+    timeout: 3000
+    optional: true
+- waitForAnimationToEnd
 # Scenario 1: <scenario name from requirements.md>
 - assertVisible:
     id: "<testID of the element>"

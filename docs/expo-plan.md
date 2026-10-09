@@ -1,6 +1,6 @@
 # Plan: Expo support
 
-Status: draft, 2026-10-09.
+Status: done, 2026-10-09. Results are in the [tool matrix](tool-matrix.md#expo-2026-10-09).
 
 **Goal:** the kit works for Expo apps that use Continuous Native Generation (CNG). In those apps, `npx expo prebuild` generates `ios/` and `android/`, which aren't kept in git. That's how `create-expo-app` starts every app (SDK 57: React Native 0.86 and Expo Router).
 

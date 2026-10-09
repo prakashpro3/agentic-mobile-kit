@@ -230,3 +230,29 @@ Common React Native setups that the first test apps didn't have, each checked ag
 | Files renamed only in letter case | Built on the developer's Mac, failed in CI and fresh clones | `pre-commit` blocks it and shows the `git mv` fix; `doctor` reports it | Unit tests, including a renamed folder |
 
 `release-build.sh ios` with an export options file isn't tested yet: it needs an Apple Developer team.
+
+## Expo (2026-10-09)
+
+Tested on new apps from `create-expo-app` 5.0.0 (Expo SDK 57, React Native 0.86.3, Expo Router) on the iOS simulator and the Android emulator, without an Expo account.
+
+| Check | Result |
+|---|---|
+| `init` with real tool configs | ✅ Expo's own `AGENTS.md` text stays above the kit's section. `.claude/settings.json` keeps Expo's Claude Code plugin next to the kit's hooks and permissions: edits to `ios/**` and `android/**` are denied, and `eas` commands ask first. `doctor` passes apart from the unfilled docs |
+| `verify.sh all` | ✅ prebuild, pods and Release builds on both platforms, and the smoke screenshots show the app. `package.json` and `app.json` are unchanged afterwards |
+| Prebuild only when something native changed | ✅ skipped in 1 s while Expo's fingerprint is unchanged. A change to `app.json` regenerated the project and showed up in `Info.plist` |
+| `release-check` | ✅ read the app through `expo config`: version, build numbers, permission texts and Android permissions |
+| `release-build.sh android` | ✅ signed with a throwaway upload key; without a key it stops on the debug key |
+| `/m-feature` in Claude Code (a tap counter on the Home screen) | ✅ requirements in 78 s and design and tasks in 123 s, stopping for approval each time, with no new dependency. Implementation, then `verify.sh all` on both platforms. It didn't count its second run, which had passed: one iOS screenshot showed the splash screen fading over the result. It fixed its flow and ran a third time, and all 10 screenshots matched their scenarios. It found an accessibility problem (at the largest text size, the Home screen overflows) and asked how to handle it |
+| `/m-pause`, then `/m-continue` in a new Claude Code session on a fresh clone | ✅ handoff, the living spec merged, and a `wip:` commit. The push failed because the test repo has no remote, so it reported that instead of adding one. The new session reported the status and the next step from the files in 21 s, and noticed that the "no remote" blocker was out of date |
+| `/m-continue` in the Antigravity CLI 1.3.1 on another fresh clone | ✅ in 70 s with `--dangerously-skip-permissions`: it reported, in the skill's order, the blockers (it noticed that the "no remote" one was out of date), the status with its commits, and the exact next step. It asked for confirmation and changed nothing. Without that flag, headless mode refuses the skill's first shell command (`git fetch`) and prints nothing. Antigravity's CLI permissions can only be allowed globally; in interactive use, a person approves each command |
+| `$m-continue` in the Codex CLI 0.162.0 on another fresh clone | ✅ in 41 s: it ran `git fetch` and `git status`, read the spec files, and reported the status and the exact next step (the review). It noticed that the recorded "no remote" blocker no longer applied, then waited for confirmation. It changed nothing. The test Mac's Codex config named a model this version rejects for ChatGPT accounts (`gpt-5.3-codex`), so the run used `-m gpt-5.5` |
+
+**Bugs found and fixed on the way:**
+- The smoke screenshot showed Expo's splash screen. The splash stays up until the JavaScript has loaded, and a still splash counts as a settled screen. The smoke check now waits 5 s first, and the flow template waits after every launch.
+- The first `prebuild` rewrites the `package.json` run scripts and writes a placeholder bundle ID into `app.json`. `prebuild.sh` puts both back.
+- SDK 57's `prebuild` recreates the native folders by default, which threw away pods and build caches on every check. `prebuild.sh` skips it while Expo's fingerprint is unchanged.
+- `prebuild.sh` stopped silently when `app.json` had uncommitted changes. The test for that case found it.
+- A fresh Expo app fails `tsc --noEmit` until `expo start` writes `expo-env.d.ts`, so `pm-run.sh` writes the same file before a type check.
+- The first `expo lint` installs ESLint and edits `package.json`. `pm-run.sh` skips lint until the team sets it up.
+
+**Not tested:** anything on EAS (no Expo account), and signed iOS builds (no Apple Developer team).
