@@ -181,3 +181,23 @@ test('iOS may reuse its build number for a new version; Android may not', () => 
   assert.match(out, /✓ iOS build number \(1 again, for a new version\)/);
   assert.match(out, /! Android build number unchanged/);
 });
+
+test('signing keys and passwords in git warn; the standard debug keystore does not', () => {
+  const signed = `android {
+  defaultConfig { versionCode 2
+    versionName "1.1" }
+  signingConfigs {
+    debug { storeFile file('debug.keystore'); storePassword 'android'; keyPassword 'android' }
+    release { storeFile file('jks/upload'); storePassword "s3cret" }
+  }
+  buildTypes { release { signingConfig signingConfigs.release } }
+}
+`;
+  const dir = app({ ...bumped, 'android/app/build.gradle': signed, 'android/app/jks/upload': 'binary', 'android/app/debug.keystore': 'binary', 'android/gradle.properties': 'MYAPP_UPLOAD_KEY_PASSWORD=abc\n# a comment about password=x\n' });
+  git(dir, 'add', '-A');
+  const { out } = check(dir);
+  assert.match(out, /! Signing keys are in git: android\/app\/jks\/upload; 2 signing password\(s\) are written in android\/gradle\.properties or android\/app\/build\.gradle/);
+  assert.doesNotMatch(out, /debug\.keystore/);
+  assert.doesNotMatch(out, /s3cret|abc/, 'never prints the passwords');
+  assert.doesNotMatch(check(app(bumped)).out, /Signing keys|signing password/, 'a clean app has no warning');
+});

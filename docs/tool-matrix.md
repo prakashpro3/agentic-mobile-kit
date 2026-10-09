@@ -195,3 +195,22 @@ OpenSpec (Fission-AI, v1.14.1) is a planning-only layer: living specs that each 
 - **The executable flag:** files have none on Windows, so `init` stages the hooks as executable for Mac and Linux clones.
 - **Line endings:** Git for Windows checks files out with CRLF. `init` adds `.gitattributes` rules that keep shell scripts in LF, and `sync` compares files ignoring CRLF.
 - **Symbolic links** need Developer Mode. A refused link is now a warning with the fix.
+
+## Product flavors, iOS schemes and signing keys (2026-10-09)
+
+Checked on a new React Native 0.87 app and on three production apps on React Native 0.84: two in TypeScript, one in JavaScript, all installing with npm.
+
+| Check | Result |
+|---|---|
+| `android-flavors.js`: Groovy and Kotlin build files, nested blocks, comments, several flavor dimensions | ✅ unit tests |
+| The production apps: no flavors, 2 flavors, 4 flavors with app ID suffixes | ✅ listed correctly |
+| `verify.sh android` on the app with 4 flavors | ✅ checked the first flavor, built `assembleDevRelease` signed with the debug key, found the APK under its custom file name, read the app ID with its `.dev` suffix from the APK, and the screenshot showed that flavor's login screen |
+| `ios-build.sh` with a second scheme (`AMK_IOS_SCHEME`, Release) | ✅ built in 75 s; a wrong scheme name stops with xcodebuild's own message |
+| `release-check`: signing keys and passwords in git | ✅ unit test; on the production apps it named the key files and counted the passwords, without printing them |
+
+**Bug found:** the smoke check (used when an app has no Maestro flows yet) took its screenshot as soon as `launchApp` returned, 0.7 s after launch and before the app had drawn. It passed with a picture of the home screen. It now waits for the screen to settle first; 4 runs, including the first launch after a fresh install, all showed the app. The flow template also asserts each scenario's result before its screenshot.
+
+**Found on the way:**
+- Building a fresh clone showed that one app imports `./Storage` while git has `storage.ts`, a case-only rename made on a Mac. It builds on the developer's machine and fails everywhere else. Added to `known-issues.md`.
+- One app's Gradle wrapper jar didn't match its `gradlew` after a React Native upgrade, so every Gradle command failed. Added to `known-issues.md`.
+- One app's `npm ci` failed on a peer-dependency conflict that the team gets past with `--legacy-peer-deps` on their machines. `install-deps.sh` now says to commit `legacy-peer-deps=true` in `.npmrc`.

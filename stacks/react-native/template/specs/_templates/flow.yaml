@@ -11,4 +11,6 @@ appId: ${APP_ID}  # set by verify.sh
 # Scenario 2: …
 - tapOn:
     id: "<testID>"
+- assertVisible:  # what THEN expects, so the screenshot shows the result and not the screen before it
+    id: "<testID of the result>"
 - takeScreenshot: <id>-2-<short-name>

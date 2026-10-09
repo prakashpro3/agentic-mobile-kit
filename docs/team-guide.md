@@ -114,6 +114,8 @@ From `docs/ai/team-process.md`:
 | `pre-commit` says to fix the spec format | Each requirement needs a SHALL sentence and a scenario with WHEN and THEN; see `specs/current/README.md` |
 | Hooks don't run | `git config core.hooksPath` must print `.githooks`; `sh scripts/ai/install-deps.sh` sets it |
 | `pre-push` says dependencies aren't installed | `sh scripts/ai/install-deps.sh` |
+| `verify.sh` checks the wrong Android flavor or iOS app | Add `--flavor <name>` or `--scheme <name>`, or set `AMK_ANDROID_FLAVOR` / `AMK_IOS_SCHEME` in your shell |
+| `release-check` says signing keys are in git | Move the keystores out of the repo into a password manager, read the passwords from the environment or `~/.gradle/gradle.properties`, and reset the upload key in Play Console if Play App Signing is on |
 | Metro's port 8081 is busy | Nothing to do: `verify.sh` uses release builds, which don't need Metro |
 | iOS build fails after a native dependency change | `cd ios && pod install` |
 

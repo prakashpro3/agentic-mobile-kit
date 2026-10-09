@@ -10,5 +10,8 @@ elif [ -f pnpm-lock.yaml ]; then
 elif [ -f bun.lock ] || [ -f bun.lockb ]; then
   bun install --frozen-lockfile # ponytail: CI needs a setup-bun step for this branch
 else
-  npm ci
+  npm ci || {
+    echo "install-deps: npm ci failed. If it's a peer-dependency conflict (ERESOLVE) and your team installs with --legacy-peer-deps, commit legacy-peer-deps=true in .npmrc so every install, and CI, does the same." >&2
+    exit 1
+  }
 fi

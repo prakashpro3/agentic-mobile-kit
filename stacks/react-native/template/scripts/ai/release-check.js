@@ -182,7 +182,25 @@ const debuggers = (git('grep', '-n', '-E', '^[[:space:]]*debugger;?[[:space:]]*$
 if (debuggers.length) fail(`"debugger" statements left in code: ${debuggers.slice(0, 3).join(', ')}${debuggers.length > 3 ? ' …' : ''}`, 'remove them');
 else ok('No "debugger" statements');
 
-// ---------- 6. store notes ----------
+// ---------- 6. signing keys in git ----------
+// the standard debug.keystore (password "android") is public and fine; real keys and passwords aren't
+const tracked = (git('ls-files') || '').split('\n').filter(Boolean);
+const gradleCode = stripComments(readNow(gradlePath));
+const storeFiles = [
+  ...all(/storeFile\s*=?\s*file\(\s*["']([^"']+)["']\s*\)/g, gradleCode).map(f => path.posix.join('android/app', f)),
+  ...all(/storeFile\s*=?\s*rootProject\.file\(\s*["']([^"']+)["']\s*\)/g, gradleCode).map(f => path.posix.join('android', f)),
+];
+const keys = tracked.filter(f => (/\.(jks|keystore|p12|p8|mobileprovision)$/.test(f) || storeFiles.includes(f)) && path.basename(f) !== 'debug.keystore');
+// React Native's docs suggest android/gradle.properties for these passwords, and that file is usually committed
+const propsPasswords = tracked.includes('android/gradle.properties')
+  ? (readNow('android/gradle.properties') || '').split('\n').filter(l => /^[^#]*password[^=]*=\s*\S/i.test(l)).length : 0;
+const passwords = [...gradleCode.matchAll(/(?:store|key)Password\s*=?\s*["']([^"']*)["']/g)].filter(m => m[1] !== 'android').length + propsPasswords;
+if (keys.length || passwords) {
+  const what = [keys.length && `signing keys are in git: ${keys.join(', ')}`, passwords && `${passwords} signing password(s) are written in ${propsPasswords ? 'android/gradle.properties or ' : ''}${gradlePath}`].filter(Boolean).join('; ');
+  warn(what.charAt(0).toUpperCase() + what.slice(1), 'anyone who can read the repo can sign builds as you: keep keys in a password manager, read passwords from the environment or ~/.gradle/gradle.properties, and reset the upload key in Play Console if Play App Signing is on');
+}
+
+// ---------- 7. store notes ----------
 const LIMITS = { 'play-store': 500, 'app-store': 4000 };
 const noteFiles = fs.existsSync('release-notes') ? (git('ls-files', '--others', '--cached', '--exclude-standard', 'release-notes') || '').split('\n').filter(Boolean) : [];
 for (const f of noteFiles) {

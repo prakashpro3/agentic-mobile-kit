@@ -3,13 +3,17 @@
 # and Android emulator, running Maestro flows and saving screenshots as evidence.
 #
 # Usage: sh scripts/ai/verify.sh [quick|ios|android|all] [--spec <id>] [--flow <file>] [--label <name>]
-#   quick       lint, typecheck, tests
-#   ios|android release build, install, run flows, screenshots
-#   all         everything (default)
-#   --spec <id> run .maestro/<id>*.yaml and save evidence in .ai/evidence/<id>/
-#   --label <n> evidence folder name (default: the spec id, or a timestamp)
+#                                [--flavor <name>] [--scheme <name>]
+#   quick           lint, typecheck, tests
+#   ios|android     release build, install, run flows, screenshots
+#   all             everything (default)
+#   --spec <id>     run .maestro/<id>*.yaml and save evidence in .ai/evidence/<id>/
+#   --label <n>     evidence folder name (default: the spec id, or a timestamp)
+#   --flavor <name> Android product flavor to check (default: the first one in build.gradle)
+#   --scheme <name> iOS scheme to check (default: the one named like the workspace)
 #   (no flows found: a smoke check that launches the app and takes a screenshot)
-# Env: AMK_IOS_DEVICE (simulator name or UDID), AMK_ANDROID_AVD (emulator name)
+# Env: AMK_ANDROID_FLAVOR, AMK_IOS_SCHEME (defaults for the two options), AMK_IOS_DEVICE (simulator name
+#      or UDID), AMK_ANDROID_AVD (emulator name)
 set -eu
 
 mode=${1:-all}
@@ -17,11 +21,14 @@ mode=${1:-all}
 spec=""
 flow=""
 label=""
+flavor=${AMK_ANDROID_FLAVOR:-}
 while [ $# -gt 0 ]; do
   case $1 in
     --spec) spec=$2; shift 2 ;;
     --flow) flow=$2; shift 2 ;;
     --label) label=$2; shift 2 ;;
+    --flavor) flavor=$2; shift 2 ;;
+    --scheme) AMK_IOS_SCHEME=$2; export AMK_IOS_SCHEME; shift 2 ;;
     *) echo "verify: unknown option $1"; exit 2 ;;
   esac
 done
@@ -43,7 +50,8 @@ run_flows() { # platform device app_id
   mkdir -p "$out"
   files=$(flow_files)
   if [ -z "$files" ]; then
-    printf 'appId: %s\n---\n- launchApp\n- takeScreenshot: smoke-launch\n' "$3" > "$out/smoke.yaml"
+    # launchApp returns before the app has drawn: without the wait, the screenshot can show the home screen
+    printf 'appId: %s\n---\n- launchApp\n- waitForAnimationToEnd\n- takeScreenshot: smoke-launch\n' "$3" > "$out/smoke.yaml"
     files="$out/smoke.yaml"
   fi
   passed=0
@@ -91,7 +99,8 @@ ios() {
   if ! CONFIGURATION=Release sh scripts/ai/ios-build.sh > "$evidence/ios-build.log" 2>&1; then
     echo "ios: release build FAILED, see ${evidence#"$root"/}/ios-build.log"; status=1; return
   fi
-  app=$(ls -d ios/DerivedData/Build/Products/Release-iphonesimulator/*.app | head -n 1)
+  # the newest app: the scheme just built (another scheme's app may still be there from an earlier build)
+  app=$(ls -dt ios/DerivedData/Build/Products/Release-iphonesimulator/*.app | head -n 1)
   app_id=$(/usr/libexec/PlistBuddy -c 'Print CFBundleIdentifier' "$app/Info.plist")
   device=$(xcrun simctl list devices available -j | node -e '
     const all = Object.entries(JSON.parse(require("fs").readFileSync(0, "utf8")).devices)
@@ -117,11 +126,34 @@ android() {
   esac
   sdk=${ANDROID_HOME:-${ANDROID_SDK_ROOT:-$default_sdk}}
   adb="$sdk/platform-tools/adb"
-  if ! (cd android && ./gradlew assembleRelease --no-daemon -q) > "$evidence/android-build.log" 2>&1; then
+  # apps with product flavors: check one, the first in build.gradle unless --flavor names another
+  if [ -z "$flavor" ]; then
+    code=0
+    flavors=$(node scripts/ai/android-flavors.js) || code=$?
+    case $code in
+      0) ;;
+      2) echo "android: the app has several flavor dimensions; name the variant with --flavor (for example devFree)"; status=1; return ;;
+      *) echo "android: couldn't read the product flavors from build.gradle (see the error above)"; status=1; return ;;
+    esac
+    flavor=$(echo "$flavors" | head -n 1)
+    [ -z "$flavor" ] || echo "android: checking the \"$flavor\" flavor (the app has: $(echo $flavors)); --flavor <name> checks another"
+  fi
+  variant=$(printf %s "$flavor" | awk '{ print toupper(substr($0, 1, 1)) substr($0, 2) }')
+  # signed with the project's debug key, so the check build installs whatever key its real release needs
+  set --
+  if [ -f android/app/debug.keystore ]; then
+    keystore=$(cd android/app && { pwd -W 2> /dev/null || pwd; })/debug.keystore # pwd -W: a Windows path in Git Bash
+    set -- -Pandroid.injected.signing.store.file="$keystore" -Pandroid.injected.signing.store.password=android \
+      -Pandroid.injected.signing.key.alias=androiddebugkey -Pandroid.injected.signing.key.password=android
+  fi
+  if ! (cd android && ./gradlew "assemble${variant}Release" --no-daemon -q "$@") > "$evidence/android-build.log" 2>&1; then
     echo "android: release build FAILED, see ${evidence#"$root"/}/android-build.log"; status=1; return
   fi
-  apk=$(ls android/app/build/outputs/apk/release/*.apk | head -n 1)
-  app_id=$(sed -n 's/.*applicationId *=\{0,1\} *"\([^"]*\)".*/\1/p' android/app/build.gradle* | head -n 1)
+  apk=$(ls android/app/build/outputs/apk/${flavor:+$flavor/}release/*.apk | head -n 1)
+  # the app ID from the built APK, which includes flavor suffixes such as .dev
+  aapt2="$(ls -d "$sdk"/build-tools/*/ 2> /dev/null | sort -V | tail -n 1)aapt2"
+  app_id=$("$aapt2" dump badging "$apk" 2> /dev/null | sed -n "s/^package: name='\([^']*\)'.*/\1/p")
+  [ -n "$app_id" ] || app_id=$(sed -n 's/.*applicationId *=\{0,1\} *"\([^"]*\)".*/\1/p' android/app/build.gradle* | head -n 1)
   device=$("$adb" devices | awk 'NR > 1 && $2 == "device" { print $1; exit }')
   if [ -z "$device" ]; then
     avd=${AMK_ANDROID_AVD:-$("$sdk/emulator/emulator" -list-avds | head -n 1)}

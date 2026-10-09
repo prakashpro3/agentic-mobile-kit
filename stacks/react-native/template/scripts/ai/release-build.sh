@@ -4,6 +4,7 @@
 #
 #   sh scripts/ai/release-build.sh android [flavor]   signed app bundle (.aab) for Google Play
 #   sh scripts/ai/release-build.sh ios [scheme]       signed .ipa for App Store Connect (TestFlight)
+# Defaults: AMK_ANDROID_FLAVOR and AMK_IOS_SCHEME. An app with product flavors must name the one to build.
 #
 # Android signs with your upload key. Set its path in your shell, never in the repo:
 #   export AMK_UPLOAD_KEYSTORE=~/keys/myapp-upload.jks AMK_UPLOAD_KEY_ALIAS=upload
@@ -29,6 +30,17 @@ secret() {
 
 case "$platform" in
 android)
+  target=${target:-${AMK_ANDROID_FLAVOR:-}}
+  if [ -z "$target" ]; then
+    code=0
+    flavors=$(node scripts/ai/android-flavors.js) || code=$?
+    case $code in
+      0) ;;
+      2) echo "This app has several flavor dimensions: name the variant, for example: sh scripts/ai/release-build.sh android devFree" >&2; exit 1 ;;
+      *) echo "Couldn't read the product flavors from build.gradle (see the error above)." >&2; exit 1 ;;
+    esac
+    [ -z "$flavors" ] || { echo "This app has product flavors ($(echo $flavors)). Name the one to build, for example: sh scripts/ai/release-build.sh android $(echo "$flavors" | head -n 1)" >&2; exit 1; }
+  fi
   flavor=$(printf %s "$target" | awk '{ print toupper(substr($0, 1, 1)) substr($0, 2) }')
   if [ -n "${AMK_UPLOAD_KEYSTORE:-}" ]; then
     secret AMK_UPLOAD_STORE_PASSWORD 'Keystore password'
@@ -55,7 +67,7 @@ android)
   ;;
 ios)
   workspace=$(ls -d ios/*.xcworkspace | head -n 1)
-  scheme=${target:-$(basename "$workspace" .xcworkspace)}
+  scheme=${target:-${AMK_IOS_SCHEME:-$(basename "$workspace" .xcworkspace)}}
   [ -d ios/Pods ] || (cd ios && pod install)
   log="$out/$scheme-ios.log"
   echo "Archiving $scheme (several minutes; log: $log)"
