@@ -44,7 +44,7 @@ function expoConfig() {
     fail('Expo isn\'t installed, so the app config can\'t be read', 'install dependencies first: sh scripts/ai/install-deps.sh');
     return null;
   }
-  const r = spawnSync(process.execPath, [cli, 'config', '--type', 'introspect', '--json'], { encoding: 'utf8', maxBuffer: 1 << 28 });
+  const r = spawnSync(process.execPath, [cli, 'config', '--type', 'introspect', '--json'], { encoding: 'utf8', maxBuffer: 2 ** 28 });
   try { return JSON.parse(r.stdout); } catch {
     fail('Couldn\'t read the Expo app config', (r.stderr || '').trim().split('\n').pop() || 'run: npx expo config');
     return null;

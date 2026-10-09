@@ -14,7 +14,6 @@ const path = require('path');
 const [cmd, ...args] = process.argv.slice(2);
 const read = f => { try { return fs.readFileSync(f, 'utf8').replace(/\r\n/g, '\n'); } catch { return null; } };
 const key = name => name.trim().toLowerCase();
-const isRequirement = l => /^### Requirement:/.test(l);
 
 // "### Requirement:" blocks between lines [from, to): each runs to the next heading of level 1-3
 function blocks(lines, from = 0, to = lines.length) {
@@ -214,6 +213,6 @@ if (cmd === 'check') {
 } else if (cmd === 'status') {
   process.exitCode = status();
 } else {
-  console.log(fs.readFileSync(__filename, 'utf8').split('\n').slice(1, 10).map(l => l.replace(/^\/\/ ?/, '')).join('\n'));
+  console.log(fs.readFileSync(process.argv[1], 'utf8').split('\n').slice(1, 9).map(l => l.replace(/^\/\/ ?/, '')).join('\n'));
   process.exitCode = 1;
 }

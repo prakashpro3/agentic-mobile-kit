@@ -483,3 +483,24 @@ test('an Expo app that keeps ios/ and android/ in git is set up like a bare app'
   assert.match(read(dir, 'AGENTS.md'), /Bare React Native 0\.86\.3/);
   assert.ok(fs.existsSync(path.join(dir, 'docs/ai/react-native.md')));
 });
+
+test('apps on ESLint\'s eslintrc config get .eslintignore for the kit\'s scripts; uninstall takes it out again', () => {
+  const dir = fakeApp({ files: { '.eslintrc.js': "module.exports = { root: true, extends: '@react-native' };\n" } });
+  const { report } = init(dir, { skipGenerate: true });
+  assert.ok(report.created.includes('.eslintignore'));
+  assert.match(read(dir, '.eslintignore'), /^scripts\/ai\/$/m);
+  commitAll(dir);
+  uninstall(dir, { skipGenerate: true });
+  assert.ok(!fs.existsSync(path.join(dir, '.eslintignore')), 'the file the kit created is gone');
+
+  const own = fakeApp({ files: { '.eslintrc.json': '{}\n', '.eslintignore': 'vendor/\n' } });
+  init(own, { skipGenerate: true });
+  assert.match(read(own, '.eslintignore'), /^vendor\/\n\n# agentic-mobile-kit: .*\nscripts\/ai\/\n$/);
+  commitAll(own);
+  uninstall(own, { skipGenerate: true });
+  assert.strictEqual(read(own, '.eslintignore'), 'vendor/\n');
+
+  const flat = fakeApp({ files: { 'eslint.config.js': 'module.exports = [];\n' } });
+  init(flat, { skipGenerate: true });
+  assert.ok(!fs.existsSync(path.join(flat, '.eslintignore')), 'flat config doesn\'t read .eslintignore');
+});

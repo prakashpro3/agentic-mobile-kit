@@ -93,3 +93,15 @@ test('reports files renamed only in letter case, which git missed', () => {
   assert.match(c.label, /package\.json {2}\(on disk: Package\.json\)/);
   assert.match(c.fix, /git mv/);
 });
+
+test('example env files (.env.local.example, .env.sample) aren\'t reported as secrets, and the hook lets them be committed', () => {
+  const dir = installedApp();
+  init(dir, { skipGenerate: true });
+  fs.mkdirSync(path.join(dir, '.maestro'), { recursive: true });
+  for (const f of ['.maestro/.env.local.example', '.env.sample', '.env.template']) fs.writeFileSync(path.join(dir, f), 'API_URL=\n');
+  git(dir, 'add', '-f', '.maestro/.env.local.example', '.env.sample', '.env.template');
+  assert.strictEqual(levelOf(projectChecks(dir, { skipNetwork: true }), /No \.env files in git/), 'ok');
+  const hook = require('child_process').spawnSync('sh', ['.githooks/pre-commit'], { cwd: dir, encoding: 'utf8' });
+  assert.doesNotMatch(hook.stderr, /don't commit \.env files/);
+  assert.match(fs.readFileSync(path.join(dir, '.gitignore'), 'utf8'), /^!\.env\*\.example$/m);
+});

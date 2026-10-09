@@ -6,7 +6,7 @@
 const fs = require('fs');
 const { execFileSync } = require('child_process');
 
-const tracked = execFileSync('git', ['ls-files', '-z'], { encoding: 'utf8', maxBuffer: 1 << 30 }).split('\0').filter(Boolean);
+const tracked = execFileSync('git', ['ls-files', '-z'], { encoding: 'utf8', maxBuffer: 2 ** 30 }).split('\0').filter(Boolean);
 const listings = new Map();
 const names = dir => {
   if (!listings.has(dir)) { try { listings.set(dir, new Set(fs.readdirSync(dir || '.'))); } catch { listings.set(dir, null); } }

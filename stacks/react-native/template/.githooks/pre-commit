@@ -9,7 +9,7 @@ staged=$(git diff --cached --name-only --diff-filter=ACMR)
 fail() { echo "pre-commit: $*" >&2; exit 1; }
 
 # 1. files that must never be committed
-if echo "$staged" | grep -E '(^|/)\.env(\..+)?$' | grep -qv '\.env\.example$'; then
+if echo "$staged" | grep -E '(^|/)\.env(\..+)?$' | grep -qvE '\.(example|sample|template)$'; then
   fail "don't commit .env files; keep secrets out of git"
 fi
 if echo "$staged" | grep -qE '\.(keystore|jks|p8|p12|mobileprovision)$'; then
@@ -30,8 +30,8 @@ if command -v plutil > /dev/null; then
   done
 fi
 
-# 4. lint the staged JS/TS files with the project's own ESLint config
-files=$(echo "$staged" | grep -E '\.(js|jsx|ts|tsx)$' || true)
+# 4. lint the staged JS/TS files with the project's own ESLint config (the kit's own scripts aren't the app's code)
+files=$(echo "$staged" | grep -E '\.(js|jsx|ts|tsx)$' | grep -v '^scripts/ai/' || true)
 if [ -n "$files" ]; then
   if [ -x node_modules/.bin/eslint ]; then
     # ponytail: file names with spaces aren't supported here; split on newlines if that ever matters
