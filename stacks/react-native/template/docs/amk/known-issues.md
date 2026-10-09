@@ -13,8 +13,8 @@ Recurring errors and their fixes. Check here before debugging a build error. Rem
 
 ### iOS build fails right after a native dependency was added or removed
 - **Cause:** `ios/Pods` is out of date.
-- **Fix:** `sh scripts/ai/pod-install.sh`, then rebuild.
-- **Prevention:** run `sh scripts/ai/pod-install.sh` in the same change that edits `package.json`.
+- **Fix:** `sh scripts/amk/pod-install.sh`, then rebuild.
+- **Prevention:** run `sh scripts/amk/pod-install.sh` in the same change that edits `package.json`.
 
 ### `./gradlew` fails with "no main manifest attribute, in …/gradle-wrapper.jar"
 - **Cause:** a React Native upgrade updated `android/gradlew` (which now runs `java -jar gradle-wrapper.jar`) but not `android/gradle/wrapper/gradle-wrapper.jar`. The upgrade diff doesn't carry binary files.

@@ -17,7 +17,7 @@ If your tool has subagents, hand the review to the `m-reviewer` subagent, so it 
    - **Against the spec**, when there is one:
      - *Complete:* every task is ticked, every requirement is implemented, and every scenario has evidence (a test or a screenshot).
      - *Correct:* the code does what each requirement says, edge cases included, and nothing outside the agreed scope.
-     - *Coherent:* the decisions in `design.md` show up in the code, and `specs/current/` was updated (`node scripts/ai/specs.js merge <id>`) if behavior changed.
+     - *Coherent:* the decisions in `design.md` show up in the code, and `specs/current/` was updated (`node scripts/amk/specs.js merge <id>`) if behavior changed.
    - **No spec:** does the diff do what was asked, and nothing unrelated?
    - **Tests:** were tests added for new logic? Were any tests deleted, skipped or weakened?
    - **Both platforms:** anything iOS-only or Android-only (insets, back button, permissions, keyboard)?

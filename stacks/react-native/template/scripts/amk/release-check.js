@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Release check for a bare React Native app: what App Store review, Play review or your users would catch.
-// Usage: node scripts/ai/release-check.js [--since <git ref>]
+// Usage: node scripts/amk/release-check.js [--since <git ref>]
 //   --since  the previous release to compare with (default: the latest git tag)
 // Exits 1 when something would get the release rejected or broken; warnings don't fail it.
 'use strict';
@@ -41,7 +41,7 @@ function expoConfig() {
     const dir = path.dirname(require.resolve('expo/package.json', { paths: [process.cwd()] }));
     cli = path.join(dir, require(path.join(dir, 'package.json')).bin.expo);
   } catch {
-    fail('Expo isn\'t installed, so the app config can\'t be read', 'install dependencies first: sh scripts/ai/install-deps.sh');
+    fail('Expo isn\'t installed, so the app config can\'t be read', 'install dependencies first: sh scripts/amk/install-deps.sh');
     return null;
   }
   const r = spawnSync(process.execPath, [cli, 'config', '--type', 'introspect', '--json'], { encoding: 'utf8', maxBuffer: 2 ** 28 });
@@ -232,7 +232,7 @@ if (/debuggable\s*=?\s*true/.test(releaseBlock)) fail('Android release build is 
 if (/android\.injected\.signing/.test(codemagic)) ok('Android release signing', 'Codemagic signs with the upload key');
 else if (/signingConfig\s*=?\s*signingConfigs\.debug/.test(releaseBlock)) {
   // the kit's release-build.sh (and Codemagic) sign with the upload key, and Play rejects debug-signed uploads anyway
-  info('build.gradle signs release builds with the debug key', 'build store releases with sh scripts/ai/release-build.sh android, which signs with your upload key');
+  info('build.gradle signs release builds with the debug key', 'build store releases with sh scripts/amk/release-build.sh android, which signs with your upload key');
 }
 const cleartext = expo ? ((((expoManifest || {}).application || [])[0] || {}).$ || {})['android:usesCleartextTraffic'] === 'true'
   : /android:usesCleartextTraffic="true"/.test(readNow(manifestPath) || '');

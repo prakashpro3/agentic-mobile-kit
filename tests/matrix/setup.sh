@@ -11,10 +11,10 @@ cd "$dir"
 mkdir -p .claude tmp-probe
 ln -s ../.agents/skills .claude/skills
 printf 'PROBE_SECRET=CEDAR-5583\n' > .env
-printf '.env\n.ai/\n' > .gitignore
+printf '.env\n.amk/\n' > .gitignore
 git init -q
 git add -A
 git -c user.name=probe -c user.email=probe@example.invalid commit -qm fixture
-npx -y "rulesync@$RULESYNC_VERSION" generate > .ai-rulesync.log 2>&1
+npx -y "rulesync@$RULESYNC_VERSION" generate > .amk-rulesync.log 2>&1
 echo "$dir"
 echo "Delete it when you're done: rm -r $dir" >&2

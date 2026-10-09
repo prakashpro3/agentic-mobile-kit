@@ -25,7 +25,7 @@ const destructive = /\brm\s+(-[a-z]*r[a-z]*f|-[a-z]*f[a-z]*r|-r\s+-f|-f\s+-r)\b|
 // example files (.env.example, .env.local.example, .env.sample, .env.template) aren't secrets
 const secretFile = /(^|[\s/'"=])\.env(?![\w.-]*\.(?:example|sample|template)(?=$|[\s'";|&)]))(\.[\w.-]+)?(?=$|[\s'";|&)])|\.(keystore|jks|p8|p12|mobileprovision)\b/;
 
-const block = reason => { process.stderr.write(`Blocked by scripts/ai/guard.js: ${reason}\n`); process.exit(2); };
+const block = reason => { process.stderr.write(`Blocked by scripts/amk/guard.js: ${reason}\n`); process.exit(2); };
 for (const c of commands) {
   if (destructive.test(c)) block(`destructive command: ${c}`);
   if (secretFile.test(c)) block(`shell access to a secret file: ${c}`);

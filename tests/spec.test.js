@@ -6,7 +6,7 @@ const path = require('path');
 const { spawnSync } = require('child_process');
 const tmpDir = require('./tmp');
 
-const SCRIPT = path.join(__dirname, '../stacks/react-native/template/scripts/ai/specs.js');
+const SCRIPT = path.join(__dirname, '../stacks/react-native/template/scripts/amk/specs.js');
 const run = (dir, ...a) => { const r = spawnSync(process.execPath, [SCRIPT, ...a], { cwd: dir, encoding: 'utf8' }); return { out: r.stdout + r.stderr, code: r.status }; };
 const write = (dir, f, text) => { fs.mkdirSync(path.dirname(path.join(dir, f)), { recursive: true }); fs.writeFileSync(path.join(dir, f), text); };
 const read = (dir, f) => fs.readFileSync(path.join(dir, f), 'utf8');

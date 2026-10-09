@@ -17,7 +17,7 @@ if (specs.length === 0) process.exit(0); // no spec in progress (quick change, b
 
 const changed = execSync('git status --porcelain', { encoding: 'utf8' })
   .split('\n').filter(Boolean).map(l => l.slice(3));
-const codeChanged = changed.some(f => !f.startsWith('specs/') && !f.startsWith('.ai/'));
+const codeChanged = changed.some(f => !f.startsWith('specs/') && !f.startsWith('.amk/'));
 const handoffUpdated = changed.some(f => /^specs\/[^/]+\/progress\.md$/.test(f));
 
 if (codeChanged && !handoffUpdated) {

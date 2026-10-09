@@ -1,7 +1,7 @@
 #!/bin/sh
 # Expo apps whose ios/ and android/ aren't in git (Continuous Native Generation): generates the platform's native
 # project with `expo prebuild`, so release builds can run. Does nothing for apps that keep the folders in git.
-# Usage: sh scripts/ai/prebuild.sh ios|android
+# Usage: sh scripts/amk/prebuild.sh ios|android
 set -eu
 platform=$1
 [ -z "$(git ls-files -- "$platform")" ] || exit 0

@@ -36,7 +36,7 @@ test('a fresh install is healthy apart from unfilled docs', () => {
   assert.strictEqual(levelOf(checks, /AGENTS\.md size/), 'ok');
   assert.strictEqual(levelOf(checks, /No \.env/), 'ok');
   assert.strictEqual(levelOf(checks, /skills link/), undefined, 'no Claude settings yet (generate skipped), so no link check');
-  assert.strictEqual(levelOf(checks, /docs\/ai not filled/), 'warn');
+  assert.strictEqual(levelOf(checks, /docs\/amk not filled/), 'warn');
 });
 
 test('finds inactive hooks, a tracked .env, an oversized AGENTS.md and a broken skills link', () => {
@@ -59,8 +59,8 @@ test('finds inactive hooks, a tracked .env, an oversized AGENTS.md and a broken 
 test('filled-in docs stop the warning', () => {
   const dir = installedApp();
   init(dir, { skipGenerate: true });
-  for (const n of ['product', 'tech', 'structure', 'conventions']) fs.appendFileSync(path.join(dir, `docs/ai/${n}.md`), '\nReal content.\n');
-  assert.strictEqual(levelOf(projectChecks(dir, { skipNetwork: true }), /docs\/ai/), 'ok');
+  for (const n of ['product', 'tech', 'structure', 'conventions']) fs.appendFileSync(path.join(dir, `docs/amk/${n}.md`), '\nReal content.\n');
+  assert.strictEqual(levelOf(projectChecks(dir, { skipNetwork: true }), /docs\/amk/), 'ok');
 });
 
 test('with husky, the hooks check reads husky\'s files and whether husky is set up on this clone', () => {
@@ -104,4 +104,14 @@ test('example env files (.env.local.example, .env.sample) aren\'t reported as se
   const hook = require('child_process').spawnSync('sh', ['.githooks/pre-commit'], { cwd: dir, encoding: 'utf8' });
   assert.doesNotMatch(hook.stderr, /don't commit \.env files/);
   assert.match(fs.readFileSync(path.join(dir, '.gitignore'), 'utf8'), /^!\.env\*\.example$/m);
+});
+
+test('an install from before 0.7.0 is told to update, and its docs are still checked', () => {
+  const dir = installedApp();
+  init(dir, { skipGenerate: true });
+  fs.renameSync(path.join(dir, 'docs/amk'), path.join(dir, 'docs/ai'));
+  fs.renameSync(path.join(dir, 'scripts/amk'), path.join(dir, 'scripts/ai'));
+  const checks = projectChecks(dir, { skipNetwork: true });
+  assert.strictEqual(levelOf(checks, /old names/), 'warn');
+  assert.strictEqual(levelOf(checks, /docs\/ai not filled/), 'warn');
 });

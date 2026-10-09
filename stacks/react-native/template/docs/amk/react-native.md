@@ -18,7 +18,7 @@ Rules for things AI agents commonly get wrong in current React Native. Each one 
 
 ## Native changes
 
-- After adding or removing a native dependency: `sh scripts/ai/pod-install.sh`, then rebuild both apps. Restart Metro with `--reset-cache` if the bundle looks stale.
+- After adding or removing a native dependency: `sh scripts/amk/pod-install.sh`, then rebuild both apps. Restart Metro with `--reset-cache` if the bundle looks stale.
 - Don't hand-edit `project.pbxproj`. Let CocoaPods or Xcode change it.
 - Don't bump the Android Gradle Plugin, Gradle, Kotlin or the iOS deployment target one by one. Upgrade React Native as a whole with the `upgrading-react-native` skill and the React Native Upgrade Helper.
 

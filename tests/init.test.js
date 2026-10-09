@@ -43,16 +43,17 @@ test('fresh install: files, filled AGENTS.md, links, hooks, scripts; no CI unles
   const agents = read(dir, 'AGENTS.md');
   assert.doesNotMatch(agents, /\{\{/);
   assert.match(agents, /Bare React Native 0\.87\.1/);
-  assert.match(agents, /`yarn lint`/);
+  assert.match(agents, /, TypeScript \d/);
+  assert.match(agents, /^\| Typecheck, test \| `yarn typecheck`, `yarn test` \|$/m, 'only the checks the app has (no lint script here)');
   assert.match(read(dir, 'CLAUDE.md'), /@AGENTS\.md/);
   assert.match(agents, new RegExp(`KIT:START agentic-mobile-kit ${KIT_VERSION.replace(/\./g, '\\.')} ci=none `));
   assert.ok(!fs.existsSync(path.join(dir, '.github')) && !fs.existsSync(path.join(dir, 'codemagic.yaml')), 'no CI files');
   if (process.platform === 'win32') assert.match(git(dir, 'ls-files', '-s', '.githooks/pre-commit'), /^100755 /, 'staged as executable');
   else assert.ok(fs.statSync(path.join(dir, '.githooks/pre-commit')).mode & 0o111, 'pre-commit is executable');
   assert.strictEqual(fs.readlinkSync(path.join(dir, '.claude/skills')).replace(/\\/g, '/'), '../.agents/skills');
-  assert.ok(fs.existsSync(path.join(dir, '.agents/skills/m-feature/SKILL.md')));
+  for (const skill of ['m-feature', 'm-onboard']) assert.ok(fs.existsSync(path.join(dir, `.agents/skills/${skill}/SKILL.md`)), skill);
   assert.match(read(dir, '.gitignore'), /^\.env$/m);
-  assert.match(read(dir, '.gitignore'), /^\.ai\/$/m);
+  assert.match(read(dir, '.gitignore'), /^\.amk\/$/m);
   const pkg = JSON.parse(read(dir, 'package.json'));
   assert.strictEqual(pkg.scripts.typecheck, 'tsc --noEmit');
   assert.match(pkg.scripts.postinstall, /core\.hooksPath \.githooks/);
@@ -65,7 +66,7 @@ test('fresh install: files, filled AGENTS.md, links, hooks, scripts; no CI unles
 test('--ci github,codemagic adds the CI files, fills codemagic.yaml, and later runs keep the choice', () => {
   const dir = fakeApp({ files: { 'ios/DemoApp.xcodeproj/project.pbxproj': 'PRODUCT_BUNDLE_IDENTIFIER = "org.reactjs.native.example.$(PRODUCT_NAME:rfc1034identifier)";\n' } });
   init(dir, { ci: ['github', 'codemagic'], skipGenerate: true });
-  assert.ok(fs.existsSync(path.join(dir, '.github/workflows/ci.yml')) && fs.existsSync(path.join(dir, 'docs/ai/codemagic.md')));
+  assert.ok(fs.existsSync(path.join(dir, '.github/workflows/ci.yml')) && fs.existsSync(path.join(dir, 'docs/amk/codemagic.md')));
   assert.match(read(dir, 'codemagic.yaml'), /bundle_identifier: org\.reactjs\.native\.example\.DemoApp\n/);
   assert.match(read(dir, 'AGENTS.md'), / ci=github,codemagic /);
   commitAll(dir);
@@ -127,12 +128,17 @@ test('refuses: uncommitted changes, not React Native, no native folders, unknown
   assert.throws(() => init(fakeApp(), { skipGenerate: true, tools: ['vscode'] }), /Unknown tool/);
 });
 
-test('JavaScript projects with typescript installed get no typecheck script', () => {
-  const dir = fakeApp();
+test('JavaScript projects with typescript installed get no typecheck script, and AGENTS.md says JavaScript', () => {
+  const dir = fakeApp({ pkg: { scripts: { lint: 'eslint .', test: 'jest' } } });
   fs.unlinkSync(path.join(dir, 'App.tsx'));
+  fs.writeFileSync(path.join(dir, 'App.js'), 'export default {};\n');
   commitAll(dir);
   init(dir, { skipGenerate: true });
   assert.strictEqual(JSON.parse(read(dir, 'package.json')).scripts.typecheck, undefined);
+  const agents = read(dir, 'AGENTS.md');
+  assert.match(agents, /React 19\.2\.3, JavaScript, Node/);
+  assert.match(agents, /^\| Lint, test \| `yarn lint`, `yarn test` \|$/m);
+  assert.doesNotMatch(agents, /yarn typecheck/);
 });
 
 test('an existing postinstall keeps failing when it fails (hooks command is grouped)', () => {
@@ -148,13 +154,13 @@ function oldKit() {
   const dir = tmpDir('amk-oldkit-');
   fs.cpSync(TEMPLATE, dir, { recursive: true });
   const edit = (f, change) => fs.writeFileSync(path.join(dir, f), change(fs.readFileSync(path.join(dir, f), 'utf8')));
-  edit('scripts/ai/pm-run.sh', t => `${t}# old line\n`);
+  edit('scripts/amk/pm-run.sh', t => `${t}# old line\n`);
   edit('.github/workflows/ci.yml', t => t.replace('name: ci\n', 'name: old ci\n'));
   edit('cliff.toml', t => t.replace('header = "# Changelog\\n"', 'header = "# Old\\n"'));
-  edit('docs/ai/product.md', t => `${t}Old prompt.\n`);
+  edit('docs/amk/product.md', t => `${t}Old prompt.\n`);
   edit('AGENTS.md', t => t.replace('## Rules', '## Old rules'));
-  fs.unlinkSync(path.join(dir, 'scripts/ai/set-version.sh'));
-  fs.writeFileSync(path.join(dir, 'scripts/ai/retired.sh'), 'echo old\n');
+  fs.unlinkSync(path.join(dir, 'scripts/amk/set-version.sh'));
+  fs.writeFileSync(path.join(dir, 'scripts/amk/retired.sh'), 'echo old\n');
   return dir;
 }
 
@@ -166,26 +172,26 @@ test('sync: updates untouched kit files, merges the team\'s changes, flags confl
   // the team's own edits after installing
   fs.appendFileSync(path.join(dir, '.github/workflows/ci.yml'), '      - run: echo team step\n');
   fs.writeFileSync(path.join(dir, 'cliff.toml'), read(dir, 'cliff.toml').replace('header = "# Old\\n"', 'header = "# Team\\n"'));
-  fs.writeFileSync(path.join(dir, 'docs/ai/product.md'), 'This app books meeting rooms.\n');
+  fs.writeFileSync(path.join(dir, 'docs/amk/product.md'), 'This app books meeting rooms.\n');
   fs.appendFileSync(path.join(dir, '.gitleaks.toml'), '# team addition\n');
   commitAll(dir);
 
   const { report } = sync(dir, { fromDir: old, skipGenerate: true });
   const kit = f => fs.readFileSync(path.join(TEMPLATE, f), 'utf8');
 
-  assert.strictEqual(read(dir, 'scripts/ai/pm-run.sh'), kit('scripts/ai/pm-run.sh'));
-  assert.ok(report.updated.includes('scripts/ai/pm-run.sh'));
+  assert.strictEqual(read(dir, 'scripts/amk/pm-run.sh'), kit('scripts/amk/pm-run.sh'));
+  assert.ok(report.updated.includes('scripts/amk/pm-run.sh'));
   const ci = read(dir, '.github/workflows/ci.yml');
   assert.match(ci, /^name: ci$/m, 'kit change applied');
   assert.match(ci, /echo team step/, 'team change kept');
   assert.ok(report.merged.includes('.github/workflows/ci.yml'));
   assert.match(read(dir, 'cliff.toml'), new RegExp(`<<<<<<< your version[\\s\\S]*# Team[\\s\\S]*>>>>>>> kit ${KIT_VERSION.replace(/\./g, '\\.')}`));
   assert.ok(report.conflicts.includes('cliff.toml'));
-  assert.ok(fs.existsSync(path.join(dir, 'scripts/ai/set-version.sh')), 'new file added');
-  if (process.platform !== 'win32') assert.ok(fs.statSync(path.join(dir, 'scripts/ai/set-version.sh')).mode & 0o111, 'and executable');
-  assert.ok(report.added.includes('scripts/ai/set-version.sh'));
-  assert.ok(!fs.existsSync(path.join(dir, 'scripts/ai/retired.sh')), 'dropped file removed');
-  assert.strictEqual(read(dir, 'docs/ai/product.md'), 'This app books meeting rooms.\n');
+  assert.ok(fs.existsSync(path.join(dir, 'scripts/amk/set-version.sh')), 'new file added');
+  if (process.platform !== 'win32') assert.ok(fs.statSync(path.join(dir, 'scripts/amk/set-version.sh')).mode & 0o111, 'and executable');
+  assert.ok(report.added.includes('scripts/amk/set-version.sh'));
+  assert.ok(!fs.existsSync(path.join(dir, 'scripts/amk/retired.sh')), 'dropped file removed');
+  assert.strictEqual(read(dir, 'docs/amk/product.md'), 'This app books meeting rooms.\n');
   assert.ok(!Object.values(report).flat().includes('.gitleaks.toml'), 'a file only the team changed is left out of the report');
   const agents = read(dir, 'AGENTS.md');
   assert.match(agents, /^# Team notes\n/);
@@ -243,25 +249,25 @@ test('sync with --from (no recorded version): a file matching neither kit versio
   const { report } = sync(dir, { fromDir: old, from: '0.2.0', skipGenerate: true });
   assert.match(read(dir, '.github/workflows/ci.yml'), /<<<<<<< your version\nname: older ci\n=======\nname: ci\n>>>>>>> kit /);
   assert.ok(report.conflicts.includes('.github/workflows/ci.yml'));
-  assert.ok(report.updated.includes('scripts/ai/pm-run.sh'), 'files matching the old kit still update');
+  assert.ok(report.updated.includes('scripts/amk/pm-run.sh'), 'files matching the old kit still update');
 });
 
 test('sync adds CI files only to projects that chose that CI, or when asked with --ci', () => {
   const old = oldKit();
   fs.unlinkSync(path.join(old, '.github/workflows/ios.yml'));
-  fs.unlinkSync(path.join(old, 'docs/ai/codemagic.md'));
+  fs.unlinkSync(path.join(old, 'docs/amk/codemagic.md'));
   const none = fakeApp();
   init(none, { template: old, skipGenerate: true });
   commitAll(none);
   sync(none, { fromDir: old, skipGenerate: true });
-  assert.ok(!fs.existsSync(path.join(none, '.github')) && !fs.existsSync(path.join(none, 'docs/ai/codemagic.md')));
+  assert.ok(!fs.existsSync(path.join(none, '.github')) && !fs.existsSync(path.join(none, 'docs/amk/codemagic.md')));
 
   const github = fakeApp();
   init(github, { template: old, ci: ['github'], skipGenerate: true });
   commitAll(github);
   const { report } = sync(github, { fromDir: old, skipGenerate: true });
   assert.ok(report.added.includes('.github/workflows/ios.yml'), 'new CI file for a GitHub CI project');
-  assert.ok(!fs.existsSync(path.join(github, 'docs/ai/codemagic.md')), 'no Codemagic files');
+  assert.ok(!fs.existsSync(path.join(github, 'docs/amk/codemagic.md')), 'no Codemagic files');
   git(github, 'checkout', '-q', '.');
   git(github, 'clean', '-qfd');
   sync(github, { fromDir: old, ci: ['codemagic'], skipGenerate: true });
@@ -301,7 +307,7 @@ test('a clone with Windows line endings (autocrlf): hooks keep LF and run, and s
   const clone = tmpDir('amk-clone-');
   execFileSync('git', ['clone', '-q', '-c', 'core.autocrlf=true', dir, clone]);
   assert.match(fs.readFileSync(path.join(clone, 'AGENTS.md'), 'utf8'), /\r\n/, 'text files were checked out with CRLF');
-  for (const f of ['.githooks/pre-commit', '.githooks/pre-push', 'scripts/ai/verify.sh']) {
+  for (const f of ['.githooks/pre-commit', '.githooks/pre-push', 'scripts/amk/verify.sh']) {
     assert.doesNotMatch(fs.readFileSync(path.join(clone, f), 'utf8'), /\r/, `${f} keeps LF`);
   }
   const hook = require('child_process').spawnSync('sh', ['.githooks/pre-commit'], { cwd: clone, encoding: 'utf8' });
@@ -458,7 +464,7 @@ test('Expo app without native folders: Expo instructions, rules, skills and perm
   assert.match(agents, /Expo SDK 57, React Native 0\.86\.3 \(New Architecture\)/);
   assert.match(agents, /Never edit `ios\/` or `android\/`/);
   assert.doesNotMatch(agents, /\{\{/);
-  assert.ok(fs.existsSync(path.join(dir, 'docs/ai/expo.md')) && !fs.existsSync(path.join(dir, 'docs/ai/react-native.md')));
+  assert.ok(fs.existsSync(path.join(dir, 'docs/amk/expo.md')) && !fs.existsSync(path.join(dir, 'docs/amk/react-native.md')));
   for (const s of ['expo-router', 'expo-upgrade', 'expo-module', 'react-native-best-practices', 'react-navigation', 'm-feature']) {
     assert.ok(fs.existsSync(path.join(dir, `.agents/skills/${s}/SKILL.md`)), s);
   }
@@ -473,7 +479,7 @@ test('Expo app without native folders: Expo instructions, rules, skills and perm
   assert.ok(Object.values(sync(dir, { skipGenerate: true }).report).every(a => a.length === 0), 'sync right after init changes nothing');
   uninstall(dir, { skipGenerate: true });
   assert.strictEqual(read(dir, 'AGENTS.md'), 'This is an Expo/React Native mobile application.\n\n## Rules\n\n- Never edit ios/ or android/ by hand.\n');
-  assert.ok(!fs.existsSync(path.join(dir, 'docs/ai/expo.md')) && !fs.existsSync(path.join(dir, '.agents/skills/expo-router')));
+  assert.ok(!fs.existsSync(path.join(dir, 'docs/amk/expo.md')) && !fs.existsSync(path.join(dir, '.agents/skills/expo-router')));
 });
 
 test('an Expo app that keeps ios/ and android/ in git is set up like a bare app', () => {
@@ -481,21 +487,21 @@ test('an Expo app that keeps ios/ and android/ in git is set up like a bare app'
   const { values } = init(dir, { skipGenerate: true });
   assert.strictEqual(values.KIT_STACK, 'bare');
   assert.match(read(dir, 'AGENTS.md'), /Bare React Native 0\.86\.3/);
-  assert.ok(fs.existsSync(path.join(dir, 'docs/ai/react-native.md')));
+  assert.ok(fs.existsSync(path.join(dir, 'docs/amk/react-native.md')));
 });
 
 test('apps on ESLint\'s eslintrc config get .eslintignore for the kit\'s scripts; uninstall takes it out again', () => {
   const dir = fakeApp({ files: { '.eslintrc.js': "module.exports = { root: true, extends: '@react-native' };\n" } });
   const { report } = init(dir, { skipGenerate: true });
   assert.ok(report.created.includes('.eslintignore'));
-  assert.match(read(dir, '.eslintignore'), /^scripts\/ai\/$/m);
+  assert.match(read(dir, '.eslintignore'), /^scripts\/amk\/$/m);
   commitAll(dir);
   uninstall(dir, { skipGenerate: true });
   assert.ok(!fs.existsSync(path.join(dir, '.eslintignore')), 'the file the kit created is gone');
 
   const own = fakeApp({ files: { '.eslintrc.json': '{}\n', '.eslintignore': 'vendor/\n' } });
   init(own, { skipGenerate: true });
-  assert.match(read(own, '.eslintignore'), /^vendor\/\n\n# agentic-mobile-kit: .*\nscripts\/ai\/\n$/);
+  assert.match(read(own, '.eslintignore'), /^vendor\/\n\n# agentic-mobile-kit: .*\nscripts\/amk\/\n$/);
   commitAll(own);
   uninstall(own, { skipGenerate: true });
   assert.strictEqual(read(own, '.eslintignore'), 'vendor/\n');
@@ -503,4 +509,65 @@ test('apps on ESLint\'s eslintrc config get .eslintignore for the kit\'s scripts
   const flat = fakeApp({ files: { 'eslint.config.js': 'module.exports = [];\n' } });
   init(flat, { skipGenerate: true });
   assert.ok(!fs.existsSync(path.join(flat, '.eslintignore')), 'flat config doesn\'t read .eslintignore');
+});
+
+// the kit before 0.7.0: its folders were docs/ai and scripts/ai, and evidence went to .ai/
+function preRenameKit() {
+  const dir = tmpDir('amk-pre-rename-');
+  fs.cpSync(TEMPLATE, dir, { recursive: true });
+  fs.renameSync(path.join(dir, 'docs/amk'), path.join(dir, 'docs/ai'));
+  fs.renameSync(path.join(dir, 'scripts/amk'), path.join(dir, 'scripts/ai'));
+  for (const f of fs.readdirSync(dir, { recursive: true })) {
+    const p = path.join(dir, f);
+    if (!fs.lstatSync(p).isFile()) continue;
+    const text = fs.readFileSync(p, 'utf8');
+    const old = text.replace(/docs\/amk/g, 'docs/ai').replace(/scripts\/amk/g, 'scripts/ai').replace(/\.amk\//g, '.ai/');
+    if (old !== text) fs.writeFileSync(p, old);
+  }
+  return dir;
+}
+// an app installed with that kit, as that kit left .gitignore and .eslintignore
+function preRenameApp(old, files = {}) {
+  const dir = fakeApp({ files: { '.eslintrc.js': 'module.exports = {};\n', ...files } });
+  init(dir, { template: old, skipGenerate: true });
+  fs.rmSync(path.join(dir, 'docs/ai/codemagic.md'), { force: true }); // that kit added it only with --ci codemagic
+  for (const [f, from, to] of [['.gitignore', '.amk/', '.ai/'], ['.eslintignore', 'scripts/amk/', 'scripts/ai/']]) {
+    fs.writeFileSync(path.join(dir, f), read(dir, f).split(from).join(to));
+  }
+  commitAll(dir);
+  return dir;
+}
+
+test('sync from before 0.7.0 moves the kit\'s files to docs/amk and scripts/amk, with the team\'s edits; the app\'s own files stay', () => {
+  const old = preRenameKit();
+  const dir = preRenameApp(old, { 'docs/ai/chatbot.md': '# How our in-app chatbot works\n' });
+  fs.writeFileSync(path.join(dir, 'docs/ai/product.md'), 'This app books meeting rooms.\n');
+  fs.appendFileSync(path.join(dir, 'scripts/ai/verify.sh'), '# team: our own step\n');
+  const pkg = JSON.parse(read(dir, 'package.json'));
+  pkg.scripts.verify = 'sh scripts/ai/verify.sh quick';
+  fs.writeFileSync(path.join(dir, 'package.json'), JSON.stringify(pkg, null, 2));
+  commitAll(dir);
+
+  const { report, warnings } = sync(dir, { fromDir: old, skipGenerate: true });
+  assert.deepStrictEqual(report.moved.map(m => m.replace(/ \(\d+ files\)/, '')), ['docs/ai/ to docs/amk/', 'scripts/ai/ to scripts/amk/']);
+  assert.strictEqual(read(dir, 'docs/amk/product.md'), 'This app books meeting rooms.\n', 'filled-in docs come along');
+  const verify = read(dir, 'scripts/amk/verify.sh');
+  assert.match(verify, /# team: our own step/, 'the team\'s edit is kept');
+  assert.match(verify, /scripts\/amk\/maestro-env\.sh/, 'and the kit\'s new paths are in');
+  assert.ok(!fs.existsSync(path.join(dir, 'scripts/ai')), 'nothing else was in scripts/ai, so it is gone');
+  assert.deepStrictEqual(fs.readdirSync(path.join(dir, 'docs/ai')), ['chatbot.md'], 'the app\'s own doc stays');
+  assert.ok(report.kept.some(k => k.startsWith('docs/ai/chatbot.md (not the kit\'s')));
+  assert.doesNotMatch(read(dir, 'AGENTS.md'), /docs\/ai|scripts\/ai/);
+  assert.ok(warnings.some(w => /^still pointing to the kit's old folders: package\.json\./.test(w)), warnings.join('\n'));
+  assert.match(read(dir, '.eslintignore'), /^scripts\/amk\/$/m);
+  assert.doesNotMatch(read(dir, '.eslintignore'), /scripts\/ai/);
+  assert.match(read(dir, '.gitignore'), /^\.ai\/$/m, 'old evidence stays out of git');
+  assert.match(read(dir, '.gitignore'), /^\.amk\/$/m);
+});
+
+test('uninstall still removes an install from before 0.7.0', () => {
+  const old = preRenameKit();
+  const dir = preRenameApp(old);
+  uninstall(dir, { fromDir: old, skipGenerate: true });
+  for (const f of ['docs/ai', 'scripts/ai', 'AGENTS.md', '.eslintignore']) assert.ok(!fs.existsSync(path.join(dir, f)), f);
 });

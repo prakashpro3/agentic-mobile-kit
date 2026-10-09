@@ -32,10 +32,10 @@ jobs:
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 24
-      - run: sh scripts/ai/install-deps.sh
+      - run: sh scripts/amk/install-deps.sh
       - name: Generate the native project (Expo apps without ios/ in git)
-        run: sh scripts/ai/prebuild.sh ios
+        run: sh scripts/amk/prebuild.sh ios
       - name: Install pods
-        run: sh scripts/ai/pod-install.sh
+        run: sh scripts/amk/pod-install.sh
       - name: Build for the simulator (no signing)
-        run: sh scripts/ai/ios-build.sh
+        run: sh scripts/amk/ios-build.sh

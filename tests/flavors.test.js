@@ -6,7 +6,7 @@ const path = require('path');
 const { spawnSync } = require('child_process');
 const tmpDir = require('./tmp');
 
-const SCRIPT = path.join(__dirname, '../stacks/react-native/template/scripts/ai/android-flavors.js');
+const SCRIPT = path.join(__dirname, '../stacks/react-native/template/scripts/amk/android-flavors.js');
 function flavors(gradle, file = 'build.gradle') {
   const dir = tmpDir('amk-flavors-');
   fs.mkdirSync(path.join(dir, 'android/app'), { recursive: true });

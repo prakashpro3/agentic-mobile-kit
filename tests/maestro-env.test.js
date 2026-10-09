@@ -6,7 +6,7 @@ const path = require('path');
 const { spawnSync } = require('child_process');
 const tmpDir = require('./tmp');
 
-const SCRIPT = path.join(__dirname, '../stacks/react-native/template/scripts/ai/maestro-env.sh');
+const SCRIPT = path.join(__dirname, '../stacks/react-native/template/scripts/amk/maestro-env.sh');
 
 test('maestro-env.sh exports only MAESTRO_ values from .maestro/.env.local, and the shell\'s own values win', () => {
   const dir = tmpDir('amk-maestro-env-');

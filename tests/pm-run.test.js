@@ -6,7 +6,7 @@ const path = require('path');
 const { spawnSync } = require('child_process');
 const tmpDir = require('./tmp');
 
-const SCRIPT = path.join(__dirname, '../stacks/react-native/template/scripts/ai/pm-run.sh');
+const SCRIPT = path.join(__dirname, '../stacks/react-native/template/scripts/amk/pm-run.sh');
 const run = (dir, script) => spawnSync('sh', [SCRIPT, script], { cwd: dir, encoding: 'utf8' });
 
 test('Expo apps: lint waits until ESLint is set up, and typecheck gets the expo-env.d.ts that expo start writes', () => {

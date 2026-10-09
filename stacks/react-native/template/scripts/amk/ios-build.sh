@@ -7,7 +7,7 @@
 set -eu
 config=${CONFIGURATION:-Debug}
 workspace=$(ls -d ios/*.xcworkspace 2>/dev/null | head -n 1)
-[ -n "$workspace" ] || { echo "No ios/*.xcworkspace found. Run sh scripts/ai/pod-install.sh first."; exit 1; }
+[ -n "$workspace" ] || { echo "No ios/*.xcworkspace found. Run sh scripts/amk/pod-install.sh first."; exit 1; }
 scheme=${AMK_IOS_SCHEME:-$(basename "$workspace" .xcworkspace)}
 if [ "$config" = Release ]; then
   file=$(ls ios/*.xcodeproj/xcshareddata/xcschemes/"$scheme".xcscheme ios/*.xcworkspace/xcshareddata/xcschemes/"$scheme".xcscheme 2> /dev/null | head -n 1)

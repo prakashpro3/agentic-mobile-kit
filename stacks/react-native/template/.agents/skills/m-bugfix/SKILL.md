@@ -10,7 +10,7 @@ The user chose this workflow: follow its steps for this task, even where other w
 
 Input: $ARGUMENTS (what's wrong, steps to reproduce, error text, screenshots, task link).
 
-1. **Check `docs/ai/known-issues.md`** for a matching error. If there is one, apply its fix and verify.
+1. **Check `docs/amk/known-issues.md`** for a matching error. If there is one, apply its fix and verify.
 2. **Reproduce.** Write down the exact steps and the actual vs expected result. If you can't reproduce it, say so and ask for more details. Don't guess.
 3. **Write a failing test** that shows the bug, if it can be tested with Jest. Run it and show that it fails. (Native or device-only bugs: write the manual steps instead.)
 4. **Find the root cause before changing code.**
@@ -19,7 +19,7 @@ Input: $ARGUMENTS (what's wrong, steps to reproduce, error text, screenshots, ta
    - Form one hypothesis, test it, and confirm or reject it. One at a time.
    - Fix the cause, not the symptom: no try/catch that hides the error, no special case for the failing input.
 5. **Make the smallest fix.** Don't refactor or touch unrelated code.
-6. **Verify.** The new test passes, and lint, typecheck and all tests pass. Paste the output. For UI or native bugs, run `sh scripts/ai/verify.sh ios` and/or `android` and look at the screenshots.
+6. **Verify.** The new test passes, and lint, typecheck and all tests pass. Paste the output. For UI or native bugs, run `sh scripts/amk/verify.sh ios` and/or `android` and look at the screenshots.
 7. **Two attempts at most.** If two fixes didn't work, stop. Report what you tried, what you learned and what you suspect next.
-8. **Record it.** If this kind of error could come back, add an entry to `docs/ai/known-issues.md` (error, cause, fix, prevention). If the fix changes what the app is meant to do, not just makes it work as specified, update that requirement in `specs/current/<area>.md` in the same format, and run `node scripts/ai/specs.js check`.
-9. **Commit** with a message ending in `Assisted-by: <tool>/<model>`. Ask the user before pushing, then open a PR with the evidence.
+8. **Record it.** If this kind of error could come back, add an entry to `docs/amk/known-issues.md` (error, cause, fix, prevention). If the fix changes what the app is meant to do, not just makes it work as specified, update that requirement in `specs/current/<area>.md` in the same format, and run `node scripts/amk/specs.js check`.
+9. **Commit** with a clear message. Ask the user before pushing, then open a PR with the evidence.

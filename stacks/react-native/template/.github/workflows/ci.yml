@@ -24,15 +24,15 @@ jobs:
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 24
-      - run: sh scripts/ai/install-deps.sh
+      - run: sh scripts/amk/install-deps.sh
       # each passes when the app's script passes, or when all its failures were already on the base branch
       - name: Lint, typecheck and tests
         env:
           AMK_BASE: ${{ github.event_name == 'pull_request' && format('origin/{0}', github.base_ref) || github.event.before }}
         run: |
-          node scripts/ai/baseline.js lint
-          node scripts/ai/baseline.js typecheck
-          node scripts/ai/baseline.js test
+          node scripts/amk/baseline.js lint
+          node scripts/amk/baseline.js typecheck
+          node scripts/amk/baseline.js test
       - name: Tool configs match .rulesync/ (run "npx -y rulesync@27.0.0 generate" and commit if this fails)
         if: hashFiles('rulesync.jsonc') != ''
         run: npx -y rulesync@27.0.0 generate > /dev/null && git diff --exit-code -- .claude .codex .agents .antigravity
@@ -57,7 +57,7 @@ jobs:
           distribution: temurin
           java-version: 17
           cache: gradle
-      - run: sh scripts/ai/install-deps.sh
+      - run: sh scripts/amk/install-deps.sh
       - name: Generate the native project (Expo apps without android/)
         if: hashFiles('android/settings.gradle', 'android/settings.gradle.kts') == ''
         run: npx expo prebuild --platform android --no-install

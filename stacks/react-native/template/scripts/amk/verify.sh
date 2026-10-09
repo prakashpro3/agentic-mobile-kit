@@ -2,12 +2,12 @@
 # Checks the app the way a user would: lint, typecheck and tests, then release builds on the iOS simulator
 # and Android emulator, running Maestro flows and saving screenshots as evidence.
 #
-# Usage: sh scripts/ai/verify.sh [quick|ios|android|all] [--spec <id>] [--flow <file>] [--label <name>]
+# Usage: sh scripts/amk/verify.sh [quick|ios|android|all] [--spec <id>] [--flow <file>] [--label <name>]
 #                                [--flavor <name>] [--scheme <name>]
 #   quick           lint, typecheck, tests
 #   ios|android     release build, install, run flows, screenshots
 #   all             everything (default)
-#   --spec <id>     run .maestro/<id>*.yaml and save evidence in .ai/evidence/<id>/
+#   --spec <id>     run .maestro/<id>*.yaml and save evidence in .amk/evidence/<id>/
 #   --label <n>     evidence folder name (default: the spec id, or a timestamp)
 #   --flavor <name> Android product flavor to check (default: the first one in build.gradle)
 #   --scheme <name> iOS scheme to check (default: the one named like the workspace)
@@ -35,8 +35,8 @@ while [ $# -gt 0 ]; do
 done
 
 root=$(pwd)
-. scripts/ai/maestro-env.sh
-evidence="$root/.ai/evidence/${label:-${spec:-$(date +%Y%m%d-%H%M%S)}}"
+. scripts/amk/maestro-env.sh
+evidence="$root/.amk/evidence/${label:-${spec:-$(date +%Y%m%d-%H%M%S)}}"
 mkdir -p "$evidence"
 status=0
 
@@ -80,9 +80,9 @@ run_flows() { # platform device app_id
 
 quick() {
   # each one passes when the app's script passes, or when all its failures were already on the base branch
-  if node scripts/ai/baseline.js lint > "$evidence/lint.log" 2>&1 &&
-    node scripts/ai/baseline.js typecheck > "$evidence/typecheck.log" 2>&1 &&
-    node scripts/ai/baseline.js test > "$evidence/test.log" 2>&1; then
+  if node scripts/amk/baseline.js lint > "$evidence/lint.log" 2>&1 &&
+    node scripts/amk/baseline.js typecheck > "$evidence/typecheck.log" 2>&1 &&
+    node scripts/amk/baseline.js test > "$evidence/test.log" 2>&1; then
     echo "quick: lint, typecheck and tests passed"
     # what didn't run (no such script, or an Expo app without ESLint yet), and failures the base branch already had
     cat "$evidence/lint.log" "$evidence/typecheck.log" "$evidence/test.log" |
@@ -97,20 +97,20 @@ quick() {
 ios() {
   # iOS builds need Xcode, so off a Mac "all" checks Android and says who has to check iOS
   if [ "$(uname -s)" != Darwin ]; then
-    echo "ios: not checked here: iOS builds need a Mac with Xcode. A teammate with a Mac runs: sh scripts/ai/verify.sh ios${spec:+ --spec $spec}"
+    echo "ios: not checked here: iOS builds need a Mac with Xcode. A teammate with a Mac runs: sh scripts/amk/verify.sh ios${spec:+ --spec $spec}"
     [ "$mode" = ios ] && status=1
     return
   fi
   command -v maestro > /dev/null || { echo "ios: Maestro isn't installed (https://maestro.dev)"; status=1; return; }
   # Expo apps without native folders in git: generate ios/ first
-  if ! sh scripts/ai/prebuild.sh ios > "$evidence/prebuild-ios.log" 2>&1; then
+  if ! sh scripts/amk/prebuild.sh ios > "$evidence/prebuild-ios.log" 2>&1; then
     echo "ios: expo prebuild FAILED, see ${evidence#"$root"/}/prebuild-ios.log"; status=1; return
   fi
   # pod install also generates React Native codegen files into ios/build/generated; a newer Podfile needs it again
   if [ ! -d ios/Pods ] || [ ! -d ios/build/generated ] || [ ios/Podfile -nt ios/Pods/Manifest.lock ]; then
-    sh scripts/ai/pod-install.sh > "$evidence/pod-install.log" 2>&1
+    sh scripts/amk/pod-install.sh > "$evidence/pod-install.log" 2>&1
   fi
-  if ! CONFIGURATION=Release sh scripts/ai/ios-build.sh > "$evidence/ios-build.log" 2>&1; then
+  if ! CONFIGURATION=Release sh scripts/amk/ios-build.sh > "$evidence/ios-build.log" 2>&1; then
     echo "ios: release build FAILED, see ${evidence#"$root"/}/ios-build.log"; status=1; return
   fi
   # the newest app: the scheme just built (another scheme's app may still be there from an earlier build)
@@ -141,13 +141,13 @@ android() {
   sdk=${ANDROID_HOME:-${ANDROID_SDK_ROOT:-$default_sdk}}
   adb="$sdk/platform-tools/adb"
   # Expo apps without native folders in git: generate android/ first
-  if ! sh scripts/ai/prebuild.sh android > "$evidence/prebuild-android.log" 2>&1; then
+  if ! sh scripts/amk/prebuild.sh android > "$evidence/prebuild-android.log" 2>&1; then
     echo "android: expo prebuild FAILED, see ${evidence#"$root"/}/prebuild-android.log"; status=1; return
   fi
   # apps with product flavors: check one, the first in build.gradle unless --flavor names another
   if [ -z "$flavor" ]; then
     code=0
-    flavors=$(node scripts/ai/android-flavors.js) || code=$?
+    flavors=$(node scripts/amk/android-flavors.js) || code=$?
     case $code in
       0) ;;
       2) echo "android: the app has several flavor dimensions; name the variant with --flavor (for example devFree)"; status=1; return ;;

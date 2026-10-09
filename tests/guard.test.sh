@@ -1,10 +1,10 @@
 #!/bin/sh
-# Checks scripts/ai/guard.js against payload shapes from Claude Code, Codex and Antigravity.
+# Checks scripts/amk/guard.js against payload shapes from Claude Code, Codex and Antigravity.
 # Run from the repo root: sh tests/guard.test.sh
 cd "$(dirname "$0")/../stacks/react-native/template" || exit 1
 fails=0
 t() {
-  printf '%s' "$2" | node scripts/ai/guard.js 2>/dev/null; r=$?
+  printf '%s' "$2" | node scripts/amk/guard.js 2>/dev/null; r=$?
   if [ "$r" = "$1" ]; then echo "ok   $3"; else echo "FAIL $3 (exit $r, want $1)"; fails=$((fails + 1)); fi
 }
 t 2 '{"tool_name":"Bash","tool_input":{"command":"rm -rf build"}}' "Claude: rm -rf"

@@ -2,8 +2,8 @@
 # Builds signed release apps on this Mac: for apps without CI, or to check a release by hand.
 # A person runs it, because it uses the signing keys, which agents must never handle.
 #
-#   sh scripts/ai/release-build.sh android [flavor]   signed app bundle (.aab) for Google Play
-#   sh scripts/ai/release-build.sh ios [scheme]       signed .ipa for App Store Connect, or as ios/ExportOptions.plist says
+#   sh scripts/amk/release-build.sh android [flavor]   signed app bundle (.aab) for Google Play
+#   sh scripts/amk/release-build.sh ios [scheme]       signed .ipa for App Store Connect, or as ios/ExportOptions.plist says
 # Defaults: AMK_ANDROID_FLAVOR and AMK_IOS_SCHEME. An app with product flavors must name the one to build.
 #
 # Android signs with your upload key. Set its path in your shell, never in the repo:
@@ -17,11 +17,11 @@
 # Expo apps without native folders in git: it generates them first (expo prebuild). iOS signing then needs the
 # Apple team in app.json (expo.ios.appleTeamId).
 # Version and build numbers come from the repo, so set them first (the m-release skill does).
-# Output: .ai/release/
+# Output: .amk/release/
 set -eu
 platform=${1:-}
 target=${2:-}
-out=.ai/release
+out=.amk/release
 mkdir -p "$out"
 
 # secret VAR "question": read it without echo, unless it's already set
@@ -34,17 +34,17 @@ secret() {
 
 case "$platform" in
 android)
-  sh scripts/ai/prebuild.sh android
+  sh scripts/amk/prebuild.sh android
   target=${target:-${AMK_ANDROID_FLAVOR:-}}
   if [ -z "$target" ]; then
     code=0
-    flavors=$(node scripts/ai/android-flavors.js) || code=$?
+    flavors=$(node scripts/amk/android-flavors.js) || code=$?
     case $code in
       0) ;;
-      2) echo "This app has several flavor dimensions: name the variant, for example: sh scripts/ai/release-build.sh android devFree" >&2; exit 1 ;;
+      2) echo "This app has several flavor dimensions: name the variant, for example: sh scripts/amk/release-build.sh android devFree" >&2; exit 1 ;;
       *) echo "Couldn't read the product flavors from build.gradle (see the error above)." >&2; exit 1 ;;
     esac
-    [ -z "$flavors" ] || { echo "This app has product flavors ($(echo $flavors)). Name the one to build, for example: sh scripts/ai/release-build.sh android $(echo "$flavors" | head -n 1)" >&2; exit 1; }
+    [ -z "$flavors" ] || { echo "This app has product flavors ($(echo $flavors)). Name the one to build, for example: sh scripts/amk/release-build.sh android $(echo "$flavors" | head -n 1)" >&2; exit 1; }
   fi
   flavor=$(printf %s "$target" | awk '{ print toupper(substr($0, 1, 1)) substr($0, 2) }')
   if [ -n "${AMK_UPLOAD_KEYSTORE:-}" ]; then
@@ -71,8 +71,8 @@ android)
   done
   ;;
 ios)
-  sh scripts/ai/prebuild.sh ios
-  if [ ! -d ios/Pods ] || [ ios/Podfile -nt ios/Pods/Manifest.lock ]; then sh scripts/ai/pod-install.sh; fi
+  sh scripts/amk/prebuild.sh ios
+  if [ ! -d ios/Pods ] || [ ios/Podfile -nt ios/Pods/Manifest.lock ]; then sh scripts/amk/pod-install.sh; fi
   workspace=$(ls -d ios/*.xcworkspace | head -n 1)
   scheme=${target:-${AMK_IOS_SCHEME:-$(basename "$workspace" .xcworkspace)}}
   log="$out/$scheme-ios.log"

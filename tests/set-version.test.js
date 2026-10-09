@@ -6,7 +6,7 @@ const path = require('path');
 const { spawnSync } = require('child_process');
 const tmpDir = require('./tmp');
 
-const SCRIPT = path.join(__dirname, '../stacks/react-native/template/scripts/ai/set-version.sh');
+const SCRIPT = path.join(__dirname, '../stacks/react-native/template/scripts/amk/set-version.sh');
 const PBX = 'ios/Demo.xcodeproj/project.pbxproj';
 const GRADLE = 'android/app/build.gradle';
 

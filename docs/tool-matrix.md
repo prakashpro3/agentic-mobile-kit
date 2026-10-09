@@ -289,3 +289,21 @@ The kit installed on clones of three production React Native 0.84 apps:
 - **iOS check builds** compiled both simulator architectures. They now build the Mac's own, unless the project's pods exclude it (Google ML Kit excludes arm64).
 - **New:** `scripts/ai/baseline.js` compares failing lint, type checks and tests with the base branch. `verify.sh quick`, the pre-push hook and CI use it.
 - **New:** `verify.sh` loads `MAESTRO_*` test values, such as logins, from a local `.maestro/.env.local`. A real Maestro run confirmed that flows receive them.
+
+## Folder rename and `m-onboard` (2026-10-09)
+
+0.7.0 renames the kit's folders to `docs/amk/`, `scripts/amk/` and `.amk/`, and adds the `m-onboard` skill.
+
+| Check | Result |
+|---|---|
+| Update from a 0.6.2 install from npm | ✅ in a test app and in Apps A, B and C. 24 files moved with the team's edits, and git sees them as renames. The app's own files stay where they are and are listed, and files that still name an old path are flagged. The update commits through the kit's hooks, App C's lint-staged included |
+| `verify.sh quick` after the move | ✅ in all three, with the old failures listed (A: 148 type errors, B: 537). A and B install only with `npm ci --legacy-peer-deps`, as `install-deps.sh` points out |
+| Android check build after the move | ✅ App A built, installed and launched on a separate emulator. Its own login flow stopped where it needs test credentials, as before |
+| `m-onboard` in Claude Code on a 2,300-file open-source app | ✅ drafts naming the file behind each fact, five questions, then the files written and committed on a new branch once approved (about 7 minutes) |
+| `m-onboard` in Codex on the same app | ✅ drafts and questions, then stopped for approval |
+| `m-onboard` on Apps A, B and C | ✅ drafts and questions in 3 to 7 minutes each. Each also listed problems outside the four files, without changing them |
+| `m-onboard` on a fresh React Native template app | ✅ describes the template, marks the stack "not set up yet", asks about the product, and caught the template's iOS bundle ID |
+
+**Fixed on the way:**
+- **`AGENTS.md` said TypeScript in JavaScript apps** that only have the `typescript` package (App C) and listed a `typecheck` script they don't have. It now names the language from the app's files and lists only the checks the app has.
+- **No `Assisted-by:` line:** the skills' commit steps no longer add one.

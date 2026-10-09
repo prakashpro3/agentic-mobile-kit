@@ -6,7 +6,7 @@ const path = require('path');
 const { execFileSync, spawnSync } = require('child_process');
 const tmpDir = require('./tmp');
 
-const SCRIPT = path.join(__dirname, '../stacks/react-native/template/scripts/ai/release-check.js');
+const SCRIPT = path.join(__dirname, '../stacks/react-native/template/scripts/amk/release-check.js');
 const git = (cwd, ...a) => execFileSync('git', a, { cwd, encoding: 'utf8' }).trim();
 const write = (dir, f, text) => { fs.mkdirSync(path.dirname(path.join(dir, f)), { recursive: true }); fs.writeFileSync(path.join(dir, f), text); };
 const commit = (dir, msg) => { git(dir, 'add', '-A'); git(dir, '-c', 'user.name=t', '-c', 'user.email=t@example.invalid', 'commit', '-qm', msg); };

@@ -1,6 +1,6 @@
 #!/bin/sh
 # Runs a package.json script with the project's package manager; skips quietly if the script doesn't exist.
-# Usage: sh scripts/ai/pm-run.sh <script> [args…]
+# Usage: sh scripts/amk/pm-run.sh <script> [args…]
 set -eu
 script=$1; shift
 

@@ -4,26 +4,26 @@ How to work day to day in a bare React Native app that has agentic-mobile-kit in
 
 ## The idea in one paragraph
 
-Every AI tool reads the same rules (`AGENTS.md`), the same project facts (`docs/ai/`) and the same workflows (the `m-` skills). The work itself lives in git: each task has a folder `specs/<id>/` with its requirements, design, task list and a handoff in `progress.md`. So you can stop in one tool and continue in another, or on another machine, without repeating anything. Checks that matter (secrets, tests, builds, release problems) run as git hooks, CI and scripts, so they apply whichever tool, or person, made the change.
+Every AI tool reads the same rules (`AGENTS.md`), the same project facts (`docs/amk/`) and the same workflows (the `m-` skills). The work itself lives in git: each task has a folder `specs/<id>/` with its requirements, design, task list and a handoff in `progress.md`. So you can stop in one tool and continue in another, or on another machine, without repeating anything. Checks that matter (secrets, tests, builds, release problems) run as git hooks, CI and scripts, so they apply whichever tool, or person, made the change.
 
 ## Setup
 
 **Once per project** (the lead):
 1. In the app's root, on a clean branch, run `npx agentic-mobile-kit` and choose an install: the recommended setup, or your own choice of AI tools and CI. Choose CI only if the app uses GitHub Actions or Codemagic; without it, the kit adds no CI files. You can add CI later from the same menu. In scripts: `npx agentic-mobile-kit init`, with `--tools claude,codex,antigravity` and `--ci github`, `--ci codemagic` or both.
-2. Fill in `docs/ai/product.md`, `tech.md`, `structure.md` and `conventions.md`. Agents are only as good as these four files.
+2. Run `m-onboard` in your AI tool. It drafts `docs/amk/product.md`, `tech.md`, `structure.md` and `conventions.md` from the code and asks what the code can't show. Read the drafts carefully: agents are only as good as these four files.
 3. Open a PR with the `large-pr` label, merge it, and turn on branch protection (see `docs/branch-protection.md` in the kit repo).
-4. With `--ci codemagic`, do the one-time Codemagic setup in the app's `docs/ai/codemagic.md`.
+4. With `--ci codemagic`, do the one-time Codemagic setup in the app's `docs/amk/codemagic.md`.
 
 **What `init` changes.** It never overwrites a file. Besides adding the kit's files, it:
 - adds its section to an existing `AGENTS.md` between `KIT` markers, and an `@AGENTS.md` line to an existing `CLAUDE.md`;
 - records the kit version and CI choice there, so `sync` knows what's installed;
-- adds `.env`, `.env.*` and `.ai/` to `.gitignore`, and in Expo apps also `/ios` and `/android`, which `expo prebuild` generates;
+- adds `.env`, `.env.*` and `.amk/` to `.gitignore`, and in Expo apps also `/ios` and `/android`, which `expo prebuild` generates;
 - adds a `typecheck` script for TypeScript apps;
 - turns on the kit's git hooks: with a `postinstall` script that does it for every clone, and for this clone right away. If the app already uses husky, lefthook, simple-git-hooks or its own hooks folder, it adds one line to those hooks instead, and leaves `core.hooksPath` to them;
 - generates each chosen tool's permissions, hooks and reviewer agent, and links the skills folder for Claude Code and Kiro.
 
 **What `doctor` checks**, with a fix for each problem:
-- **The project:** the kit is installed, `AGENTS.md` is within its size limit, the git hooks are active (also through husky or lefthook), git and the disk agree on file names, no `.env` file is in git, the tool configs are current, and `docs/ai/` is filled in.
+- **The project:** the kit is installed, `AGENTS.md` is within its size limit, the git hooks are active (also through husky or lefthook), git and the disk agree on file names, no `.env` file is in git, the tool configs are current, and `docs/amk/` is filled in.
 - **This Mac:** Node, installed dependencies, Xcode, CocoaPods and pods, an iPhone simulator, the Android SDK and an emulator, Java, Maestro (the same version as CI) and gitleaks.
 - **The AI tools:** whether Codex and Antigravity trust the project, the Antigravity version, and an `ANTHROPIC_API_KEY` in the shell that would override a Claude subscription.
 
@@ -31,7 +31,7 @@ Every AI tool reads the same rules (`AGENTS.md`), the same project facts (`docs/
 
 **Once per machine** (every developer):
 1. On Windows, first turn on Developer Mode (Settings > System > For developers) and run `git config --global core.symlinks true`, so the Claude Code skills link works. Run the kit's scripts from Git Bash. iOS work needs a Mac.
-2. Clone, then `sh scripts/ai/install-deps.sh`. This also turns on the git hooks.
+2. Clone, then `sh scripts/amk/install-deps.sh`. This also turns on the git hooks.
 3. Run `npx agentic-mobile-kit doctor` and fix what it lists. It checks Node, Xcode, CocoaPods, simulators, the Android SDK, Java, Maestro, gitleaks and each AI tool's trust settings.
 4. Open the project once in each AI tool you use. In Codex, trust the project and approve its hooks; they stay off until you do. In Antigravity, trust the workspace.
 
@@ -39,18 +39,19 @@ Every AI tool reads the same rules (`AGENTS.md`), the same project facts (`docs/
 
 | You want to | Run | What happens |
 |---|---|---|
+| Describe the app for agents (after installing, and after big changes) | `m-onboard` | Reads the project, drafts the four `docs/amk/` files, asks what the code can't show, and writes them once you approve. Files the team already wrote get suggested changes, never a rewrite. |
 | Think a problem through first | `m-explore <question or problem>` | Reads the code, explains how it works today and lays out options with trade-offs. It never edits code; it hands off to `m-feature` or `m-bugfix`. |
 | Build a feature | `m-feature <task text or link>` | Requirements with acceptance criteria → **you approve** → design and tasks → **you approve** → one task at a time with tests and real command output → device check with screenshots → living spec updated → review → PR |
 | Fix a bug | `m-bugfix <report>` | Checks known issues → reproduces → failing test → root cause → smallest fix → verifies |
 | Stop for now, or switch tool | `m-pause` | Writes the handoff in `progress.md`, moves decisions out of the chat, commits as `wip:` and pushes |
 | Carry on anywhere | `m-continue <id>` | Reads the spec and handoff, tells you the open question, the status and the next step, then waits for you |
 | Review a branch | `m-review` | A read-only review for scope, tests, both platforms, error states, security and native changes |
-| Ship a release | `m-release <version>` | Changelog from real commits, store and client notes, version bump, release check, release PR, then the tag. Signed builds come from Codemagic, or from `sh scripts/ai/release-build.sh` run by a person on a Mac. |
+| Ship a release | `m-release <version>` | Changelog from real commits, store and client notes, version bump, release check, release PR, then the tag. Signed builds come from Codemagic, or from `sh scripts/amk/release-build.sh` run by a person on a Mac. |
 | Stop a mistake from repeating | `m-learn <what went wrong>` | The smallest lasting fix: a check, a known-issues entry, a docs line or a skill step |
 
 How to invoke a skill: `/m-feature` in Claude Code and Antigravity, and `$m-feature` in Codex. The skills only run when you invoke them; they never start on their own.
 
-`specs/current/` is the living spec: one file per area of the app, saying what it does now, requirement by requirement. Each feature's requirements say what they add, change and remove, and `m-feature` merges them in when the feature is done (`node scripts/ai/specs.js merge <id>`). `m-bugfix` corrects it when a fix changes behavior, and `node scripts/ai/specs.js status` shows every feature's progress. It starts empty and grows with each change, so there's no need to write it all up front.
+`specs/current/` is the living spec: one file per area of the app, saying what it does now, requirement by requirement. Each feature's requirements say what they add, change and remove, and `m-feature` merges them in when the feature is done (`node scripts/amk/specs.js merge <id>`). `m-bugfix` corrects it when a fix changes behavior, and `node scripts/amk/specs.js status` shows every feature's progress. It starts empty and grows with each change, so there's no need to write it all up front.
 
 Small changes don't need a skill. Ask the agent directly; the rules in `AGENTS.md` and the git hooks still apply.
 
@@ -59,13 +60,13 @@ Small changes don't need a skill. Ask the agent directly; the rules in `AGENTS.m
 1. If the current tool still works, run `m-pause`. If it stopped at a usage limit, commit what's there yourself (`wip: <id> …`) and push.
 2. In the next tool or on the next machine: `git pull`, then `m-continue <id>`.
 
-Everything in git carries over: the spec, the handoff and the code. Chat history doesn't, on purpose, so anything decided in a chat must be written into the spec or `docs/ai/decisions.md`. `m-pause` does that.
+Everything in git carries over: the spec, the handoff and the code. Chat history doesn't, on purpose, so anything decided in a chat must be written into the spec or `docs/amk/decisions.md`. `m-pause` does that.
 
 ## What "done" means
 
 An agent's work is done only when:
 1. lint, typecheck and tests pass, with the command output from that session;
-2. UI changes were checked on both platforms with `sh scripts/ai/verify.sh all --spec <id>`, and the screenshots were looked at (they're in `.ai/evidence/<id>/`). On Windows or Linux, `verify.sh` checks Android only; a teammate with a Mac runs `verify.sh ios` before the PR is merged;
+2. UI changes were checked on both platforms with `sh scripts/amk/verify.sh all --spec <id>`, and the screenshots were looked at (they're in `.amk/evidence/<id>/`). On Windows or Linux, `verify.sh` checks Android only; a teammate with a Mac runs `verify.sh ios` before the PR is merged;
 3. the diff stays inside the task;
 4. `specs/<id>/progress.md` is updated.
 
@@ -80,7 +81,7 @@ If an agent says "done" without these, it isn't done. Open the screenshots yours
 | CI on every PR | Lint, typecheck, tests, secret scan, config drift, PR size ≤ 600 lines (`large-pr` label to override), Android build, and the iOS build when native files change |
 | Nightly, or the `e2e` label | Android emulator with the Maestro flows; the screenshots are attached to the run |
 | Inside AI tools | A guard hook blocks `rm -rf`, force pushes, `git reset --hard`, `--no-verify` and reading secret files. Permission rules ask before dependency and native config changes. A stop hook reminds the agent to update the handoff. |
-| Releases | `scripts/ai/release-check.js` before tagging, and again on Codemagic before every signed build (with `--ci codemagic`) |
+| Releases | `scripts/amk/release-check.js` before tagging, and again on Codemagic before every signed build (with `--ci codemagic`) |
 
 Never bypass a hook with `--no-verify`. If a hook is wrong, fix the hook in a PR.
 
@@ -92,15 +93,15 @@ Never bypass a hook with `--no-verify`. If a hook is wrong, fix the hook in a PR
 | Skills | `/m-…` | `$m-…` | `/m-…` |
 | Guard and stop hooks | ✅ | ✅ after you approve them on each machine | ❌ project hooks don't run, so approve commands carefully |
 | Keeps `.env` out of reach | ✅ | ❌ can read it | ❌ can read it |
-| iOS builds | ✅ | ❌ inside its sandbox; run `sh scripts/ai/ios-build.sh` yourself | not tested yet |
+| iOS builds | ✅ | ❌ inside its sandbox; run `sh scripts/amk/ios-build.sh` yourself | not tested yet |
 
 Because two of the three tools can read `.env`, keep real secrets outside the project folder and inject them at run time. Cursor, OpenCode and Kiro are set up the same way, but they haven't been tested yet.
 
 ## Rules for people
 
-From `docs/ai/team-process.md`:
+From `docs/amk/team-process.md`:
 - You own the PRs you open, and must be able to explain every change without AI.
-- Commits made by an agent end with `Assisted-by: <tool>/<model>` and, when there's a spec, `Spec: specs/<id>`.
+- A commit made for a spec ends with `Spec: specs/<id>`.
 - Run at most 2 or 3 agents in parallel.
 - Don't use "skip permissions", "YOLO" or auto-run modes.
 
@@ -109,28 +110,29 @@ From `docs/ai/team-process.md`:
 | Problem | Do this |
 |---|---|
 | Anything odd after setup | `npx agentic-mobile-kit doctor` |
-| A build error | Check `docs/ai/known-issues.md` first; `m-bugfix` does this too |
+| `scripts/ai/…` or `docs/ai/…` not found after updating from 0.6 | Since 0.7.0 they're `scripts/amk/` and `docs/amk/`. The update lists your files that still use the old paths, such as scripts in `package.json` or your own CI; change them there |
+| A build error | Check `docs/amk/known-issues.md` first; `m-bugfix` does this too |
 | The agent made a mistake you had to correct | `m-learn`, so it doesn't happen again |
 | `pre-commit` says to fix the spec format | Each requirement needs a SHALL sentence and a scenario with WHEN and THEN; see `specs/current/README.md` |
-| Hooks don't run | `npx agentic-mobile-kit doctor` says why. Without a hook manager, `git config core.hooksPath` must print `.githooks` (`sh scripts/ai/install-deps.sh` sets it). With husky or lefthook, your install sets them up |
+| Hooks don't run | `npx agentic-mobile-kit doctor` says why. Without a hook manager, `git config core.hooksPath` must print `.githooks` (`sh scripts/amk/install-deps.sh` sets it). With husky or lefthook, your install sets them up |
 | `pre-commit` says a file was renamed only in letter case | Rename it through git in two steps, as the message shows. macOS and Windows don't tell the two names apart, so git kept the old one and the app fails on other machines |
 | The app's lint or tests already fail on `main` | Nothing to do first: `verify.sh quick`, the `pre-push` hook and CI pass when a change adds no new failure, and list the old ones. They compare with the remote's default branch, or `AMK_BASE` |
-| `pre-push` says dependencies aren't installed | `sh scripts/ai/install-deps.sh` |
+| `pre-push` says dependencies aren't installed | `sh scripts/amk/install-deps.sh` |
 | `verify.sh` checks the wrong Android flavor or iOS app | Add `--flavor <name>` or `--scheme <name>`, or set `AMK_ANDROID_FLAVOR` / `AMK_IOS_SCHEME` in your shell |
 | A Maestro flow needs a test login | Put `MAESTRO_EMAIL=…`, `MAESTRO_PASSWORD=…` (any `MAESTRO_` name) in `.maestro/.env.local`, which git ignores; flows read them as `${MAESTRO_EMAIL}`. `verify.sh` loads them, and values set in your shell win |
 | `verify.sh` uses the wrong Android device | Set `AMK_ANDROID_DEVICE` to its serial from `adb devices`, or `AMK_ANDROID_AVD` to the emulator to start |
 | `release-build.sh ios` should sign manually, or export ad hoc or enterprise | Commit your `ios/ExportOptions.plist`, or point `AMK_IOS_EXPORT_OPTIONS` at one |
 | `release-check` says signing keys are in git | Move the keystores out of the repo into a password manager, read the passwords from the environment or `~/.gradle/gradle.properties`, and reset the upload key in Play Console if Play App Signing is on |
 | Metro's port 8081 is busy | Nothing to do: `verify.sh` uses release builds, which don't need Metro |
-| iOS build fails after a native dependency change | `sh scripts/ai/pod-install.sh` |
+| iOS build fails after a native dependency change | `sh scripts/amk/pod-install.sh` |
 | Expo: `verify.sh` says lint was skipped | Run `npx expo lint` once: it installs ESLint and writes `eslint.config.js`. Commit what it adds |
 | Expo: a native change doesn't show up in the build | Delete `ios/.amk-fingerprint` and `android/.amk-fingerprint`, then check again. The scripts regenerate the native folders only when Expo's fingerprint changes |
 
 ## Once a month (30 minutes)
 
 - Read `git log --grep 'chore(learn)'`: what did agents get wrong, and did the fixes hold?
-- Remove stale entries from `docs/ai/known-issues.md`.
-- After a React Native, Xcode, Android Gradle Plugin or AI model upgrade, re-read `AGENTS.md` and `docs/ai/` for anything that's no longer true.
+- Remove stale entries from `docs/amk/known-issues.md`.
+- After a React Native, Xcode, Android Gradle Plugin or AI model upgrade, re-read `AGENTS.md` and `docs/amk/` for anything that's no longer true.
 
 ## 1-hour training
 

@@ -7,7 +7,7 @@
 //   test       failing Jest tests and test files, compared with a test run of the base
 // The base: AMK_BASE, else the remote's default branch, else main or master. Its merge base is checked out once
 // into a temporary git worktree that shares node_modules, and its results are kept for the next run.
-// Usage: node scripts/ai/baseline.js lint|typecheck|test
+// Usage: node scripts/amk/baseline.js lint|typecheck|test
 'use strict';
 const fs = require('fs');
 const os = require('os');
@@ -17,7 +17,7 @@ const { spawnSync, execFileSync } = require('child_process');
 
 const check = process.argv[2];
 if (!['lint', 'typecheck', 'test'].includes(check)) {
-  console.error('usage: node scripts/ai/baseline.js lint|typecheck|test');
+  console.error('usage: node scripts/amk/baseline.js lint|typecheck|test');
   process.exit(2);
 }
 const root = process.cwd();
@@ -50,7 +50,7 @@ function runScript(dir) {
   fs.mkdirSync(scratch, { recursive: true });
   const json = path.join(scratch, `jest-${hash(dir)}.json`);
   fs.rmSync(json, { force: true });
-  const r = spawnSync('sh', [path.join(root, 'scripts/ai/pm-run.sh'), check, ...(jest ? ['--json', `--outputFile=${json}`] : [])],
+  const r = spawnSync('sh', [path.join(root, 'scripts/amk/pm-run.sh'), check, ...(jest ? ['--json', `--outputFile=${json}`] : [])],
     { cwd: dir, encoding: 'utf8', env: { ...process.env, CI: 'true' }, maxBuffer: 2 ** 28 });
   return { code: r.status, out: `${r.stdout || ''}${r.stderr || ''}`, json, dir };
 }
@@ -119,8 +119,9 @@ function baseProblems(sha, extract) {
 function newLintErrors(sha) {
   const changed = [...new Set([...git('diff', '--name-only', '--diff-filter=ACMR', sha).split('\n'),
     ...git('ls-files', '--others', '--exclude-standard').split('\n')])].filter(Boolean);
-  // the kit's own .eslintignore lines (for scripts/ai/) don't change how the app's code is checked
-  const withoutKit = t => t.split('\n').filter(l => l.trim() !== 'scripts/ai/' && !l.startsWith('# agentic-mobile-kit')).join('\n').trim();
+  // the kit's own .eslintignore lines (for scripts/amk/) don't change how the app's code is checked
+  // (scripts/ai/ until 0.7.0)
+  const withoutKit = t => t.split('\n').filter(l => !/^scripts\/(amk|ai)\/$/.test(l.trim()) && !l.startsWith('# agentic-mobile-kit')).join('\n').trim();
   const setup = changed.filter(f => /(^|\/)(\.eslintrc(\.\w+)?|eslint\.config\.\w+|\.eslintignore)$/.test(f))
     .filter(f => path.basename(f) !== '.eslintignore' || withoutKit(git('show', `${sha}:${f}`)) !== withoutKit(fs.readFileSync(path.join(root, f), 'utf8')));
   if (setup.length) return { reason: `the change edits the ESLint setup (${setup.join(', ')}), so any error could be new` };
@@ -141,7 +142,7 @@ function newLintErrors(sha) {
     }
   };
   const errors = results => (results || []).flatMap(f => f.messages.filter(m => m.severity === 2).map(m => `${m.ruleId || 'parsing'}: ${m.message}`));
-  const files = changed.filter(f => /\.(js|jsx|ts|tsx)$/.test(f) && !f.startsWith('scripts/ai/') && fs.existsSync(path.join(root, f)));
+  const files = changed.filter(f => /\.(js|jsx|ts|tsx)$/.test(f) && !f.startsWith('scripts/amk/') && fs.existsSync(path.join(root, f)));
   const results = files.length ? lint(files) : [];
   if (!results) return { reason: 'ESLint gave no report' };
   const fresh = [];

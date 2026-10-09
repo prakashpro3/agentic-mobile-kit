@@ -3,7 +3,7 @@
 `codemagic.yaml` has two workflows. `android-release` builds a signed app bundle and uploads it to Google Play's internal track. `ios-release` builds a signed ipa and uploads it to TestFlight. Both start when a version tag is pushed (`git push origin v1.2.0`), and you can start either one by hand in Codemagic.
 
 Each build:
-1. runs `node scripts/ai/release-check.js` and stops if it finds a problem;
+1. runs `node scripts/amk/release-check.js` and stops if it finds a problem;
 2. sets the build number on the build machine: one more than the latest in the store, or Codemagic's build counter for a new app. Nothing is committed, so the repo keeps only the version name (for example 1.2.0), which you bump in the release PR;
 3. uses `release-notes/<version>/play-store.txt` or `app-store.txt` as the store's "What's new" or TestFlight's "What to test", when the build comes from a tag;
 4. signs with keys that Codemagic stores. The repo never holds them, and local release builds (`verify.sh`, the e2e CI) stay signed with the debug key.

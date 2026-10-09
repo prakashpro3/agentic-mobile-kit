@@ -1,4 +1,4 @@
-# Signed release builds on Codemagic (codemagic.io). One-time setup for each app: docs/ai/codemagic.md
+# Signed release builds on Codemagic (codemagic.io). One-time setup for each app: docs/amk/codemagic.md
 # Both workflows start when a version tag is pushed (git push origin v1.2.0); you can also start them in Codemagic.
 # Build numbers are set on the build machine only (one more than the store's latest), so the repo never needs a bump for them.
 workflows:
@@ -20,14 +20,14 @@ workflows:
       java: 17
     scripts:
       - name: Release check
-        script: node scripts/ai/release-check.js
+        script: node scripts/amk/release-check.js
       - name: Install dependencies
-        script: sh scripts/ai/install-deps.sh
+        script: sh scripts/amk/install-deps.sh
       - name: Store release notes
         script: cp "release-notes/${CM_TAG#v}/play-store.txt" release_notes.txt 2>/dev/null || true
       - name: Build the signed app bundle
         script: |
-          sh scripts/ai/prebuild.sh android # Expo apps without android/ in git
+          sh scripts/amk/prebuild.sh android # Expo apps without android/ in git
           echo "sdk.dir=$ANDROID_SDK_ROOT" > android/local.properties
           package=$(sed -n -E 's/.*applicationId( =)? "([^"]+)".*/\2/p' android/app/build.gradle* | head -1)
           if last=$(google-play get-latest-build-number --package-name "$package") && [ -n "$last" ]; then code=$((last + 1)); else code=$BUILD_NUMBER; fi
@@ -65,9 +65,9 @@ workflows:
       cocoapods: default
     scripts:
       - name: Release check
-        script: node scripts/ai/release-check.js
+        script: node scripts/amk/release-check.js
       - name: Install dependencies
-        script: sh scripts/ai/install-deps.sh && sh scripts/ai/prebuild.sh ios && sh scripts/ai/pod-install.sh
+        script: sh scripts/amk/install-deps.sh && sh scripts/amk/prebuild.sh ios && sh scripts/amk/pod-install.sh
       - name: Store release notes
         script: |
           notes="release-notes/${CM_TAG#v}/app-store.txt"

@@ -16,7 +16,7 @@ Tested with Claude Code, Codex and Antigravity. `--tools` also sets up Cursor, O
 
 2. Run it again and choose **Check this project and machine**. It lists each problem with its fix.
 
-3. Fill in `docs/ai/product.md`, `tech.md`, `structure.md` and `conventions.md`, then commit and open a PR.
+3. In your AI tool, run `m-onboard`. It reads the project, drafts `docs/amk/product.md`, `tech.md`, `structure.md` and `conventions.md`, asks what the code can't show, and writes them once you approve. Then commit and open a PR.
 
 Each choice prints the command it runs, for scripts and CI: `init` (with `--ci github`, `--ci codemagic` or `--tools claude,codex,antigravity`), `sync`, `doctor` and `uninstall`. `--help` lists every option.
 
@@ -26,6 +26,7 @@ Each choice prints the command it runs, for scripts and CI: `init` (with `--ci g
 
 | You want to | Run | What happens |
 |---|---|---|
+| Describe the app for agents | `m-onboard` | Reads the whole project, drafts the product, tech, structure and conventions files in `docs/amk/`, asks what the code can't show, and writes them once you approve. Run it after installing, and again after big changes. |
 | Think a problem through | `m-explore` | The agent reads the code, explains how it works today and lays out options with trade-offs. It never edits code. |
 | Build a feature | `m-feature` | Requirements → you approve → design and tasks → you approve → one task at a time with tests → device checks with screenshots → living spec updated → review → PR |
 | Fix a bug | `m-bugfix` | Reproduces the bug, proves it with a failing test, finds the root cause, then makes the smallest fix |
@@ -58,6 +59,7 @@ Both need a clean working tree and leave the result for you to review with `git 
 - **Report:** `sync` lists what it updated, added, removed and merged.
 - **Your docs:** the product, tech, structure and conventions files your team filled in are never changed.
 - **Adding CI later:** `sync --ci github` or `--ci codemagic` does it.
+- **From 0.6 or earlier:** the update moves the kit's files from `docs/ai/` and `scripts/ai/` to `docs/amk/` and `scripts/amk/`, with your edits. Your own files in the old folders stay where they are, and it lists any of your files that still use the old paths.
 
 ## Requirements
 

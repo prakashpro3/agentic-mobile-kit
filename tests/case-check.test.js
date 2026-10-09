@@ -6,7 +6,7 @@ const path = require('path');
 const { execFileSync, spawnSync } = require('child_process');
 const tmpDir = require('./tmp');
 
-const SCRIPT = path.join(__dirname, '../stacks/react-native/template/scripts/ai/case-check.js');
+const SCRIPT = path.join(__dirname, '../stacks/react-native/template/scripts/amk/case-check.js');
 const git = (cwd, ...a) => execFileSync('git', a, { cwd, encoding: 'utf8' }).trim();
 const check = cwd => spawnSync(process.execPath, [SCRIPT], { cwd, encoding: 'utf8' });
 

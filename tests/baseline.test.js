@@ -6,7 +6,7 @@ const path = require('path');
 const { execFileSync, spawnSync } = require('child_process');
 const tmpDir = require('./tmp');
 
-const KIT = path.join(__dirname, '../stacks/react-native/template/scripts/ai');
+const KIT = path.join(__dirname, '../stacks/react-native/template/scripts/amk');
 const git = (cwd, ...a) => execFileSync('git', a, { cwd, encoding: 'utf8' }).trim();
 const write = (dir, f, text) => { fs.mkdirSync(path.dirname(path.join(dir, f)), { recursive: true }); fs.writeFileSync(path.join(dir, f), text); };
 const commit = (dir, msg) => { git(dir, 'add', '-A'); git(dir, '-c', 'user.name=t', '-c', 'user.email=t@example.invalid', 'commit', '-qm', msg); };
@@ -37,8 +37,8 @@ const i = args.indexOf('--stdin-filename');
 console.log(JSON.stringify(i >= 0 ? [report(args[i + 1], fs.readFileSync(0, 'utf8'))] : args.map(f => report(f, fs.readFileSync(f, 'utf8')))));
 `);
   write(dir, '.gitignore', 'node_modules/\n');
-  fs.mkdirSync(path.join(dir, 'scripts/ai'), { recursive: true });
-  fs.copyFileSync(path.join(KIT, 'pm-run.sh'), path.join(dir, 'scripts/ai/pm-run.sh'));
+  fs.mkdirSync(path.join(dir, 'scripts/amk'), { recursive: true });
+  fs.copyFileSync(path.join(KIT, 'pm-run.sh'), path.join(dir, 'scripts/amk/pm-run.sh'));
   write(dir, 'types.txt', 'src/old.ts(3,7): error TS2322: Type \'string\' is not assignable to type \'number\'.\n');
   write(dir, 'tests.json', JSON.stringify({ 'src/__tests__/old.test.js': ['Old › still broken'], 'src/__tests__/empty.test.js': null }));
   write(dir, 'src/a.js', 'const x = 1; // BAD old\n');
@@ -87,7 +87,7 @@ test('lint: old errors in a changed file pass, a new error fails, and a changed 
   assert.match(fresh.out, /lint: 1 new compared with main[^\n]*:\n {2}src\/c\.js: no-bad: const z = 3; \/\/ BAD new/);
 
   fs.rmSync(path.join(dir, 'src/c.js'));
-  write(dir, '.eslintignore', "# agentic-mobile-kit: its scripts follow the kit's style, not this app's lint rules\nscripts/ai/\n");
+  write(dir, '.eslintignore', "# agentic-mobile-kit: its scripts follow the kit's style, not this app's lint rules\nscripts/amk/\n");
   assert.strictEqual(check(dir, 'lint').code, 0, 'the kit\'s own .eslintignore lines are no setup change');
   write(dir, '.eslintrc.json', '{}\n');
   const setup = check(dir, 'lint');

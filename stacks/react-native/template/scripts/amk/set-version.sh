@@ -2,10 +2,10 @@
 # Sets the version users see on both platforms: iOS MARKETING_VERSION and Android versionName, or in Expo
 # apps without native folders, expo.version in app.json.
 # Build numbers are left alone (codemagic.yaml sets them at build time).
-# Usage: sh scripts/ai/set-version.sh 1.4.0
+# Usage: sh scripts/amk/set-version.sh 1.4.0
 set -eu
 v=${1:-}
-echo "$v" | grep -qE '^[0-9]+\.[0-9]+(\.[0-9]+)?$' || { echo "usage: sh scripts/ai/set-version.sh <version, e.g. 1.4.0>" >&2; exit 1; }
+echo "$v" | grep -qE '^[0-9]+\.[0-9]+(\.[0-9]+)?$' || { echo "usage: sh scripts/amk/set-version.sh <version, e.g. 1.4.0>" >&2; exit 1; }
 
 # Expo apps without native folders in git: the version is expo.version in the app config
 if [ -z "$(git ls-files -- ios android 2> /dev/null)" ] &&
