@@ -181,7 +181,8 @@ test('sync: updates untouched kit files, merges the team\'s changes, flags confl
   assert.ok(report.merged.includes('.github/workflows/ci.yml'));
   assert.match(read(dir, 'cliff.toml'), new RegExp(`<<<<<<< your version[\\s\\S]*# Team[\\s\\S]*>>>>>>> kit ${KIT_VERSION.replace(/\./g, '\\.')}`));
   assert.ok(report.conflicts.includes('cliff.toml'));
-  assert.ok(fs.statSync(path.join(dir, 'scripts/ai/set-version.sh')).mode & 0o111, 'new file added, executable');
+  assert.ok(fs.existsSync(path.join(dir, 'scripts/ai/set-version.sh')), 'new file added');
+  if (process.platform !== 'win32') assert.ok(fs.statSync(path.join(dir, 'scripts/ai/set-version.sh')).mode & 0o111, 'and executable');
   assert.ok(report.added.includes('scripts/ai/set-version.sh'));
   assert.ok(!fs.existsSync(path.join(dir, 'scripts/ai/retired.sh')), 'dropped file removed');
   assert.strictEqual(read(dir, 'docs/ai/product.md'), 'This app books meeting rooms.\n');
