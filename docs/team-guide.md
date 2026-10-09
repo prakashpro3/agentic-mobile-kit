@@ -30,9 +30,10 @@ Every AI tool reads the same rules (`AGENTS.md`), the same project facts (`docs/
 **When the kit has a new version** (the lead): on a clean branch, run `npx agentic-mobile-kit@latest sync`. The first time on an install older than 0.4.0, add `--from <the version you installed>`. Resolve any `<<<<<<<` conflicts, run the checks and open a PR.
 
 **Once per machine** (every developer):
-1. Clone, then `sh scripts/ai/install-deps.sh`. This also turns on the git hooks.
-2. Run `npx agentic-mobile-kit doctor` and fix what it lists. It checks Node, Xcode, CocoaPods, simulators, the Android SDK, Java, Maestro, gitleaks and each AI tool's trust settings.
-3. Open the project once in each AI tool you use. In Codex, trust the project and approve its hooks; they stay off until you do. In Antigravity, trust the workspace.
+1. On Windows, first turn on Developer Mode (Settings > System > For developers) and run `git config --global core.symlinks true`, so the Claude Code skills link works. Run the kit's scripts from Git Bash. iOS work needs a Mac.
+2. Clone, then `sh scripts/ai/install-deps.sh`. This also turns on the git hooks.
+3. Run `npx agentic-mobile-kit doctor` and fix what it lists. It checks Node, Xcode, CocoaPods, simulators, the Android SDK, Java, Maestro, gitleaks and each AI tool's trust settings.
+4. Open the project once in each AI tool you use. In Codex, trust the project and approve its hooks; they stay off until you do. In Antigravity, trust the workspace.
 
 ## Daily work
 
