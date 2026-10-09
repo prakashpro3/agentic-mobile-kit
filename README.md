@@ -67,11 +67,8 @@ npx agentic-mobile-kit uninstall     # remove the kit; files you changed are kep
 
 Both need a clean working tree and leave the result for you to review with `git diff`.
 - **Report:** `sync` lists what it updated, added, removed and merged.
-- **Conflicts:** if you and the kit changed the same lines, the file gets `<<<<<<<` conflict markers to resolve.
 - **Your docs:** the product, tech, structure and conventions files your team filled in are never changed.
 - **Adding CI later:** `sync --ci github` or `--ci codemagic` does it.
-- **Older installs:** installs from before 0.4.0 pass the kit version they started from, for example `--from 0.3.0`.
-- **What `uninstall` leaves:** the `.gitignore` lines and the `typecheck` script.
 
 ## Requirements
 
