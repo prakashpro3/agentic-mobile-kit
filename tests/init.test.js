@@ -279,3 +279,31 @@ test('another framework\'s .claude/skills folder: kit skills are linked into it,
   uninstall(dir, { skipGenerate: true });
   assert.deepStrictEqual(fs.readdirSync(path.join(dir, '.claude/skills')), ['brainstorming']);
 });
+
+test('Windows without Developer Mode: a refused skills link is a warning, not a crash', () => {
+  const dir = fakeApp();
+  const real = fs.symlinkSync;
+  fs.symlinkSync = () => { const e = new Error('operation not permitted'); e.code = 'EPERM'; throw e; };
+  try {
+    const { warnings } = init(dir, { skipGenerate: true });
+    assert.match(warnings.join('\n'), /couldn't create the \.claude\/skills link \(EPERM\)\. On Windows, turn on Developer Mode/);
+    assert.ok(fs.existsSync(path.join(dir, '.agents/skills/m-feature/SKILL.md')), 'everything else is installed');
+  } finally { fs.symlinkSync = real; }
+});
+
+test('a clone with Windows line endings (autocrlf): hooks keep LF and run, and sync sees nothing to change', () => {
+  const dir = fakeApp();
+  init(dir, { skipGenerate: true });
+  assert.match(read(dir, '.gitattributes'), /^\.githooks\/\* text eol=lf$/m);
+  commitAll(dir);
+  const clone = tmpDir('amk-clone-');
+  execFileSync('git', ['clone', '-q', '-c', 'core.autocrlf=true', dir, clone]);
+  assert.match(fs.readFileSync(path.join(clone, 'AGENTS.md'), 'utf8'), /\r\n/, 'text files were checked out with CRLF');
+  for (const f of ['.githooks/pre-commit', '.githooks/pre-push', 'scripts/ai/verify.sh']) {
+    assert.doesNotMatch(fs.readFileSync(path.join(clone, f), 'utf8'), /\r/, `${f} keeps LF`);
+  }
+  const hook = require('child_process').spawnSync('sh', ['.githooks/pre-commit'], { cwd: clone, encoding: 'utf8' });
+  assert.strictEqual(hook.status, 0, hook.stderr);
+  const { report } = sync(clone, { skipGenerate: true });
+  assert.ok(Object.values(report).every(a => a.length === 0), JSON.stringify(report));
+});

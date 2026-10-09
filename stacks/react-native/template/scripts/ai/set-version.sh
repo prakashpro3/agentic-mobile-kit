@@ -12,9 +12,10 @@ gradle=$(ls android/app/build.gradle android/app/build.gradle.kts 2>/dev/null | 
 [ -z "$(grep -oE 'MARKETING_VERSION = [^;]+' "$pbx" | sort -u | sed -n 2p)" ] || { echo "$pbx has several app versions; set each one in Xcode" >&2; exit 1; }
 [ -z "$(grep -oE 'versionName( =)? "[^"]+"' "$gradle" | sort -u | sed -n 2p)" ] || { echo "$gradle has several versionName values; set each one by hand" >&2; exit 1; }
 
-sed -i '' -E "s/MARKETING_VERSION = [^;]+;/MARKETING_VERSION = $v;/" "$pbx"
-sed -i '' -E "s/versionName( =)? \"[^\"]+\"/versionName\1 \"$v\"/" "$gradle"
+# -i.bak works with both macOS and GNU sed (Linux, Git Bash on Windows)
+sed -i.bak -E "s/MARKETING_VERSION = [^;]+;/MARKETING_VERSION = $v;/" "$pbx" && rm -f "$pbx.bak"
+sed -i.bak -E "s/versionName( =)? \"[^\"]+\"/versionName\1 \"$v\"/" "$gradle" && rm -f "$gradle.bak"
 grep -q "MARKETING_VERSION = $v;" "$pbx" || { echo "No MARKETING_VERSION in $pbx; set the version in Xcode" >&2; exit 1; }
 grep -qE "versionName( =)? \"$v\"" "$gradle" || { echo "No versionName in $gradle; set it by hand" >&2; exit 1; }
-plutil -lint -s "$pbx"
+! command -v plutil > /dev/null || plutil -lint -s "$pbx"
 echo "Version $v set in $pbx and $gradle."

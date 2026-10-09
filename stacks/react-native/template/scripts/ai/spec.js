@@ -12,7 +12,7 @@ const fs = require('fs');
 const path = require('path');
 
 const [cmd, ...args] = process.argv.slice(2);
-const read = f => { try { return fs.readFileSync(f, 'utf8'); } catch { return null; } };
+const read = f => { try { return fs.readFileSync(f, 'utf8').replace(/\r\n/g, '\n'); } catch { return null; } };
 const key = name => name.trim().toLowerCase();
 const isRequirement = l => /^### Requirement:/.test(l);
 

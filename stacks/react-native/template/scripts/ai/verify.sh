@@ -104,7 +104,12 @@ ios() {
 
 android() {
   command -v maestro > /dev/null || { echo "android: Maestro isn't installed (https://maestro.dev)"; status=1; return; }
-  sdk=${ANDROID_HOME:-$HOME/Library/Android/sdk}
+  case $(uname -s) in # where Android Studio puts the SDK by default
+    Darwin) default_sdk=$HOME/Library/Android/sdk ;;
+    MINGW* | MSYS* | CYGWIN*) default_sdk=${LOCALAPPDATA:-$HOME/AppData/Local}/Android/Sdk ;;
+    *) default_sdk=$HOME/Android/Sdk ;;
+  esac
+  sdk=${ANDROID_HOME:-${ANDROID_SDK_ROOT:-$default_sdk}}
   adb="$sdk/platform-tools/adb"
   if ! (cd android && ./gradlew assembleRelease --no-daemon -q) > "$evidence/android-build.log" 2>&1; then
     echo "android: release build FAILED, see ${evidence#"$root"/}/android-build.log"; status=1; return
