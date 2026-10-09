@@ -20,14 +20,14 @@ This project may also use other AI workflow frameworks (for example Superpowers,
 | Lint, typecheck, test (each skips what the app doesn't have yet) | `sh scripts/ai/pm-run.sh lint`, `sh scripts/ai/pm-run.sh typecheck`, `sh scripts/ai/pm-run.sh test` |
 | Check dependency versions and the app config | `npx expo install --check`, `npx expo-doctor` |
 | Check on devices (release builds, Maestro flows, screenshots) | `sh scripts/ai/verify.sh all --spec <id>`; another iOS scheme: `--scheme <name>` |
-| Specs: progress, format check, fold a finished feature into the living spec | `node scripts/ai/spec.js status`, `node scripts/ai/spec.js check`, `node scripts/ai/spec.js merge <id>` |
+| Specs: progress, format check, fold a finished feature into the living spec | `node scripts/ai/specs.js status`, `node scripts/ai/specs.js check`, `node scripts/ai/specs.js merge <id>` |
 | Check a release before tagging it (versions, permission texts, debug leftovers) | `node scripts/ai/release-check.js` |
 | Signed release builds (a person runs them: they use the signing keys) | `sh scripts/ai/release-build.sh android`, `sh scripts/ai/release-build.sh ios` |
 
 ## Definition of done
 
 A task is done only when:
-1. lint, typecheck and tests pass, and you show the command output from this session;
+1. `sh scripts/ai/verify.sh quick` passes (lint, typecheck, tests) and you show its output from this session. In an app whose base branch already fails some of them, it passes when your change adds no new failure, and lists the old ones: leave those alone unless the task is to fix them;
 2. UI changes were checked with `sh scripts/ai/verify.sh all --spec <id>` on both iOS and Android, and you looked at the screenshots. On Windows or Linux, that covers Android only: write in `progress.md` and the PR that iOS still needs checking on a Mac, and the PR isn't merged until a teammate with a Mac has done it;
 3. the change stays inside the task's scope;
 4. `specs/<id>/progress.md` is updated, when working from a spec.

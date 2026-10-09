@@ -43,8 +43,8 @@ fi
 
 # 5. spec format: requirements in force need a SHALL and a scenario (format: specs/current/README.md)
 specs=$(echo "$staged" | grep -E '^specs/([^_/][^/]*/requirements|current/[^/]+)\.md$' | grep -v '^specs/current/README\.md$' || true)
-if [ -n "$specs" ] && [ -f scripts/ai/spec.js ]; then
-  node scripts/ai/spec.js check --skip-drafts $specs || fail "fix the spec format above (format: specs/current/README.md)"
+if [ -n "$specs" ] && [ -f scripts/ai/specs.js ]; then
+  node scripts/ai/specs.js check --skip-drafts $specs || fail "fix the spec format above (format: specs/current/README.md)"
 fi
 
 # 6. files renamed only in letter case on macOS or Windows: git still has the old name, so other machines can't find them

@@ -50,7 +50,7 @@ Every AI tool reads the same rules (`AGENTS.md`), the same project facts (`docs/
 
 How to invoke a skill: `/m-feature` in Claude Code and Antigravity, and `$m-feature` in Codex. The skills only run when you invoke them; they never start on their own.
 
-`specs/current/` is the living spec: one file per area of the app, saying what it does now, requirement by requirement. Each feature's requirements say what they add, change and remove, and `m-feature` merges them in when the feature is done (`node scripts/ai/spec.js merge <id>`). `m-bugfix` corrects it when a fix changes behavior, and `node scripts/ai/spec.js status` shows every feature's progress. It starts empty and grows with each change, so there's no need to write it all up front.
+`specs/current/` is the living spec: one file per area of the app, saying what it does now, requirement by requirement. Each feature's requirements say what they add, change and remove, and `m-feature` merges them in when the feature is done (`node scripts/ai/specs.js merge <id>`). `m-bugfix` corrects it when a fix changes behavior, and `node scripts/ai/specs.js status` shows every feature's progress. It starts empty and grows with each change, so there's no need to write it all up front.
 
 Small changes don't need a skill. Ask the agent directly; the rules in `AGENTS.md` and the git hooks still apply.
 
@@ -114,8 +114,10 @@ From `docs/ai/team-process.md`:
 | `pre-commit` says to fix the spec format | Each requirement needs a SHALL sentence and a scenario with WHEN and THEN; see `specs/current/README.md` |
 | Hooks don't run | `npx agentic-mobile-kit doctor` says why. Without a hook manager, `git config core.hooksPath` must print `.githooks` (`sh scripts/ai/install-deps.sh` sets it). With husky or lefthook, your install sets them up |
 | `pre-commit` says a file was renamed only in letter case | Rename it through git in two steps, as the message shows. macOS and Windows don't tell the two names apart, so git kept the old one and the app fails on other machines |
+| The app's lint or tests already fail on `main` | Nothing to do first: `verify.sh quick`, the `pre-push` hook and CI pass when a change adds no new failure, and list the old ones. They compare with the remote's default branch, or `AMK_BASE` |
 | `pre-push` says dependencies aren't installed | `sh scripts/ai/install-deps.sh` |
 | `verify.sh` checks the wrong Android flavor or iOS app | Add `--flavor <name>` or `--scheme <name>`, or set `AMK_ANDROID_FLAVOR` / `AMK_IOS_SCHEME` in your shell |
+| A Maestro flow needs a test login | Put `MAESTRO_EMAIL=…`, `MAESTRO_PASSWORD=…` (any `MAESTRO_` name) in `.maestro/.env.local`, which git ignores; flows read them as `${MAESTRO_EMAIL}`. `verify.sh` loads them, and values set in your shell win |
 | `verify.sh` uses the wrong Android device | Set `AMK_ANDROID_DEVICE` to its serial from `adb devices`, or `AMK_ANDROID_AVD` to the emulator to start |
 | `release-build.sh ios` should sign manually, or export ad hoc or enterprise | Commit your `ios/ExportOptions.plist`, or point `AMK_IOS_EXPORT_OPTIONS` at one |
 | `release-check` says signing keys are in git | Move the keystores out of the repo into a password manager, read the passwords from the environment or `~/.gradle/gradle.properties`, and reset the upload key in Play Console if Play App Signing is on |

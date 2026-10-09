@@ -2,7 +2,7 @@
 
 One file per area of the app (for example `login.md` or `tasks.md`) that describes how the app behaves today, requirement by requirement. AI tools read it before they change an area, so they don't have to work out the current behavior from the code.
 
-It starts empty and grows one change at a time; there's no need to describe the whole app up front. Each feature's `specs/<id>/requirements.md` lists what it adds, changes and removes, and when the feature is done, `node scripts/ai/spec.js merge <id>` applies those changes here. People can edit these files too.
+It starts empty and grows one change at a time; there's no need to describe the whole app up front. Each feature's `specs/<id>/requirements.md` lists what it adds, changes and removes, and when the feature is done, `node scripts/ai/specs.js merge <id>` applies those changes here. People can edit these files too.
 
 ## Format
 
@@ -37,4 +37,4 @@ A feature's `requirements.md` groups its requirements under these headings, wher
 - `## MODIFIED Requirements: <area>`: behavior that changes. Copy the current requirement, keep its name, and edit it. Merging replaces the old one.
 - `## REMOVED Requirements: <area>`: behavior that goes away, with a line on why. Merging deletes it, and deletes the file when its last requirement goes.
 
-`node scripts/ai/spec.js check` checks the format; the git pre-commit hook runs it on staged specs once their work has started. `node scripts/ai/spec.js status` lists every feature's state and task progress.
+`node scripts/ai/specs.js check` checks the format; the git pre-commit hook runs it on staged specs once their work has started. `node scripts/ai/specs.js status` lists every feature's state and task progress.

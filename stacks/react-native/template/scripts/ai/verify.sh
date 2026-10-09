@@ -14,6 +14,7 @@
 #   (no flows found: a smoke check that launches the app and takes a screenshot)
 # Env: AMK_ANDROID_FLAVOR, AMK_IOS_SCHEME (defaults for the two options), AMK_IOS_DEVICE (simulator name
 #      or UDID), AMK_ANDROID_DEVICE (adb serial, when several are connected), AMK_ANDROID_AVD (emulator to start)
+# Flows that log in read ${MAESTRO_EMAIL} and the like from a local, gitignored .maestro/.env.local (never committed).
 set -eu
 
 mode=${1:-all}
@@ -34,6 +35,7 @@ while [ $# -gt 0 ]; do
 done
 
 root=$(pwd)
+. scripts/ai/maestro-env.sh
 evidence="$root/.ai/evidence/${label:-${spec:-$(date +%Y%m%d-%H%M%S)}}"
 mkdir -p "$evidence"
 status=0
@@ -77,14 +79,17 @@ run_flows() { # platform device app_id
 }
 
 quick() {
-  if sh scripts/ai/pm-run.sh lint > "$evidence/lint.log" 2>&1 &&
-    sh scripts/ai/pm-run.sh typecheck > "$evidence/typecheck.log" 2>&1 &&
-    CI=true sh scripts/ai/pm-run.sh test > "$evidence/test.log" 2>&1; then
+  # each one passes when the app's script passes, or when all its failures were already on the base branch
+  if node scripts/ai/baseline.js lint > "$evidence/lint.log" 2>&1 &&
+    node scripts/ai/baseline.js typecheck > "$evidence/typecheck.log" 2>&1 &&
+    node scripts/ai/baseline.js test > "$evidence/test.log" 2>&1; then
     echo "quick: lint, typecheck and tests passed"
-    # what didn't run (no such script, or an Expo app without ESLint yet)
-    cat "$evidence/lint.log" "$evidence/typecheck.log" "$evidence/test.log" | sed -n 's/^skip: /  skipped: /p'
+    # what didn't run (no such script, or an Expo app without ESLint yet), and failures the base branch already had
+    cat "$evidence/lint.log" "$evidence/typecheck.log" "$evidence/test.log" |
+      sed -n -E -e 's/^skip: /  skipped: /p' -e 's/^(lint|typecheck|test): /  \1: /p'
   else
     echo "quick: FAILED, see the logs in ${evidence#"$root"/}"
+    cat "$evidence/lint.log" "$evidence/typecheck.log" "$evidence/test.log" 2> /dev/null | sed -n -E '/^(lint|typecheck|test): /,/^[^ ]/p' | head -n 20
     status=1
   fi
 }

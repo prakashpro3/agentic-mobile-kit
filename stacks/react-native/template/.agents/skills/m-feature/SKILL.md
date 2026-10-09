@@ -21,7 +21,7 @@ If the input describes a bug rather than new behavior, suggest `m-bugfix` and st
 1. Pick an ID: the task's ID if it has one, otherwise `YYYYMMDD-<slug>`. Copy `specs/_templates/` to `specs/<id>/`.
 2. Read `specs/current/<area>.md` for each area this touches: it says what the app does now. In an area with no living spec yet, read the code that implements it.
 3. **One intent.** The feature should be one thing you can say in a sentence. If it needs "and also", suggest splitting it into separate features, and ask.
-4. Fill `requirements.md`: the goal; the requirements under `## ADDED`, `## MODIFIED` and `## REMOVED Requirements: <area>` (the format is in `specs/current/README.md`), with one SHALL per requirement and scenarios for the cases that matter; every edge-case line (or "n/a"); out of scope; open questions. Then run `node scripts/ai/spec.js check specs/<id>/requirements.md`.
+4. Fill `requirements.md`: the goal; the requirements under `## ADDED`, `## MODIFIED` and `## REMOVED Requirements: <area>` (the format is in `specs/current/README.md`), with one SHALL per requirement and scenarios for the cases that matter; every edge-case line (or "n/a"); out of scope; open questions. Then run `node scripts/ai/specs.js check specs/<id>/requirements.md`.
 5. If something is unclear, ask the user **one question at a time**. Don't fill gaps with guesses.
 6. Show the requirements and **stop until the user approves them**. Give the user these questions to check them against:
    - Is this the problem you asked me to solve, with nothing extra in scope?
@@ -55,7 +55,7 @@ When all tasks are done:
 
 ## 6. Update the living spec
 
-Run `node scripts/ai/spec.js merge <id>`. It applies the ADDED, MODIFIED and REMOVED requirements to `specs/current/` and notes the source of each. If it refuses, the reason is usually that a requirement listed as ADDED already exists, or one listed as MODIFIED doesn't. Fix `requirements.md` and run it again. Commit `specs/current/` with the feature, so reviewers see the change in behavior.
+Run `node scripts/ai/specs.js merge <id>`. It applies the ADDED, MODIFIED and REMOVED requirements to `specs/current/` and notes the source of each. If it refuses, the reason is usually that a requirement listed as ADDED already exists, or one listed as MODIFIED doesn't. Fix `requirements.md` and run it again. Commit `specs/current/` with the feature, so reviewers see the change in behavior.
 
 ## 7. Review and pull request
 

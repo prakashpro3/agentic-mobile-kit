@@ -25,9 +25,14 @@ jobs:
         with:
           node-version: 24
       - run: sh scripts/ai/install-deps.sh
-      - run: sh scripts/ai/pm-run.sh lint
-      - run: sh scripts/ai/pm-run.sh typecheck
-      - run: CI=true sh scripts/ai/pm-run.sh test
+      # each passes when the app's script passes, or when all its failures were already on the base branch
+      - name: Lint, typecheck and tests
+        env:
+          AMK_BASE: ${{ github.event_name == 'pull_request' && format('origin/{0}', github.base_ref) || github.event.before }}
+        run: |
+          node scripts/ai/baseline.js lint
+          node scripts/ai/baseline.js typecheck
+          node scripts/ai/baseline.js test
       - name: Tool configs match .rulesync/ (run "npx -y rulesync@27.0.0 generate" and commit if this fails)
         if: hashFiles('rulesync.jsonc') != ''
         run: npx -y rulesync@27.0.0 generate > /dev/null && git diff --exit-code -- .claude .codex .agents .antigravity

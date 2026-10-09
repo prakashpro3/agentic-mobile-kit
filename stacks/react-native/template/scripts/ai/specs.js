@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 // Specs: check their format, fold a finished feature into the living spec, and show progress.
-//   node scripts/ai/spec.js check [--skip-drafts] [files…]   format of specs/<id>/requirements.md and specs/current/*.md
-//                                            (default: all; --skip-drafts leaves out specs whose work hasn't started)
-//   node scripts/ai/spec.js merge <id>       apply specs/<id>/requirements.md's ADDED/MODIFIED/REMOVED sections to specs/current/
-//   node scripts/ai/spec.js status           each spec's status and task progress, and the living spec's size
+//   node scripts/ai/specs.js check [--skip-drafts] [files…]   format of specs/<id>/requirements.md and specs/current/*.md
+//                                             (default: all; --skip-drafts leaves out specs whose work hasn't started)
+//   node scripts/ai/specs.js merge <id>       apply specs/<id>/requirements.md's ADDED/MODIFIED/REMOVED sections to specs/current/
+//   node scripts/ai/specs.js status           each spec's status and task progress, and the living spec's size
 // A requirement is "### Requirement: <name>", a sentence with SHALL or MUST, and at least one
 // "#### Scenario: <case>" with WHEN and THEN. Changes are "## ADDED Requirements: <area>" (and MODIFIED, REMOVED),
 // where <area> names the file specs/current/<area>.md. Format: specs/current/README.md.

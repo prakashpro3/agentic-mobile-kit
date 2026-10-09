@@ -266,3 +266,26 @@ Tested on new apps from `create-expo-app` 5.0.0 (Expo SDK 57, React Native 0.86.
 | Android, with that workaround | ✅ `verify.sh android` showed the app; `release-build.sh android` signed with a throwaway upload key, and without a key it stopped on the debug key |
 
 **Not tested:** anything on EAS (no Expo account), and signed iOS builds (no Apple Developer team).
+
+## Three production apps (2026-10-09)
+
+The kit installed on clones of three production React Native 0.84 apps:
+- **App A:** TypeScript, proAgents, existing `.claude/skills`, its own Maestro flows, an Airbnb-style ESLint config.
+- **App B:** TypeScript, 4 product flavors.
+- **App C:** JavaScript, husky 4 with lint-staged, 2 flavors and 2 iOS targets.
+
+| Check | Result |
+|---|---|
+| `init`, `doctor` | ✅ in all three. The kit section sits next to proAgents, and skills are linked into an existing `.claude/skills`. On App C, husky 4 runs the kit's hooks |
+| `release-check` | ✅ found signing keys in git in all three, and a permission text missing from one of App C's two targets |
+| Android check builds | ✅ in all three, each checking its first flavor. App A's own Maestro flows stopped at a login that needs test credentials |
+| iOS check builds | ✅ App A. ❌ Apps B and C fail to build for the simulator for reasons of their own (a binary SDK without an arm64 simulator slice; stale Pods libraries), also without the kit |
+| `verify.sh quick` on apps whose lint and tests already fail | ✅ passes with the old failures listed (App B: 537 type errors; App A: 148). A new lint error, type error or failing test fails, and only that one is listed |
+
+**Fixed on the way:**
+- **The kit's first commit failed in every app:** the hook linted the kit's own scripts with the app's ESLint rules. The scripts now pass React Native's default rules, the hook skips them, and eslintrc-based apps get an `.eslintignore` entry.
+- **`scripts/ai/spec.js` was collected as a test file** by Jest's default `testMatch`, failing `npm test` in every app on the React Native Jest preset. It's now `scripts/ai/specs.js`; `sync` replaces it.
+- **Example env files** such as `.env.local.example` counted as secrets.
+- **iOS check builds** compiled both simulator architectures. They now build the Mac's own, unless the project's pods exclude it (Google ML Kit excludes arm64).
+- **New:** `scripts/ai/baseline.js` compares failing lint, type checks and tests with the base branch. `verify.sh quick`, the pre-push hook and CI use it.
+- **New:** `verify.sh` loads `MAESTRO_*` test values, such as logins, from a local `.maestro/.env.local`. A real Maestro run confirmed that flows receive them.

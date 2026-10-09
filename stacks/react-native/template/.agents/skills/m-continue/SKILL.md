@@ -13,7 +13,7 @@ Input: $ARGUMENTS (a spec ID, or empty).
 1. **Check git first.** Run `git fetch` and `git status`.
    - If the branch is behind its remote, say so and ask before pulling.
    - If there are uncommitted changes, list them; they may be half-done work.
-2. **Find the spec.** Use the given ID; otherwise run `node scripts/ai/spec.js status` and take the spec in progress that was updated most recently. If unsure, ask.
+2. **Find the spec.** Use the given ID; otherwise run `node scripts/ai/specs.js status` and take the spec in progress that was updated most recently. If unsure, ask.
 3. **Read** `requirements.md`, `design.md`, `tasks.md` and `progress.md` in that spec folder, plus `git log --oneline -15`.
 4. **Report back, in this order:**
    1. any open question or blocker from the handoff;
