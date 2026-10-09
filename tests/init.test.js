@@ -47,8 +47,9 @@ test('fresh install: files, filled AGENTS.md, links, hooks, scripts; no CI unles
   assert.match(read(dir, 'CLAUDE.md'), /@AGENTS\.md/);
   assert.match(agents, new RegExp(`KIT:START agentic-mobile-kit ${KIT_VERSION.replace(/\./g, '\\.')} ci=none `));
   assert.ok(!fs.existsSync(path.join(dir, '.github')) && !fs.existsSync(path.join(dir, 'codemagic.yaml')), 'no CI files');
-  assert.ok(fs.statSync(path.join(dir, '.githooks/pre-commit')).mode & 0o111, 'pre-commit is executable');
-  assert.strictEqual(fs.readlinkSync(path.join(dir, '.claude/skills')), '../.agents/skills');
+  if (process.platform === 'win32') assert.match(git(dir, 'ls-files', '-s', '.githooks/pre-commit'), /^100755 /, 'staged as executable');
+  else assert.ok(fs.statSync(path.join(dir, '.githooks/pre-commit')).mode & 0o111, 'pre-commit is executable');
+  assert.strictEqual(fs.readlinkSync(path.join(dir, '.claude/skills')).replace(/\\/g, '/'), '../.agents/skills');
   assert.ok(fs.existsSync(path.join(dir, '.agents/skills/m-feature/SKILL.md')));
   assert.match(read(dir, '.gitignore'), /^\.env$/m);
   assert.match(read(dir, '.gitignore'), /^\.ai\/$/m);
@@ -270,7 +271,7 @@ test('another framework\'s .claude/skills folder: kit skills are linked into it,
   const dir = fakeApp({ files: { '.claude/skills/brainstorming/SKILL.md': '---\nname: brainstorming\n---\nTheirs.\n' } });
   const { report } = init(dir, { skipGenerate: true });
   assert.ok(!fs.lstatSync(path.join(dir, '.claude/skills')).isSymbolicLink(), 'their folder stays a folder');
-  assert.strictEqual(fs.readlinkSync(path.join(dir, '.claude/skills/m-feature')), '../../.agents/skills/m-feature');
+  assert.strictEqual(fs.readlinkSync(path.join(dir, '.claude/skills/m-feature')).replace(/\\/g, '/'), '../../.agents/skills/m-feature');
   assert.match(read(dir, '.claude/skills/m-feature/SKILL.md'), /name: m-feature/);
   assert.strictEqual(read(dir, '.claude/skills/brainstorming/SKILL.md'), '---\nname: brainstorming\n---\nTheirs.\n');
   assert.ok(report.created.includes('.claude/skills/m-release -> .agents/skills/m-release'));

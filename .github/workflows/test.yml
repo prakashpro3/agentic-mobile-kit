@@ -42,4 +42,4 @@ jobs:
           git add -A && git commit -qm kit # runs the kit's pre-commit hook
           node "$GITHUB_WORKSPACE/bin/cli.js" doctor || true
           node "$GITHUB_WORKSPACE/bin/cli.js" uninstall
-          git status --short | head -5
+          git status --short
