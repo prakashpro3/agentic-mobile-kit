@@ -330,3 +330,9 @@ Turns a rough requirement into something to demo before it's built, and into req
 | Prototype in the app | ✅ built the chosen concept on a `prototype/<id>` branch with mock data. Store-sheet look-alikes are labelled as prototypes |
 | Demo material | ✅ a Maestro walkthrough passed on Android and iOS (separate emulator and simulator): 8 screenshots and an MP4 video per platform (40 s and 24 s) |
 | Feedback and hand-off | ✅ the client's answers became requirements and dated decisions. A feature branch from main holds only the spec, the concepts and `decisions.md`, and the next step is `m-feature specs/<id>/requirements.md` |
+
+## `m-learn` issues for the kit (2026-10-12)
+
+| Check | Result |
+|---|---|
+| `m-learn` in Claude Code on a test app whose docs name a company and an internal URL, with a lesson that applies to every app | ✅ it drafted an issue for the kit's issues page with the kit version from `AGENTS.md` and none of the app's names, URLs or code, and asked before opening it with `gh`. The lesson itself (no rule asked for accessibility labels) went into the kit as a rule in `react-native.md` and `expo.md`, and a check in `m-review` |

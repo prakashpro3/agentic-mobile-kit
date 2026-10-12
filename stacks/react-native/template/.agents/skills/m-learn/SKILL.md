@@ -24,5 +24,5 @@ Input: $ARGUMENTS (what went wrong or what the user had to correct; the error te
 5. **Show that it works.**
    - For a check: show it failing on the old mistake and passing on the fixed code.
    - For docs or a skill: show the diff, and name the task that would have gone differently.
-6. **This project or every project?** If the lesson applies to any React Native app, say so and draft an issue for the agentic-mobile-kit repo, so every project gets the fix. Ask before opening it.
+6. **This project or every project?** If the lesson applies to any React Native app, say so and draft an issue for the kit at https://github.com/prakashpro3/agentic-mobile-kit/issues, so every project gets the fix. Include what happened, the fix you made here, and the kit version from the `KIT:START` line in `AGENTS.md`. Issues there are public, so leave out this app's name, code, URLs and data. Ask before opening it, for example with `gh issue create --repo prakashpro3/agentic-mobile-kit`; without `gh`, give the user the text and the link.
 7. **Commit** with a message that starts with `chore(learn):`. That prefix keeps it out of the changelog and easy to find with `git log --grep 'chore(learn)'` in the monthly review. Ask before pushing.

@@ -21,6 +21,7 @@ If your tool has subagents, hand the review to the `m-reviewer` subagent, so it 
    - **No spec:** does the diff do what was asked, and nothing unrelated?
    - **Tests:** were tests added for new logic? Were any tests deleted, skipped or weakened?
    - **Both platforms:** anything iOS-only or Android-only (insets, back button, permissions, keyboard)?
+   - **Accessibility:** does every new button or other touchable have an `accessibilityLabel` and an `accessibilityRole`?
    - **Errors and states:** offline, server errors, empty and loading states.
    - **Security:** secrets, tokens, `.env` contents, logging of personal data.
    - **Native:** `project.pbxproj`, `Podfile`, Gradle or manifest changes, and whether pods and builds were re-run.
