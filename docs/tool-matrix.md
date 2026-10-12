@@ -303,7 +303,9 @@ The kit installed on clones of three production React Native 0.84 apps:
 | `m-onboard` in Codex on the same app | ✅ drafts and questions, then stopped for approval |
 | `m-onboard` on Apps A, B and C | ✅ drafts and questions in 3 to 7 minutes each. Each also listed problems outside the four files, without changing them |
 | `m-onboard` on a fresh React Native template app | ✅ describes the template, marks the stack "not set up yet", asks about the product, and caught the template's iOS bundle ID |
+| 0.7.0 from npm, and device checks with test logins (2026-10-12) | ✅ attestation verified; a fresh install through the menu and an update from 0.6.2. `m-onboard` end to end on App B: files written, decisions logged, committed on a branch. App A on Android signed in with its `.maestro/.env.local` login and passed four of its own flows. On iOS it built, installed and launched; its login flow stopped at the password field, a simulator issue in the app's flow |
 
 **Fixed on the way:**
 - **`AGENTS.md` said TypeScript in JavaScript apps** that only have the `typescript` package (App C) and listed a `typecheck` script they don't have. It now names the language from the app's files and lists only the checks the app has.
 - **No `Assisted-by:` line:** the skills' commit steps no longer add one.
+- **`verify.sh ios` ignored a simulator** whose name lacks "iPhone", even when `AMK_IOS_DEVICE` named it, so a separate test simulator couldn't be used (fixed in 0.7.1).

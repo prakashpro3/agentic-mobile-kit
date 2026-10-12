@@ -119,12 +119,17 @@ ios() {
   device=$(xcrun simctl list devices available -j | node -e '
     const all = Object.entries(JSON.parse(require("fs").readFileSync(0, "utf8")).devices)
       .flatMap(([rt, ds]) => ds.map(d => ({ ...d, v: (rt.match(/iOS-(\d+)-(\d+)/) || []).slice(1).map(Number) })))
-      .filter(d => d.v.length && /iPhone/.test(d.name));
+      .filter(d => d.v.length);
     const want = process.env.AMK_IOS_DEVICE;
+    // an iPhone by its device type: a simulator can have any name, such as a separate one kept for tests
+    const iphones = all.filter(d => /iPhone/.test(d.deviceTypeIdentifier || d.name));
     const pick = want ? all.find(d => d.udid === want || d.name === want)
-      : all.find(d => d.state === "Booted") || all.sort((a, b) => b.v[0] - a.v[0] || b.v[1] - a.v[1])[0];
+      : iphones.find(d => d.state === "Booted") || iphones.sort((a, b) => b.v[0] - a.v[0] || b.v[1] - a.v[1])[0];
     console.log(pick ? pick.udid : "");')
-  [ -n "$device" ] || { echo "ios: no iPhone simulator found (set AMK_IOS_DEVICE)"; status=1; return; }
+  if [ -z "$device" ]; then
+    if [ -n "${AMK_IOS_DEVICE:-}" ]; then echo "ios: no simulator has the name or UDID \"$AMK_IOS_DEVICE\""; else echo "ios: no iPhone simulator found (set AMK_IOS_DEVICE)"; fi
+    status=1; return
+  fi
   xcrun simctl boot "$device" 2> /dev/null || true
   xcrun simctl bootstatus "$device" -b > /dev/null
   xcrun simctl install "$device" "$app"
