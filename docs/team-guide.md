@@ -9,7 +9,7 @@ Every AI tool reads the same rules (`AGENTS.md`), the same project facts (`docs/
 ## Setup
 
 **Once per project** (the lead):
-1. In the app's root, on a clean branch, run `npx agentic-mobile-kit` and choose an install: the recommended setup, or your own choice of AI tools and CI. Choose CI only if the app uses GitHub Actions or Codemagic; without it, the kit adds no CI files. You can add CI later from the same menu. In scripts: `npx agentic-mobile-kit init`, with `--tools claude,codex,antigravity` and `--ci github`, `--ci codemagic` or both.
+1. In the app's root, on a clean branch, run `npx agentic-mobile-kit` and choose an install: the recommended setup, or your own choice of AI tools and CI. Choose CI only if the app uses GitHub Actions or Codemagic; without it, the kit adds no CI files. You can add CI later from the same menu. In scripts: `npx agentic-mobile-kit init`, with `--tools claude,codex,antigravity` and `--ci github`, `--ci codemagic` or both. For a new app, run it in an empty folder (an empty clone of the team's repository works too) and choose a React Native or an Expo app: the kit creates it with the official tool, commits it, and installs itself (`init --new bare` or `init --new expo`).
 2. Run `m-onboard` in your AI tool. It drafts `docs/amk/product.md`, `tech.md`, `structure.md` and `conventions.md` from the code and asks what the code can't show. Read the drafts carefully: agents are only as good as these four files.
 3. Open a PR with the `large-pr` label, merge it, and turn on branch protection (see `docs/branch-protection.md` in the kit repo).
 4. With `--ci codemagic`, do the one-time Codemagic setup in the app's `docs/amk/codemagic.md`.

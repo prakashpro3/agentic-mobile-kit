@@ -30,11 +30,11 @@ In a large app, sample: a few files per layer are enough. Keep a note of the fil
 
 ## 3. Draft
 
-Draft each file you're working on from its outline, and keep it short: `product.md` under 40 lines, the others under about 60.
+Draft each file you're working on from its outline, and keep it short.
 
-- `product.md`: what the app does in two sentences, who uses it, the 3 to 5 key journeys, and what must never break.
-- `tech.md`: what the app uses today, one line each with the library and where it's set up; the backend APIs and their contracts; the environments and how the app switches between them; third-party services. Describe what's there; don't recommend new tools.
-- `structure.md`: the folder map, one line per folder; where shared UI, the theme and helpers live, so agents reuse them instead of writing new ones; custom native code.
+- `product.md`: what the app does, who uses it, key journeys, and what must never break.
+- `tech.md`: what the app uses today, 1-2 lines each with the library and where it's set up; the backend APIs and their contracts; the environments and how the app switches between them; third-party services. Describe what's there; don't recommend new tools.
+- `structure.md`: the folder map, 1-2 lines per folder; where shared UI, the theme and helpers live, so agents reuse them instead of writing new ones; custom native code.
 - `conventions.md`: the patterns you found, each with a file that shows it.
 
 Use the app's own names for screens, modules and services. Where the project doesn't answer something, write down a question for step 4 instead of guessing.

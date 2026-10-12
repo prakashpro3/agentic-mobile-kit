@@ -571,3 +571,99 @@ test('uninstall still removes an install from before 0.7.0', () => {
   uninstall(dir, { fromDir: old, skipGenerate: true });
   for (const f of ['docs/ai', 'scripts/ai', 'AGENTS.md', '.eslintignore']) assert.ok(!fs.existsSync(path.join(dir, f)), f);
 });
+
+// ---------- init --new: create the app in an empty folder ----------
+// what the React Native CLI and create-expo-app leave: the app in a new folder, committed in a new repository
+function fakeCreator(calls, { fail = false, lock = true, podsFail = false } = {}) {
+  return (cmd, args, opts) => {
+    calls.push([cmd, ...args].join(' '));
+    if (cmd === 'sh') { // pod install
+      if (podsFail) return { status: 1 };
+      fs.writeFileSync(path.join(opts.cwd, 'ios/Podfile.lock'), '');
+      return { status: 0 };
+    }
+    if (fail) return { status: 1 };
+    const app = path.join(opts.cwd, path.basename(path.dirname(opts.cwd)));
+    for (const f of ['ios/.keep', 'android/.keep', '.vscode/extensions.json']) {
+      fs.mkdirSync(path.dirname(path.join(app, f)), { recursive: true });
+      fs.writeFileSync(path.join(app, f), '');
+    }
+    fs.writeFileSync(path.join(app, '.gitignore'), '.DS_Store\n');
+    fs.writeFileSync(path.join(app, 'package.json'), JSON.stringify({ name: 'NewApp', dependencies: { 'react-native': '0.87.1' } }));
+    if (lock) fs.writeFileSync(path.join(app, 'package-lock.json'), '{}');
+    git(app, 'init', '-q');
+    commitAll(app);
+    return { status: 0 };
+  };
+}
+const leftovers = dir => fs.readdirSync(dir).filter(f => f.startsWith('.amk-new-'));
+
+test('init --new: the tool creates the app in a subfolder, and it moves up, committed and ready for init', () => {
+  Object.assign(process.env, { GIT_AUTHOR_NAME: 't', GIT_AUTHOR_EMAIL: 't@example.invalid', GIT_COMMITTER_NAME: 't', GIT_COMMITTER_EMAIL: 't@example.invalid' });
+  const { createApp, checkProject } = require('../lib/init');
+  const quiet = { log: () => {} };
+
+  // a new folder, which Finder has visited
+  let dir = tmpDir('full-tank-log-');
+  fs.writeFileSync(path.join(dir, '.DS_Store'), '');
+  let calls = [];
+  createApp(dir, 'bare', { run: fakeCreator(calls), pods: true, ...quiet });
+  const name = path.basename(dir);
+  assert.strictEqual(calls[0], `npx -y @react-native-community/cli@latest init FullTankLog${name[14].toUpperCase()}${name.slice(15)} --directory ${name} --install-pods false`);
+  assert.match(calls[1], /^sh .*scripts[/\\]amk[/\\]pod-install\.sh$/);
+  assert.strictEqual(git(dir, 'log', '--format=%s'), 'Install the iOS pods\nkit', 'the tool\'s own commit, then the pods');
+  assert.strictEqual(git(dir, 'status', '--porcelain'), '');
+  assert.deepStrictEqual(leftovers(dir), []);
+  assert.strictEqual(checkProject(dir).stack, 'bare');
+
+  // pods that fail to install are left for later, with a note
+  dir = tmpDir('amk-new-');
+  const logs = [];
+  createApp(dir, 'bare', { run: fakeCreator([], { podsFail: true }), pods: true, log: m => logs.push(m) });
+  assert.ok(logs.some(m => /iOS pods aren't installed .* commit what it changes before the first feature/.test(m)));
+  assert.strictEqual(git(dir, 'log', '--format=%s'), 'kit');
+  assert.strictEqual(git(dir, 'status', '--porcelain'), '');
+
+  // an empty clone with its own editor settings: its repository and settings stay
+  dir = tmpDir('amk-new-');
+  git(dir, 'init', '-q');
+  git(dir, 'remote', 'add', 'origin', 'https://example.invalid/team/app.git');
+  fs.mkdirSync(path.join(dir, '.vscode'));
+  fs.writeFileSync(path.join(dir, '.vscode/settings.json'), '{"mine": true}');
+  calls = [];
+  createApp(dir, 'expo', { run: fakeCreator(calls), ...quiet });
+  assert.strictEqual(calls[0], `npx -y create-expo-app@latest ${path.basename(dir)} --yes`);
+  assert.strictEqual(git(dir, 'remote', 'get-url', 'origin'), 'https://example.invalid/team/app.git');
+  assert.strictEqual(git(dir, 'log', '--format=%s'), 'Initial commit');
+  assert.strictEqual(git(dir, 'status', '--porcelain'), '');
+  assert.deepStrictEqual(fs.readdirSync(path.join(dir, '.vscode')), ['settings.json']);
+  assert.deepStrictEqual(leftovers(dir), []);
+});
+
+test('init --new refuses a folder with files, a folder inside a repository and an unknown type; a failed tool leaves the folder as it was', () => {
+  const { createApp } = require('../lib/init');
+  const quiet = { log: () => {} };
+  const calls = [];
+  const refused = (dir, kind, re) => assert.throws(() => createApp(dir, kind, { run: fakeCreator(calls), ...quiet }), e => e instanceof InitError && re.test(e.message));
+
+  let dir = tmpDir('amk-new-');
+  fs.writeFileSync(path.join(dir, 'notes.txt'), '');
+  refused(dir, 'bare', /isn't empty/);
+  const inside = path.join(fakeApp(), 'mobile');
+  fs.mkdirSync(inside);
+  refused(inside, 'expo', /inside another git repository/);
+  refused(tmpDir('amk-new-'), 'ionic', /Unknown app type "ionic"/);
+  refused(tmpDir('amk-new-'), 'constructor', /Unknown app type/);
+  assert.deepStrictEqual(calls, [], 'nothing was run');
+
+  dir = tmpDir('amk-new-');
+  git(dir, 'init', '-q');
+  assert.throws(() => createApp(dir, 'expo', { run: fakeCreator(calls, { fail: true }), ...quiet }), /create-expo-app didn't create the app \(exit code 1\)\. This folder is as it was/);
+  assert.deepStrictEqual(fs.readdirSync(dir), ['.git']);
+  // the tools finish even when installing the packages failed
+  assert.throws(() => createApp(dir, 'expo', { run: fakeCreator(calls, { lock: false }), ...quiet }), /installing its packages failed \(see above\)\. This folder is as it was/);
+  assert.deepStrictEqual(fs.readdirSync(dir), ['.git']);
+  // Ctrl-C stops the tool, and the folder is put back the same way
+  assert.throws(() => createApp(dir, 'bare', { run: () => ({ status: null, signal: 'SIGINT' }), ...quiet }), /\(SIGINT\)\. This folder is as it was/);
+  assert.deepStrictEqual(fs.readdirSync(dir), ['.git']);
+});

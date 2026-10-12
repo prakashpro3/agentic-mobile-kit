@@ -14,11 +14,13 @@ Tested with Claude Code, Codex and Antigravity. `--tools` also sets up Cursor, O
 
    It asks what to do, one step at a time: install with the recommended setup (Claude Code, Codex and Antigravity, no CI), or choose the AI tools and CI. There's nothing to `npm install`: the kit copies its files into the app and isn't a dependency. If you ran `npm i agentic-mobile-kit`, commit or undo that first, because the kit needs a clean working tree.
 
+   **Starting a new app?** Run it in an empty folder. It offers to create a React Native app with the React Native CLI (with its iOS pods) or an Expo app with create-expo-app, commits it, and installs the kit in it.
+
 2. Run it again and choose **Check this project and machine**. It lists each problem with its fix.
 
 3. In your AI tool, run `m-onboard`. It reads the project, drafts `docs/amk/product.md`, `tech.md`, `structure.md` and `conventions.md`, asks what the code can't show, and writes them once you approve. Then commit and open a PR.
 
-Each choice prints the command it runs, for scripts and CI: `init` (with `--ci github`, `--ci codemagic` or `--tools claude,codex,antigravity`), `sync`, `doctor` and `uninstall`. `--help` lists every option.
+Each choice prints the command it runs, for scripts and CI: `init` (with `--ci github`, `--ci codemagic` or `--tools claude,codex,antigravity`, and `--new bare` or `--new expo` to create the app first), `sync`, `doctor` and `uninstall`. `--help` lists every option.
 
 `init` never overwrites your files, is safe to run again, and can be undone with git. The [team guide](docs/team-guide.md#setup) lists everything it changes.
 

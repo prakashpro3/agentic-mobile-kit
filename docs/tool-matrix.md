@@ -336,3 +336,26 @@ Turns a rough requirement into something to demo before it's built, and into req
 | Check | Result |
 |---|---|
 | `m-learn` in Claude Code on a test app whose docs name a company and an internal URL, with a lesson that applies to every app | ✅ it drafted an issue for the kit's issues page with the kit version from `AGENTS.md` and none of the app's names, URLs or code, and asked before opening it with `gh`. The lesson itself (no rule asked for accessibility labels) went into the kit as a rule in `react-native.md` and `expo.md`, and a check in `m-review` |
+
+## New apps: `init --new` (2026-10-12)
+
+In an empty folder, the menu offers to create the app with the official tool and then installs the kit: `init --new bare` (the React Native CLI) or `init --new expo` (create-expo-app). Both tools make a new folder: in place, the React Native CLI offers to delete a folder that has any file, even `.git`, and create-expo-app refuses `.vscode`. So the tool runs in an empty subfolder and the app moves up.
+
+| Check | Result |
+|---|---|
+| A bare app in an empty folder with a `.DS_Store` (React Native CLI 20.2.0, React Native 0.87.1) | ✅ the CLI's own first commit on `main`, then the pods in a commit of their own, and the kit installed for React Native 0.87.1 with npm, with no temporary folder left (75 s). A second `pod install` changes nothing. `verify.sh all` passed on a separate iOS simulator and Android emulator, and the screenshots show the app |
+| An Expo app in an empty clone with a remote and its own `.vscode` (create-expo 5.0.3, SDK 57) | ✅ the clone's repository and remote kept, the app in one "Initial commit", the clone's `.vscode` kept and the template's left out |
+| Installing the packages failed (the network timed out) | Both tools still finish, commit and exit 0, without `node_modules` or a lockfile. The kit now stops there, and the folder is as it was |
+| The React Native CLI's pods step | It fetches and builds Ruby gems first; when that timed out, it reported a broken iOS setup. The kit skips it and installs the pods itself, as `scripts/amk/pod-install.sh` does (the Gemfile's CocoaPods when its gems are installed, otherwise the one on PATH), in a commit of its own, "Install the iOS pods". Before that, the first `pod install` ran in the first feature's `verify.sh` and left changes to the Xcode project, `Info.plist` and the privacy manifest in that feature's branch |
+| Ctrl-C while the tool runs | ✅ the tool stops, and the kit puts the folder back as it was, `.git` and remote included |
+| A folder with other files, one inside another repository, an unknown type | ✅ refused with the reason, before anything runs |
+
+The workflow on a new app, in Claude Code: the menu in a terminal, in an empty `FullTankLog` folder, then the first steps a team would take.
+
+| Check | Result |
+|---|---|
+| The menu, option 1 | ✅ printed `Running: npx agentic-mobile-kit init --new bare`, created the app and installed the kit (49 s) |
+| `m-onboard` | ✅ drafted `tech.md`, `structure.md` and `conventions.md` from the code, asked five questions for `product.md` (one about the iOS bundle ID still being the template's), and showed `product.md` and two dated decisions before writing them. It committed them as `docs(amk):` on a branch and suggested `m-explore` for the stack |
+| `m-feature`: a fuel economy calculator on the first screen | ✅ stopped for the requirements and again for the design. It built two tasks with the tests first; `verify.sh all` passed on a separate simulator and emulator, and it checked all 18 screenshots. It merged the living spec, updated the four `docs/amk/` files, fixed what the `m-reviewer` subagent found and checked both platforms again: four commits ending with `Spec:`, and it asked before pushing (21 min). It left the first `pod install`'s changes alone and asked about them, which is how the pods step above was found |
+
+`doctor` in an empty folder now suggests `init --new`, and no longer suggests `scripts/amk/install-deps.sh` where there's no app.

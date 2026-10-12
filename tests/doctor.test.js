@@ -21,10 +21,14 @@ function installedApp() {
 }
 const levelOf = (checks, re) => (checks.find(c => re.test(c.label)) || {}).level;
 
-test('reports a missing kit', () => {
+test('reports a missing kit, with what init needs first', () => {
   const dir = installedApp();
-  const checks = projectChecks(dir, { skipNetwork: true });
-  assert.strictEqual(levelOf(checks, /Kit installed/), 'fail');
+  const fix = d => projectChecks(d, { skipNetwork: true }).find(c => /Kit installed/.test(c.label)).fix;
+  assert.strictEqual(levelOf(projectChecks(dir, { skipNetwork: true }), /Kit installed/), 'fail');
+  assert.strictEqual(fix(dir), 'run: npx agentic-mobile-kit init');
+  fs.writeFileSync(path.join(dir, 'notes.txt'), '');
+  assert.match(fix(dir), /uncommitted changes/);
+  assert.match(fix(tmpDir('amk-doctor-')), /init --new bare \(or --new expo\)/, 'an empty folder');
 });
 
 test('a fresh install is healthy apart from unfilled docs', () => {

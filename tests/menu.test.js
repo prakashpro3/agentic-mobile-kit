@@ -93,6 +93,22 @@ test('menu: says why it can\'t install, and offers a newer version', async () =>
   assert.deepStrictEqual(r.args, ['init'], 'declined: this copy carries on');
 });
 
+test('menu in an empty folder: create a React Native or Expo app, then install the kit', async () => {
+  const dir = tmpDir('amk-menu-');
+  fs.writeFileSync(path.join(dir, '.DS_Store'), '');
+  let r = await answer(dir, ['']);
+  assert.match(r.text, /This folder is empty/);
+  assert.doesNotMatch(r.text, /No package\.json/);
+  assert.deepStrictEqual(r.args, ['init', '--new', 'bare']);
+  assert.match(r.text, /Running: npx agentic-mobile-kit init --new bare\n/);
+  assert.deepStrictEqual((await answer(dir, ['2'])).args, ['init', '--new', 'expo']);
+
+  fs.writeFileSync(path.join(dir, 'notes.txt'), '');
+  r = await answer(dir, ['']);
+  assert.match(r.text, /! No package\.json here\. Run this in the root of your React Native app, or in an empty folder to create one\./);
+  assert.deepStrictEqual(r.args, ['doctor']);
+});
+
 test('without a terminal (CI, AI agents) the bare command prints the help, never a question', () => {
   const out = execFileSync(process.execPath, [path.join(__dirname, '../bin/cli.js')], { encoding: 'utf8', input: '' });
   assert.match(out, /^Usage:/m);

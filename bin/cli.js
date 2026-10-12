@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 const { version } = require('../package.json');
-const { init, sync, uninstall, printSummary, printSync, printUninstall, InitError, TOOLS, CI } = require('../lib/init');
+const { init, sync, uninstall, createApp, printSummary, printSync, printUninstall, InitError, TOOLS, CI } = require('../lib/init');
 const { doctor, printDoctor } = require('../lib/doctor');
 const { menu } = require('../lib/menu');
 
@@ -8,18 +8,19 @@ const help = `agentic-mobile-kit ${version}
 
 Usage:
   npx agentic-mobile-kit             In a terminal: pick what to do in this app, step by step
-  npx agentic-mobile-kit init [--tools claude,codex,antigravity] [--ci github,codemagic] [--pm yarn|npm|pnpm|bun]
+  npx agentic-mobile-kit init [--new bare|expo] [--tools claude,codex,antigravity] [--ci github,codemagic] [--pm yarn|npm|pnpm|bun]
   npx agentic-mobile-kit sync [--ci github,codemagic] [--from <version>]
   npx agentic-mobile-kit uninstall [--from <version>]
   npx agentic-mobile-kit doctor
 
 Commands:
-  init       Install the kit into a React Native or Expo app (run in the app's root).
+  init       Install the kit into a React Native or Expo app (run in the app's root, or with --new in an empty folder).
   sync       Update the kit's files to this version. Your own changes to them are merged in, not lost.
   uninstall  Remove the kit's files and sections. Files you changed are kept and listed.
   doctor     Check the project and this machine, with a fix for each problem.
 
 Options:
+  --new    In an empty folder: first create the app, with the React Native CLI (bare) or create-expo-app (expo)
   --tools  AI tools your team uses: ${Object.keys(TOOLS).join(', ')} (default: claude,codex,antigravity)
   --ci     CI to set up, only if the app uses it: ${Object.keys(CI).join(', ')} (GitHub Actions checks, Codemagic signed builds; default: none)
   --pm     Package manager, if it can't be detected from the lockfile
@@ -45,6 +46,7 @@ function main([cmd, ...rest]) {
     console.log(version);
   } else if (cmd === 'init') {
     run('init', () => {
+      if (flag('new')) createApp(process.cwd(), flag('new'));
       printSummary(init(process.cwd(), { tools: list('tools'), ci: list('ci'), pm: flag('pm') }));
     });
   } else if (cmd === 'sync') {
