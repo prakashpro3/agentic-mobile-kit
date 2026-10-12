@@ -309,3 +309,13 @@ The kit installed on clones of three production React Native 0.84 apps:
 - **`AGENTS.md` said TypeScript in JavaScript apps** that only have the `typescript` package (App C) and listed a `typecheck` script they don't have. It now names the language from the app's files and lists only the checks the app has.
 - **No `Assisted-by:` line:** the skills' commit steps no longer add one.
 - **`verify.sh ios` ignored a simulator** whose name lacks "iPhone", even when `AMK_IOS_DEVICE` named it, so a separate test simulator couldn't be used (fixed in 0.7.1).
+
+## `m-change` (2026-10-12)
+
+A light workflow for small changes to existing behavior, with one approval instead of two.
+
+| Check | Result |
+|---|---|
+| `m-change` in Claude Code on a small test app ("allow notes up to 500 characters instead of 200") | ✅ found the constant, its test, the living-spec requirement and a `product.md` line, and showed them for one approval (27 s). It stopped at a failing check (the app's own test script was broken) and asked before editing `package.json`. After the fix: one commit with the code, `specs/<id>/`, the merged living spec (new `Source:`) and the doc, ending with `Spec: specs/<id>` |
+
+`m-feature` now also updates the `docs/amk/` files a feature makes untrue, in its living-spec step.

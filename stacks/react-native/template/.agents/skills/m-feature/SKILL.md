@@ -12,7 +12,7 @@ Input: $ARGUMENTS (the requirement text, a file path, or a task link plus pasted
 
 ## 1. Always use the full flow
 
-The user chose `m-feature`, so follow every step below, however small the change looks. Never skip the spec or the approval stops on your own judgment. (Tiny changes don't need this skill; the user can just ask for them directly.)
+The user chose `m-feature`, so follow every step below, however small the change looks. Never skip the spec or the approval stops on your own judgment. (For a small change to behavior the app already has, suggest `m-change`. A change with nothing to record, such as fixing a typo, can just be asked for directly.)
 
 If the input describes a bug rather than new behavior, suggest `m-bugfix` and stop. If it's still a vague problem ("the checkout feels slow") or an area you'd have to learn first, suggest `m-explore` first.
 
@@ -53,9 +53,11 @@ When all tasks are done:
 1. Run `sh scripts/amk/verify.sh all --spec <id>`. Off a Mac it checks Android only: record in `progress.md` that iOS still needs `verify.sh ios --spec <id>` on a Mac, and say so in the PR. Then **open the screenshots** in `.amk/evidence/<id>/` and check each one against its scenario. Maestro can report a tap as passed when nothing happened, so the screenshots are the evidence, not the log.
 2. Go through every scenario and note its evidence: a test name, command output, or the screen checked. Where the code and the spec disagree, fix whichever is wrong, asking first if it's the spec. The spec must describe what ships.
 
-## 6. Update the living spec
+## 6. Update the living spec and the docs
 
 Run `node scripts/amk/specs.js merge <id>`. It applies the ADDED, MODIFIED and REMOVED requirements to `specs/current/` and notes the source of each. If it refuses, the reason is usually that a requirement listed as ADDED already exists, or one listed as MODIFIED doesn't. Fix `requirements.md` and run it again. Commit `specs/current/` with the feature, so reviewers see the change in behavior.
+
+Then update the `docs/amk/` files the feature made untrue: a new key journey in `product.md`, a new library or service in `tech.md`, a new folder or shared component in `structure.md`, a new pattern in `conventions.md`. Commit them with the feature too.
 
 ## 7. Review and pull request
 

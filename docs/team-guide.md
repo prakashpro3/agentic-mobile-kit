@@ -42,6 +42,7 @@ Every AI tool reads the same rules (`AGENTS.md`), the same project facts (`docs/
 | Describe the app for agents (after installing, and after big changes) | `m-onboard` | Reads the project, drafts the four `docs/amk/` files, asks what the code can't show, and writes them once you approve. Files the team already wrote get suggested changes, never a rewrite. |
 | Think a problem through first | `m-explore <question or problem>` | Reads the code, explains how it works today and lays out options with trade-offs. It never edits code; it hands off to `m-feature` or `m-bugfix`. |
 | Build a feature | `m-feature <task text or link>` | Requirements with acceptance criteria → **you approve** → design and tasks → **you approve** → one task at a time with tests and real command output → device check with screenshots → living spec updated → review → PR |
+| Make a small change to existing behavior (a text, a limit, a rule, a style) | `m-change <the change>` | Checks it's small → shows the code, living-spec and docs changes → **you approve** → makes them together, with tests and screens on both platforms for visible changes |
 | Fix a bug | `m-bugfix <report>` | Checks known issues → reproduces → failing test → root cause → smallest fix → verifies |
 | Stop for now, or switch tool | `m-pause` | Writes the handoff in `progress.md`, moves decisions out of the chat, commits as `wip:` and pushes |
 | Carry on anywhere | `m-continue <id>` | Reads the spec and handoff, tells you the open question, the status and the next step, then waits for you |

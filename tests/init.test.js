@@ -51,7 +51,7 @@ test('fresh install: files, filled AGENTS.md, links, hooks, scripts; no CI unles
   if (process.platform === 'win32') assert.match(git(dir, 'ls-files', '-s', '.githooks/pre-commit'), /^100755 /, 'staged as executable');
   else assert.ok(fs.statSync(path.join(dir, '.githooks/pre-commit')).mode & 0o111, 'pre-commit is executable');
   assert.strictEqual(fs.readlinkSync(path.join(dir, '.claude/skills')).replace(/\\/g, '/'), '../.agents/skills');
-  for (const skill of ['m-feature', 'm-onboard']) assert.ok(fs.existsSync(path.join(dir, `.agents/skills/${skill}/SKILL.md`)), skill);
+  for (const skill of ['m-feature', 'm-change', 'm-onboard']) assert.ok(fs.existsSync(path.join(dir, `.agents/skills/${skill}/SKILL.md`)), skill);
   assert.match(read(dir, '.gitignore'), /^\.env$/m);
   assert.match(read(dir, '.gitignore'), /^\.amk\/$/m);
   const pkg = JSON.parse(read(dir, 'package.json'));
