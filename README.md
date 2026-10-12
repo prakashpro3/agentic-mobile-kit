@@ -28,6 +28,7 @@ Each choice prints the command it runs, for scripts and CI: `init` (with `--ci g
 |---|---|---|
 | Describe the app for agents | `m-onboard` | Reads the whole project, drafts the product, tech, structure and conventions files in `docs/amk/`, asks what the code can't show, and writes them once you approve. Run it after installing, and again after big changes. |
 | Think a problem through | `m-explore` | The agent reads the code, explains how it works today and lays out options with trade-offs. It never edits code. |
+| Agree on an idea before building it | `m-prototype` | Concepts as clickable HTML mocks when how it should work is still open, then real screens with mock data on a throwaway branch, with screenshots and a video for the demo. The agreed requirements go to `m-feature` |
 | Build a feature | `m-feature` | Requirements → you approve → design and tasks → you approve → one task at a time with tests → device checks with screenshots → living spec updated → review → PR |
 | Make a small change | `m-change` | Checks it's small, then shows the code, living-spec and docs changes for one approval, makes them together and runs the checks |
 | Fix a bug | `m-bugfix` | Reproduces the bug, proves it with a failing test, finds the root cause, then makes the smallest fix |

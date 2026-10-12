@@ -319,3 +319,14 @@ A light workflow for small changes to existing behavior, with one approval inste
 | `m-change` in Claude Code on a small test app ("allow notes up to 500 characters instead of 200") | ✅ found the constant, its test, the living-spec requirement and a `product.md` line, and showed them for one approval (27 s). It stopped at a failing check (the app's own test script was broken) and asked before editing `package.json`. After the fix: one commit with the code, `specs/<id>/`, the merged living spec (new `Source:`) and the doc, ending with `Spec: specs/<id>` |
 
 `m-feature` now also updates the `docs/amk/` files a feature makes untrue, in its living-spec step.
+
+## `m-prototype` (2026-10-12)
+
+Turns a rough requirement into something to demo before it's built, and into requirements for `m-feature`.
+
+| Check | Result |
+|---|---|
+| Concepts, in Claude Code on a fresh React Native template app ("let users rate the app and send feedback") | ✅ three different concepts as self-contained, clickable HTML mocks, with trade-offs: it flagged that asking for stars first and sending only happy users to the store breaks App Store and Google Play rules. It recommended the store's own rating sheet plus a feedback form, then stopped for the pick |
+| Prototype in the app | ✅ built the chosen concept on a `prototype/<id>` branch with mock data. Store-sheet look-alikes are labelled as prototypes |
+| Demo material | ✅ a Maestro walkthrough passed on Android and iOS (separate emulator and simulator): 8 screenshots and an MP4 video per platform (40 s and 24 s) |
+| Feedback and hand-off | ✅ the client's answers became requirements and dated decisions. A feature branch from main holds only the spec, the concepts and `decisions.md`, and the next step is `m-feature specs/<id>/requirements.md` |
