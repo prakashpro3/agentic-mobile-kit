@@ -10,6 +10,11 @@ The user chose this workflow: follow its steps for this task, even where other w
 
 Input: $ARGUMENTS (the requirement text, a file path, or a task link plus pasted details).
 
+With no input, don't guess what to build:
+1. Run `node scripts/amk/specs.js status`. If a spec is in progress, say which one and where it stopped, and suggest `m-continue`. Start something new only if the user says so.
+2. Otherwise list the features marked planned in `docs/amk/product.md` and recommend the next one: the first in the list whose dependencies are built. Wait for the user to pick.
+3. If nothing is planned, ask what to build, or suggest `m-explore` when the requirements aren't settled yet.
+
 ## 1. Always use the full flow
 
 The user chose `m-feature`, so follow every step below, however small the change looks. Never skip the spec or the approval stops on your own judgment. (For a small change to behavior the app already has, suggest `m-change`. A change with nothing to record, such as fixing a typo, can just be asked for directly.)
@@ -57,7 +62,7 @@ When all tasks are done:
 
 Run `node scripts/amk/specs.js merge <id>`. It applies the ADDED, MODIFIED and REMOVED requirements to `specs/current/` and notes the source of each. If it refuses, the reason is usually that a requirement listed as ADDED already exists, or one listed as MODIFIED doesn't. Fix `requirements.md` and run it again. Commit `specs/current/` with the feature, so reviewers see the change in behavior.
 
-Then update the `docs/amk/` files the feature made untrue: a new key journey in `product.md`, a new library or service in `tech.md`, a new folder or shared component in `structure.md`, a new pattern in `conventions.md`. Commit them with the feature too.
+Then update the `docs/amk/` files the feature made untrue: a new key journey in `product.md` or, for a planned feature there, its rules replaced by one line without the planned mark, a new library or service in `tech.md`, a new folder or shared component in `structure.md`, a new pattern in `conventions.md`. Commit them with the feature too.
 
 ## 7. Review and pull request
 

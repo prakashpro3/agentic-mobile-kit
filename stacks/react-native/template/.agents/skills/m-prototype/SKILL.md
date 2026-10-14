@@ -44,11 +44,12 @@ A prototype answers questions before the real build: what the client wants, how 
 
 ## 5. Take in the feedback
 
-After the demo, write what was settled into `requirements.md`: answered questions become requirements and scenarios, and the choices go under `## Decisions`. If the client asked for changes, change the prototype and run step 4 again. Repeat until the user approves the requirements.
+After the demo, write what was settled into `requirements.md`: answered questions become requirements and scenarios, and the choices go under `## Decisions`. If the client asked for changes, change the prototype and run step 4 again. Repeat until the user approves the requirements: **stop and ask for that approval**, and record it under `## Decisions` with the date. Step 6 doesn't start without it.
 
 ## 6. Hand off to m-feature
 
 1. Create the feature branch from the main branch and bring the spec over: `git checkout prototype/<id> -- specs/<id>`. Leave the prototype code behind.
 2. Add the decisions from `## Decisions` to `docs/amk/decisions.md`, with the date. Run `node scripts/amk/specs.js check specs/<id>/requirements.md`, and commit.
-3. Suggest `m-feature specs/<id>/requirements.md`. In `design.md` it names the `prototype/<id>` branch as the agreed flow and look, and it builds the real screens properly: real data, error, loading and empty states, and tests, on both platforms.
-4. Delete the `prototype/<id>` branch once the feature has shipped.
+3. If the prototype covered more than one feature, such as an app's first version, also write every feature with its rules in `docs/amk/product.md`, in the order to build them, each marked planned, and tell the user the path. `decisions.md` logs choices and their reasons; it isn't the requirements document.
+4. Suggest `m-feature specs/<id>/requirements.md`, or one `m-feature` per feature when there are several. In `design.md` it names the `prototype/<id>` branch as the agreed flow and look, and it builds the real screens properly: real data, error, loading and empty states, and tests, on both platforms.
+5. Delete the `prototype/<id>` branch once the feature has shipped.

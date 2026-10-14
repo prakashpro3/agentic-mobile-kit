@@ -350,12 +350,26 @@ In an empty folder, the menu offers to create the app with the official tool and
 | Ctrl-C while the tool runs | ✅ the tool stops, and the kit puts the folder back as it was, `.git` and remote included |
 | A folder with other files, one inside another repository, an unknown type | ✅ refused with the reason, before anything runs |
 
-The workflow on a new app, in Claude Code: the menu in a terminal, in an empty `FullTankLog` folder, then the first steps a team would take.
+The workflow on a new app, in Claude Code: the menu in a terminal, in an empty folder, then the first steps a team would take.
 
 | Check | Result |
 |---|---|
 | The menu, option 1 | ✅ printed `Running: npx agentic-mobile-kit init --new bare`, created the app and installed the kit (49 s) |
 | `m-onboard` | ✅ drafted `tech.md`, `structure.md` and `conventions.md` from the code, asked five questions for `product.md` (one about the iOS bundle ID still being the template's), and showed `product.md` and two dated decisions before writing them. It committed them as `docs(amk):` on a branch and suggested `m-explore` for the stack |
-| `m-feature`: a fuel economy calculator on the first screen | ✅ stopped for the requirements and again for the design. It built two tasks with the tests first; `verify.sh all` passed on a separate simulator and emulator, and it checked all 18 screenshots. It merged the living spec, updated the four `docs/amk/` files, fixed what the `m-reviewer` subagent found and checked both platforms again: four commits ending with `Spec:`, and it asked before pushing (21 min). It left the first `pod install`'s changes alone and asked about them, which is how the pods step above was found |
+| `m-feature`: a calculator on the first screen | ✅ stopped for the requirements and again for the design. It built two tasks with the tests first; `verify.sh all` passed on a separate simulator and emulator, and it checked all 18 screenshots. It merged the living spec, updated the four `docs/amk/` files, fixed what the `m-reviewer` subagent found and checked both platforms again: four commits ending with `Spec:`, and it asked before pushing (21 min). It left the first `pod install`'s changes alone and asked about them, which is how the pods step above was found |
 
 `doctor` in an empty folder now suggests `init --new`, and no longer suggests `scripts/amk/install-deps.sh` where there's no app.
+
+## Final requirements in one place (2026-10-13)
+
+From an `m-learn` issue in a team's new app: `m-explore` changed most of the planned first version, but nothing asked whether the requirements were now final or wrote them in one place. They ended up spread over about 28 rows of `decisions.md`, mixed with reasons, and `product.md` stayed an empty outline. `m-prototype` also handed off without asking for the approval its step 5 requires.
+
+- `m-explore` step 5 asks whether the requirements are final, then writes them: the whole app's features with their rules in `product.md`, marked planned, or one feature's draft in `specs/<id>/requirements.md`. The text is the team's own local fix, so their next `sync` merges with no conflict (checked with `git merge-file`).
+- `m-prototype` stops for the approval and records it under `## Decisions` before the hand-off, and a prototype that covers several features writes them to `product.md`, marked planned.
+- The `product.md` outline lists planned features with their rules, in build order. When `m-feature` ships one, the rules move to `specs/current/` and one line stays, so `product.md` ends up short again.
+- `m-feature` with no input checks `specs.js status` first and suggests `m-continue` for a spec in progress. Otherwise it lists the planned features from `product.md` and recommends the first whose dependencies are built, then waits for the pick. Tested in Claude Code both ways on a test app: it started nothing either time, and it noticed when a feature `product.md` called built had no code.
+- Tested end to end in Claude Code on a clone of a team's new bare app (0.7.5 updated with `sync`, which left the team's local `m-explore` fix alone as identical):
+  - `m-explore` found 3 open questions and 13 gaps, asked whether the requirements were final, and only after the yes wrote 14 features in build order, each planned with its rules (148 lines in `product.md`).
+  - `/m-feature` with no input recommended feature 1, built it (8 requirements, 9 commits, both platforms, the review's must-fix fixed), and replaced its rules with one line pointing to `specs/current/vehicles.md`. Rules it didn't build moved to the features that build them.
+  - Run again after the merge, it recommended feature 2, which used those moved rules and replaced its own with one line (13 requirements, 15 commits). A third run recommended feature 3 and suggested splitting it, since parts of it need features 4, 5 and 12.
+- `verify.sh` picks an emulator before a phone plugged in over USB. It used to take the first device in `adb devices`, and `AMK_ANDROID_AVD` only mattered when nothing was connected: in that test, a phone plugged in mid-run was used instead of the named emulator, and the flow's `clearState` erased the app's data on it. Now `AMK_ANDROID_AVD` means that emulator only (started if it isn't running), any other running emulator comes next, then starting one, and a phone only when `AMK_ANDROID_DEVICE` names it or there's no emulator at all. Each run says which device it uses.

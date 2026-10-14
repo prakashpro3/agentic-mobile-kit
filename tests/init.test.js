@@ -604,12 +604,12 @@ test('init --new: the tool creates the app in a subfolder, and it moves up, comm
   const quiet = { log: () => {} };
 
   // a new folder, which Finder has visited
-  let dir = tmpDir('full-tank-log-');
+  let dir = tmpDir('my-new-app-');
   fs.writeFileSync(path.join(dir, '.DS_Store'), '');
   let calls = [];
   createApp(dir, 'bare', { run: fakeCreator(calls), pods: true, ...quiet });
   const name = path.basename(dir);
-  assert.strictEqual(calls[0], `npx -y @react-native-community/cli@latest init FullTankLog${name[14].toUpperCase()}${name.slice(15)} --directory ${name} --install-pods false`);
+  assert.strictEqual(calls[0], `npx -y @react-native-community/cli@latest init MyNewApp${name[11].toUpperCase()}${name.slice(12)} --directory ${name} --install-pods false`);
   assert.match(calls[1], /^sh .*scripts[/\\]amk[/\\]pod-install\.sh$/);
   assert.strictEqual(git(dir, 'log', '--format=%s'), 'Install the iOS pods\nkit', 'the tool\'s own commit, then the pods');
   assert.strictEqual(git(dir, 'status', '--porcelain'), '');

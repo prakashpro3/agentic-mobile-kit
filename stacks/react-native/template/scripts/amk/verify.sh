@@ -13,7 +13,8 @@
 #   --scheme <name> iOS scheme to check (default: the one named like the workspace)
 #   (no flows found: a smoke check that launches the app and takes a screenshot)
 # Env: AMK_ANDROID_FLAVOR, AMK_IOS_SCHEME (defaults for the two options), AMK_IOS_DEVICE (simulator name
-#      or UDID), AMK_ANDROID_DEVICE (adb serial, when several are connected), AMK_ANDROID_AVD (emulator to start)
+#      or UDID), AMK_ANDROID_DEVICE (adb serial: the only way to check on a phone while an emulator exists),
+#      AMK_ANDROID_AVD (the emulator to use, started if it isn't running; other devices are left alone)
 # Flows that log in read ${MAESTRO_EMAIL} and the like from a local, gitignored .maestro/.env.local (never committed).
 set -eu
 
@@ -136,6 +137,13 @@ ios() {
   run_flows ios "$device" "$app_id"
 }
 
+# a running emulator's adb serial, of the AVD named in $1 if one is
+running_emulator() {
+  for d in $("$adb" devices | awk 'NR > 1 && $2 == "device" && /^emulator-/ { print $1 }'); do
+    if [ -z "$1" ] || [ "$("$adb" -s "$d" emu avd name 2> /dev/null | head -n 1 | tr -d '\r')" = "$1" ]; then echo "$d"; return; fi
+  done
+}
+
 android() {
   command -v maestro > /dev/null || { echo "android: Maestro isn't installed (https://maestro.dev)"; status=1; return; }
   case $(uname -s) in # where Android Studio puts the SDK by default
@@ -162,15 +170,31 @@ android() {
     [ -z "$flavor" ] || echo "android: checking the \"$flavor\" flavor (the app has: $(echo $flavors)); --flavor <name> checks another"
   fi
   variant=$(printf %s "$flavor" | awk '{ print toupper(substr($0, 1, 1)) substr($0, 2) }')
-  # the device first: the build only needs its CPU type, and an emulator boots while Gradle builds
-  device=${AMK_ANDROID_DEVICE:-$("$adb" devices | awk 'NR > 1 && $2 == "device" { print $1; exit }')}
+  # the device first: the build only needs its CPU type, and an emulator boots while Gradle builds.
+  # The flows clear the app's data, so an emulator comes before a phone plugged in over USB: a phone is used
+  # only when AMK_ANDROID_DEVICE names it, or when there's no emulator at all
+  device=${AMK_ANDROID_DEVICE:-$(running_emulator "${AMK_ANDROID_AVD:-}")}
   if [ -z "$device" ]; then
-    avd=${AMK_ANDROID_AVD:-$("$sdk/emulator/emulator" -list-avds | head -n 1)}
-    [ -n "$avd" ] || { echo "android: no emulator found (create one in Android Studio)"; status=1; return; }
-    nohup "$sdk/emulator/emulator" -avd "$avd" -no-snapshot-save -no-boot-anim > /dev/null 2>&1 &
-    "$adb" wait-for-device
-    device=$("$adb" devices | awk 'NR > 1 && $2 == "device" { print $1; exit }')
+    avds=$("$sdk/emulator/emulator" -list-avds 2> /dev/null || true)
+    avd=${AMK_ANDROID_AVD:-$(echo "$avds" | head -n 1)}
+    if [ -n "$avd" ]; then
+      echo "$avds" | grep -qxF "$avd" || { echo "android: there's no emulator named $avd (see: emulator -list-avds)"; status=1; return; }
+      nohup "$sdk/emulator/emulator" -avd "$avd" -no-snapshot-save -no-boot-anim > /dev/null 2>&1 &
+      tries=0
+      until device=$(running_emulator "$avd") && [ -n "$device" ]; do
+        tries=$((tries + 1))
+        [ "$tries" -le 150 ] || { echo "android: emulator $avd didn't start"; status=1; return; }
+        sleep 2
+      done
+    else
+      device=$("$adb" devices | awk 'NR > 1 && $2 == "device" { print $1; exit }')
+      [ -n "$device" ] || { echo "android: no emulator found (create one in Android Studio)"; status=1; return; }
+    fi
   fi
+  case $device in
+    emulator-*) echo "android: checking on $device" ;;
+    *) echo "android: checking on the phone $device; the flows clear the app's data on it" ;;
+  esac
   abi=$("$adb" -s "$device" shell getprop ro.product.cpu.abi 2> /dev/null | tr -d '\r')
   [ -n "$abi" ] || { echo "android: device $device isn't connected (see: adb devices)"; status=1; return; }
   # native code for that CPU type only, as run-android --active-arch-only does: much faster than all four
