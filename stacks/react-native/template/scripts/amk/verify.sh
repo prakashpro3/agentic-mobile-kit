@@ -13,7 +13,7 @@
 #   --scheme <name> iOS scheme to check (default: the one named like the workspace)
 #   (no flows found: a smoke check that launches the app and takes a screenshot)
 # Env: AMK_ANDROID_FLAVOR, AMK_IOS_SCHEME (defaults for the two options), AMK_IOS_DEVICE (simulator name
-#      or UDID), AMK_ANDROID_DEVICE (adb serial: the only way to check on a phone while an emulator exists),
+#      or UDID), AMK_ANDROID_DEVICE (adb serial: the only way to check on a phone, whose app data the flows clear),
 #      AMK_ANDROID_AVD (the emulator to use, started if it isn't running; other devices are left alone)
 # Flows that log in read ${MAESTRO_EMAIL} and the like from a local, gitignored .maestro/.env.local (never committed).
 set -eu
@@ -48,6 +48,15 @@ flow_files() {
   fi
 }
 
+run_flow() { # platform device app_id file name
+  # Maestro's own log, which has errors its output leaves out; it adds to the file, so one run's log at a time
+  debug="$evidence/maestro-logs/$1-$5"
+  rm -f "$debug/maestro.log"
+  # screenshots use relative names: older Maestro saves them in the current folder, newer in --test-output-dir
+  (cd "$out" && maestro --device "$2" test --test-output-dir "$out" --debug-output "$debug" --flatten-debug-output \
+    -e APP_ID="$3" "$4" > "$out/$5.log" 2>&1)
+}
+
 run_flows() { # platform device app_id
   out="$evidence/$1"
   mkdir -p "$out"
@@ -63,11 +72,20 @@ run_flows() { # platform device app_id
   for f in $files; do
     total=$((total + 1))
     name=$(basename "$f" .yaml)
-    # screenshots use relative names: older Maestro saves them in the current folder, newer in --test-output-dir
-    if (cd "$out" && maestro --device "$2" test --test-output-dir "$out" -e APP_ID="$3" "$f" > "$out/$name.log" 2>&1); then
+    ok=0
+    run_flow "$@" "$f" "$name" || ok=$?
+    # an emulator sometimes drops its adb connection for a moment: reconnect, then run the flow once more
+    if [ "$ok" != 0 ] && [ "$1" = android ] && grep -qs 'device offline' "$debug/maestro.log"; then
+      echo "  android: the device went offline during flow $name; running it once more"
+      "$adb" reconnect offline > /dev/null 2>&1 || true
+      android_ready "$2" || true
+      ok=0
+      run_flow "$@" "$f" "$name" || ok=$?
+    fi
+    if [ "$ok" = 0 ]; then
       passed=$((passed + 1))
     else
-      echo "  $1: flow $name failed, see ${out#"$root"/}/$name.log"
+      echo "  $1: flow $name failed, see ${out#"$root"/}/$name.log and Maestro's own log ${debug#"$root"/}/maestro.log"
       status=1
     fi
   done
@@ -144,6 +162,16 @@ running_emulator() {
   done
 }
 
+# waits for the Android device $1 to finish starting, for up to 5 minutes
+android_ready() {
+  tries=0
+  until [ "$("$adb" -s "$1" shell getprop sys.boot_completed 2> /dev/null | tr -d '\r')" = 1 ]; do
+    tries=$((tries + 1))
+    [ "$tries" -le 100 ] || return 1
+    sleep 3
+  done
+}
+
 android() {
   command -v maestro > /dev/null || { echo "android: Maestro isn't installed (https://maestro.dev)"; status=1; return; }
   case $(uname -s) in # where Android Studio puts the SDK by default
@@ -171,8 +199,7 @@ android() {
   fi
   variant=$(printf %s "$flavor" | awk '{ print toupper(substr($0, 1, 1)) substr($0, 2) }')
   # the device first: the build only needs its CPU type, and an emulator boots while Gradle builds.
-  # The flows clear the app's data, so an emulator comes before a phone plugged in over USB: a phone is used
-  # only when AMK_ANDROID_DEVICE names it, or when there's no emulator at all
+  # The flows clear the app's data, so a phone plugged in over USB is used only when AMK_ANDROID_DEVICE names it
   device=${AMK_ANDROID_DEVICE:-$(running_emulator "${AMK_ANDROID_AVD:-}")}
   if [ -z "$device" ]; then
     avds=$("$sdk/emulator/emulator" -list-avds 2> /dev/null || true)
@@ -187,8 +214,10 @@ android() {
         sleep 2
       done
     else
-      device=$("$adb" devices | awk 'NR > 1 && $2 == "device" { print $1; exit }')
-      [ -n "$device" ] || { echo "android: no emulator found (create one in Android Studio)"; status=1; return; }
+      phone=$("$adb" devices | awk 'NR > 1 && $2 == "device" { print $1; exit }')
+      echo "android: no emulator found (create one in Android Studio)"
+      [ -z "$phone" ] || echo "  or check on the phone $phone, which clears the app's data on it: AMK_ANDROID_DEVICE=$phone sh scripts/amk/verify.sh android"
+      status=1; return
     fi
   fi
   case $device in
@@ -217,10 +246,11 @@ android() {
   aapt2="$(ls -d "$sdk"/build-tools/*/ 2> /dev/null | sort -V | tail -n 1)aapt2"
   app_id=$("$aapt2" dump badging "$apk" 2> /dev/null | sed -n "s/^package: name='\([^']*\)'.*/\1/p")
   [ -n "$app_id" ] || app_id=$(sed -n 's/.*applicationId *=\{0,1\} *"\([^"]*\)".*/\1/p' android/app/build.gradle* | head -n 1)
-  until [ "$("$adb" -s "$device" shell getprop sys.boot_completed 2> /dev/null | tr -d '\r')" = 1 ]; do sleep 3; done
+  android_ready "$device" || { echo "android: $device didn't finish starting (see: adb devices)"; status=1; return; }
   "$adb" -s "$device" install -r "$apk" > /dev/null
-  # system "isn't responding" pop-ups (common on busy emulators) cover the app and fail flows; app crashes still fail them
-  "$adb" -s "$device" shell settings put global hide_error_dialogs 1
+  # system "isn't responding" pop-ups (common on busy emulators) cover the app and fail flows; app crashes still fail them.
+  # Emulators only: the setting is device-wide and stays, so a phone keeps showing them
+  case $device in emulator-*) "$adb" -s "$device" shell settings put global hide_error_dialogs 1 ;; esac
   "$adb" -s "$device" shell am broadcast -a android.intent.action.CLOSE_SYSTEM_DIALOGS > /dev/null 2>&1 || true
   run_flows android "$device" "$app_id"
 }

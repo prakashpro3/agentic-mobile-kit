@@ -122,7 +122,8 @@ From `docs/amk/team-process.md`:
 | `pre-push` says dependencies aren't installed | `sh scripts/amk/install-deps.sh` |
 | `verify.sh` checks the wrong Android flavor or iOS app | Add `--flavor <name>` or `--scheme <name>`, or set `AMK_ANDROID_FLAVOR` / `AMK_IOS_SCHEME` in your shell |
 | A Maestro flow needs a test login | Put `MAESTRO_EMAIL=…`, `MAESTRO_PASSWORD=…` (any `MAESTRO_` name) in `.maestro/.env.local`, which git ignores; flows read them as `${MAESTRO_EMAIL}`. `verify.sh` loads them, and values set in your shell win |
-| `verify.sh` uses the wrong Android device | It uses a running emulator, else starts one, and a phone plugged in over USB only when there's no emulator, because the flows clear the app's data. Set `AMK_ANDROID_AVD` to the emulator to use, or `AMK_ANDROID_DEVICE` to a serial from `adb devices` to check on a phone |
+| `verify.sh` uses the wrong Android device | It uses a running emulator, else starts one. It never picks a phone plugged in over USB by itself, because the flows clear the app's data. Set `AMK_ANDROID_AVD` to the emulator to use, or `AMK_ANDROID_DEVICE` to a serial from `adb devices` to check on a phone |
+| A Maestro flow fails and its log doesn't say why | Maestro's own log, with the full error, is in `.amk/evidence/<id>/maestro-logs/`. When an emulator drops its connection for a moment ("device offline"), `verify.sh` reconnects and runs the flow once more by itself |
 | `release-build.sh ios` should sign manually, or export ad hoc or enterprise | Commit your `ios/ExportOptions.plist`, or point `AMK_IOS_EXPORT_OPTIONS` at one |
 | `release-check` says signing keys are in git | Move the keystores out of the repo into a password manager, read the passwords from the environment or `~/.gradle/gradle.properties`, and reset the upload key in Play Console if Play App Signing is on |
 | Metro's port 8081 is busy | Nothing to do: `verify.sh` uses release builds, which don't need Metro |

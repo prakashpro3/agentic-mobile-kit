@@ -45,7 +45,7 @@ From here the plan lives in files, so the building can also run in a fresh sessi
 ## 4. Build, one task at a time
 
 For each task:
-1. Implement only that task. Write tests first for logic (state, data, utils); UI can be tested after.
+1. Implement only that task. Write tests first for logic (state, data, utils); UI can be tested after. Build screens to the screen rules in the React Native rules file `AGENTS.md` names (keyboard, system bars, scrolling, large text, announced messages): they're the bugs device checks and reviews find most.
 2. Run `lint`, `typecheck` and `test` (see AGENTS.md). Paste the real output. If something fails, fix it; after 2 failed attempts, stop and report.
 3. Commit with a clear message ending in `Spec: specs/<id>`.
 4. Tick the task in `tasks.md` and update the handoff block and log in `progress.md`.

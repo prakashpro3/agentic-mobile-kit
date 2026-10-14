@@ -1,6 +1,6 @@
 # Expo rules
 
-Rules for things AI agents commonly get wrong in Expo apps. Each one comes from a documented platform change.
+Rules for things AI agents commonly get wrong in Expo apps. Each one comes from a documented platform change, or from a bug agents keep making on screens.
 
 ## Expo changes with every SDK
 
@@ -26,6 +26,10 @@ Rules for things AI agents commonly get wrong in Expo apps. Each one comes from 
 - Use `react-native-safe-area-context` for safe areas. React Native's built-in `SafeAreaView` is deprecated and iOS-only.
 - Android draws edge to edge (Android 15 and later), so handle top and bottom insets on every screen.
 - For apps targeting Android 16 (API 36), `onBackPressed` is no longer called. Handle back with `BackHandler` in JS.
+- With the keyboard open, the field being typed in and the button that submits the form stay visible and tappable, on both platforms.
+- Lists that grow with the user's data scroll (`FlatList`, or the list component the app already uses), and so does any screen taller than a small phone.
+- At the largest system text size, text wraps instead of being cut off: no fixed heights on views that hold text. Don't turn off font scaling (`allowFontScaling={false}`) to make a layout fit.
+- Messages that appear after an action, such as a form error, are read out by screen readers: announce them with `AccessibilityInfo.announceForAccessibility`.
 - Check every UI change on both iOS and Android; behavior differs (keyboard, insets, fonts, permissions).
 - Give every interactive element a `testID` (kebab-case, for example `dark-mode-switch`). End-to-end tools tap by `testID`. On iOS, React Native exposes a label and its control as duplicate accessibility elements, so tapping by text can hit the label: nothing happens, yet the tool reports success.
 - Give every interactive element an `accessibilityLabel` that says what it does and an `accessibilityRole` (`button`, `link`, `switch`, …), so screen readers can use it. Icon-only buttons need it most; screen readers don't read `testID`.

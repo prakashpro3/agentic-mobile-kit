@@ -2,7 +2,8 @@
 # Release agentic-mobile-kit to npm.
 #   1. bumps the version and tags it (npm version)
 #   2. pushes the tag; GitHub Actions stages the release on npm (trusted publishing, no token)
-#   3. you approve the staged release with 2FA, which makes it live
+#   3. creates the GitHub release, its notes from the commits since the last tag
+#   4. you approve the staged release with 2FA, which makes it live
 #
 # Usage: scripts/release.sh [patch|minor|major|x.y.z]   (default: patch)
 #    or: npm run release -- minor
@@ -45,6 +46,16 @@ fi
 stage_id=$(gh run view "$run_id" -R "$repo" --log | sed -n 's/.*staged with id \([0-9a-f-]*\).*/\1/p' | head -n 1)
 [ -n "$stage_id" ] || { echo "Workflow finished but no stage id was found. See: gh run view $run_id -R $repo --log"; exit 1; }
 echo "Staged ${tag#v} on npm (stage id $stage_id)."
+
+# --- the GitHub release, so people using the kit see what changed: each commit's message since the last tag
+prev=$(git describe --tags --abbrev=0 "$tag^" 2> /dev/null || true)
+notes=$(git log --no-merges --format='### %s%n%n%b' ${prev:+"$prev.."}"$tag^" | grep -v '^Co-Authored-By:' || true)
+notes=$(printf '%s\n\nUpdate an app: `npx agentic-mobile-kit@latest sync`\n' "$notes")
+if url=$(gh release create "$tag" -R "$repo" --verify-tag --title "${tag#v}" --notes "$notes"); then
+  echo "GitHub release: $url"
+else
+  echo "Couldn't create the GitHub release; create it later with: gh release create $tag -R $repo --generate-notes"
+fi
 
 # --- approval needs you (npm login + 2FA), so it's never automatic
 approve="npx -y $NPM12 stage approve $stage_id"
