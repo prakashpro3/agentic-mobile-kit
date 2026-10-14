@@ -43,6 +43,7 @@ test('fresh install: files, filled AGENTS.md, links, hooks, scripts; no CI unles
   const agents = read(dir, 'AGENTS.md');
   assert.doesNotMatch(agents, /\{\{/);
   assert.match(agents, /Bare React Native 0\.87\.1/);
+  assert.match(agents, /^- Screens: phones only \(portrait only\), no iPad app\. Build every screen for each of them/m, 'nothing in ios/ to read: a phone, upright');
   assert.match(agents, /, TypeScript \d/);
   assert.match(agents, /^\| Typecheck, test \| `yarn typecheck`, `yarn test` \|$/m, 'only the checks the app has (no lint script here)');
   assert.match(read(dir, 'CLAUDE.md'), /@AGENTS\.md/);
@@ -574,12 +575,18 @@ test('uninstall still removes an install from before 0.7.0', () => {
 
 // ---------- init --new: create the app in an empty folder ----------
 // what the React Native CLI and create-expo-app leave: the app in a new folder, committed in a new repository
-function fakeCreator(calls, { fail = false, lock = true, podsFail = false } = {}) {
+// `template`: the files the tools' templates have that init --new changes; `installFails`: adding a package fails
+function fakeCreator(calls, { fail = false, lock = true, podsFail = false, template = false, installFails = false } = {}) {
   return (cmd, args, opts) => {
     calls.push([cmd, ...args].join(' '));
     if (cmd === 'sh') { // pod install
       if (podsFail) return { status: 1 };
       fs.writeFileSync(path.join(opts.cwd, 'ios/Podfile.lock'), '');
+      return { status: 0 };
+    }
+    if (args[0] === 'install') { // adding a dev dependency
+      if (installFails) return { status: 1 };
+      fs.writeFileSync(path.join(opts.cwd, 'package-lock.json'), '{"plugin": true}');
       return { status: 0 };
     }
     if (fail) return { status: 1 };
@@ -591,6 +598,16 @@ function fakeCreator(calls, { fail = false, lock = true, podsFail = false } = {}
     fs.writeFileSync(path.join(app, '.gitignore'), '.DS_Store\n');
     fs.writeFileSync(path.join(app, 'package.json'), JSON.stringify({ name: 'NewApp', dependencies: { 'react-native': '0.87.1' } }));
     if (lock) fs.writeFileSync(path.join(app, 'package-lock.json'), '{}');
+    if (template && args.includes('create-expo-app@latest')) {
+      fs.writeFileSync(path.join(app, 'app.json'), JSON.stringify({ expo: { name: 'app', orientation: 'portrait', ios: { icon: './icon.png' } } }, null, 2));
+      fs.writeFileSync(path.join(app, 'tsconfig.json'), JSON.stringify({ extends: 'expo/tsconfig.base', compilerOptions: { strict: true, paths: { '@/*': ['./src/*'] } } }, null, 2));
+      fs.writeFileSync(path.join(app, '.gitignore'), '.DS_Store\nexpo-env.d.ts\n');
+    } else if (template) {
+      fs.mkdirSync(path.join(app, 'ios/NewApp'));
+      fs.writeFileSync(path.join(app, 'ios/NewApp/Info.plist'), '<dict>\n\t<key>UISupportedInterfaceOrientations</key>\n\t<array>\n\t\t<string>UIInterfaceOrientationPortrait</string>\n\t</array>\n</dict>\n');
+      fs.writeFileSync(path.join(app, 'babel.config.js'), "module.exports = {\n  presets: ['module:@react-native/babel-preset'],\n};\n");
+      fs.writeFileSync(path.join(app, 'tsconfig.json'), JSON.stringify({ extends: '@react-native/typescript-config', include: ['**/*.ts', '**/*.tsx'] }, null, 2));
+    }
     git(app, 'init', '-q');
     commitAll(app);
     return { status: 0 };
@@ -638,6 +655,45 @@ test('init --new: the tool creates the app in a subfolder, and it moves up, comm
   assert.strictEqual(git(dir, 'status', '--porcelain'), '');
   assert.deepStrictEqual(fs.readdirSync(path.join(dir, '.vscode')), ['settings.json']);
   assert.deepStrictEqual(leftovers(dir), []);
+});
+
+test('init --new: iPad and every orientation, stricter TypeScript and "@/" imports, in a commit of their own', () => {
+  Object.assign(process.env, { GIT_AUTHOR_NAME: 't', GIT_AUTHOR_EMAIL: 't@example.invalid', GIT_COMMITTER_NAME: 't', GIT_COMMITTER_EMAIL: 't@example.invalid' });
+  const { createApp } = require('../lib/init');
+  const quiet = { log: () => {} };
+  const stricter = { noUncheckedIndexedAccess: true, noImplicitOverride: true, noImplicitReturns: true, noFallthroughCasesInSwitch: true };
+
+  let dir = tmpDir('amk-new-');
+  let calls = [];
+  createApp(dir, 'bare', { run: fakeCreator(calls, { template: true }), pods: false, ...quiet });
+  assert.strictEqual(calls[1], 'npm install --save-dev babel-plugin-module-resolver@5');
+  assert.strictEqual(git(dir, 'log', '--format=%s'), 'Support tablets and landscape; stricter TypeScript with @/ imports\nkit');
+  assert.strictEqual(fs.readFileSync(path.join(dir, 'ios/NewApp/Info.plist'), 'utf8'),
+    '<dict>\n\t<key>UISupportedInterfaceOrientations</key>\n\t<array>\n\t\t<string>UIInterfaceOrientationPortrait</string>\n\t\t<string>UIInterfaceOrientationLandscapeLeft</string>\n\t\t<string>UIInterfaceOrientationLandscapeRight</string>\n\t</array>\n</dict>\n');
+  assert.strictEqual(fs.readFileSync(path.join(dir, 'babel.config.js'), 'utf8'),
+    "module.exports = {\n  presets: ['module:@react-native/babel-preset'],\n  plugins: [['module-resolver', { alias: { '^@/(.+)': './src/\\\\1' } }]],\n};\n");
+  assert.deepStrictEqual(JSON.parse(fs.readFileSync(path.join(dir, 'tsconfig.json'), 'utf8')).compilerOptions, { ...stricter, paths: { '@/*': ['./src/*'] } });
+  assert.match(fs.readFileSync(path.join(dir, 'tsconfig.json'), 'utf8'), /^\{\n  "extends": "@react-native\/typescript-config",\n  "compilerOptions": \{[\s\S]*"@\/\*": \["\.\/src\/\*"\][\s\S]*"include": \["\*\*\/\*\.ts", "\*\*\/\*\.tsx"\]\n\}\n$/);
+
+  // the plugin didn't install: no "@/" imports, the rest as before
+  dir = tmpDir('amk-new-');
+  const logs = [];
+  createApp(dir, 'bare', { run: fakeCreator([], { template: true, installFails: true }), pods: false, log: m => logs.push(m) });
+  assert.ok(logs.some(m => /Couldn't install the Babel plugin for "@\/" imports \(see above\), so the app uses relative imports/.test(m)));
+  assert.doesNotMatch(fs.readFileSync(path.join(dir, 'babel.config.js'), 'utf8'), /plugins/);
+  assert.deepStrictEqual(JSON.parse(fs.readFileSync(path.join(dir, 'tsconfig.json'), 'utf8')).compilerOptions, stricter);
+  assert.strictEqual(git(dir, 'status', '--porcelain'), '');
+
+  // Expo: turns and runs on iPad; its template has the "@/" paths, which Metro reads by itself
+  dir = tmpDir('amk-new-');
+  calls = [];
+  createApp(dir, 'expo', { run: fakeCreator(calls, { template: true }), ...quiet });
+  assert.strictEqual(calls.length, 1, 'no package to add');
+  const expo = JSON.parse(fs.readFileSync(path.join(dir, 'app.json'), 'utf8')).expo;
+  assert.deepStrictEqual([expo.orientation, expo.ios], ['default', { icon: './icon.png', supportsTablet: true }]);
+  assert.deepStrictEqual(JSON.parse(fs.readFileSync(path.join(dir, 'tsconfig.json'), 'utf8')).compilerOptions, { strict: true, paths: { '@/*': ['./src/*'] }, ...stricter });
+  assert.match(fs.readFileSync(path.join(dir, 'expo-types.d.ts'), 'utf8'), /^\/\/\/ <reference types="expo\/types" \/>$/m, 'type checks pass without expo start');
+  assert.strictEqual(git(dir, 'log', '--format=%s'), 'Support tablets and landscape; stricter TypeScript with @/ imports\nkit');
 });
 
 test('init --new refuses a folder with files, a folder inside a repository and an unknown type; a failed tool leaves the folder as it was', () => {

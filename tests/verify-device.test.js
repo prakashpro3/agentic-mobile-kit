@@ -11,18 +11,22 @@ const write = (dir, f, text, mode) => { fs.mkdirSync(path.dirname(path.join(dir,
 const skip = process.platform === 'win32' && 'fakes adb with a shell script';
 
 // verify.sh android, with stand-ins for adb, the emulator and Maestro. The state file lists the connected devices
-// as "serial avd" ("-" for a phone); starting an emulator adds one. adb logs what it's asked to do in calls. Without
-// `build` the app has no android/ folder, so the build fails and only the device line matters; with it a stand-in
-// gradlew "builds" an APK. `maestro` is the stand-in's script body.
-function verifyAndroid({ connected, avds = '', env = {}, build = false, maestro = '' }) {
+// as "serial avd [tablet]" ("-" for a phone); starting an emulator adds one, a tablet if `tablets` names its AVD.
+// adb logs what it's asked to do in calls. Without `build` the app has no android/ folder, so the build fails and only
+// the device lines matter; with it a stand-in gradlew "builds" an APK. `maestro` is the stand-in's script body.
+// `rotates`: the app supports iPad and isn't locked to portrait, as React Native's template is.
+function verifyAndroid({ connected, avds = '', tablets = '', env = {}, build = false, rotates = false, maestro = '' }) {
   const dir = tmpDir('amk-verify-device-');
   fs.cpSync(path.join(TEMPLATE, 'scripts/amk'), path.join(dir, 'app/scripts/amk'), { recursive: true });
   write(dir, 'state', connected.map(d => `${d}\n`).join(''));
   write(dir, 'sdk/platform-tools/adb', `#!/bin/sh
 echo "$*" >> "$FAKE_STATE.calls"
 case "$1" in
-  devices) echo "List of devices attached"; while read s n; do printf '%s\\tdevice\\n' "$s"; done < "$FAKE_STATE" ;;
+  devices) echo "List of devices attached"; while read s n k; do printf '%s\\tdevice\\n' "$s"; done < "$FAKE_STATE" ;;
   -s) s=$2; shift 2
+      if [ "$1 $2" = "shell wm size; wm density" ] || [ "$1 $2 $3" = "shell wm size" ]; then
+        awk -v s="$s" '$1 == s { print ($3 == "tablet" ? "Physical size: 2560x1600\\nPhysical density: 320" : "Physical size: 1080x2400\\nPhysical density: 420") }' "$FAKE_STATE"
+      fi
       case "$1 $2 $3" in
         "emu avd name") awk -v s="$s" '$1 == s { print $2; print "OK" }' "$FAKE_STATE" ;;
         "shell getprop sys.boot_completed") echo 1 ;;
@@ -33,10 +37,17 @@ esac
   write(dir, 'sdk/emulator/emulator', `#!/bin/sh
 case "$1" in
   -list-avds) for a in ${avds}; do echo "$a"; done ;;
-  -avd) echo "emulator-5600 $2" >> "$FAKE_STATE" ;;
+  -avd) n=$(grep -c '^emulator-56' "$FAKE_STATE"); case " ${tablets} " in *" $2 "*) k=tablet ;; *) k= ;; esac
+        echo "emulator-$((5600 + 2 * n)) $2 $k" >> "$FAKE_STATE" ;;
 esac
 `, 0o755);
   write(dir, 'bin/maestro', `#!/bin/sh\n${maestro}`, 0o755);
+  for (const a of tablets.split(' ').filter(Boolean)) write(dir, `avd/${a}.avd/config.ini`, 'hw.lcd.density=320\nhw.lcd.height=2560\nhw.lcd.width=1600\n');
+  if (rotates) {
+    write(dir, 'app/ios/App.xcodeproj/project.pbxproj', 'INFOPLIST_FILE = App/Info.plist;\nTARGETED_DEVICE_FAMILY = "1,2";\n');
+    write(dir, 'app/ios/App/Info.plist', '<key>UISupportedInterfaceOrientations</key>\n<array>\n<string>UIInterfaceOrientationPortrait</string>\n</array>\n');
+    write(dir, 'app/android/app/src/main/AndroidManifest.xml', '<activity android:name=".MainActivity">\n<action android:name="android.intent.action.MAIN" />\n</activity>\n');
+  }
   if (build) {
     write(dir, 'app/android/gradlew', '#!/bin/sh\n', 0o755);
     write(dir, 'app/android/app/build/outputs/apk/x/release/app-x-release.apk', '');
@@ -44,10 +55,10 @@ esac
   }
   const r = spawnSync('sh', ['scripts/amk/verify.sh', 'android', '--flavor', 'x', '--label', 'run'], {
     cwd: path.join(dir, 'app'), encoding: 'utf8',
-    env: { ...process.env, FAKE_STATE: path.join(dir, 'state'), ANDROID_HOME: path.join(dir, 'sdk'), PATH: `${path.join(dir, 'bin')}${path.delimiter}${process.env.PATH}`, AMK_ANDROID_DEVICE: '', AMK_ANDROID_AVD: '', ...env },
+    env: { ...process.env, FAKE_STATE: path.join(dir, 'state'), ANDROID_HOME: path.join(dir, 'sdk'), ANDROID_AVD_HOME: path.join(dir, 'avd'), PATH: `${path.join(dir, 'bin')}${path.delimiter}${process.env.PATH}`, AMK_ANDROID_DEVICE: '', AMK_ANDROID_AVD: '', ...env },
   });
-  const calls = fs.existsSync(path.join(dir, 'state.calls')) ? fs.readFileSync(path.join(dir, 'state.calls'), 'utf8') : '';
-  return { out: r.stdout + r.stderr, calls };
+  const readIf = f => (fs.existsSync(path.join(dir, f)) ? fs.readFileSync(path.join(dir, f), 'utf8') : '');
+  return { out: r.stdout + r.stderr, calls: readIf('state.calls'), maestro: readIf('state.maestro') };
 }
 
 const chooseDevice = o => {
@@ -96,4 +107,37 @@ touch "$out/shot.png"`;
   const failing = verifyAndroid({ connected: ['emulator-5556 P35'], build: true, maestro: 'exit 1' });
   assert.doesNotMatch(failing.out, /once more/, 'other failures aren\'t run again');
   assert.match(failing.out, /flow smoke failed, see \.amk\/evidence\/run\/android\/smoke\.log and Maestro's own log \.amk\/evidence\/run\/maestro-logs\/android-smoke\/maestro\.log/);
+});
+
+test('verify.sh android: an app that turns and runs on tablets is checked on a phone and a tablet, upright and turned', { skip }, () => {
+  // records the device and the orientation the flow is turned to, and saves a screenshot
+  const record = String.raw`for last; do :; done
+out=$(echo "$@" | sed 's/.*--test-output-dir \([^ ]*\).*/\1/'); device=$(echo "$@" | sed 's/.*--device \([^ ]*\).*/\1/')
+echo "$device $(sed -n 's/^- setOrientation: //p' "$last") $(sed -n "s/^- runFlow: '\(.*\)'$/\1/p" "$last" | sed 's/.*\///')" >> "$FAKE_STATE.maestro"
+touch "$out/shot.png"`;
+  // a running tablet emulator isn't taken for the phone; a tablet AVD starts for the tablet screens
+  const r = verifyAndroid({ connected: ['emulator-5554 Big tablet', 'emulator-5556 P35'], avds: 'Big P35', tablets: 'Big', rotates: true, build: true, maestro: record });
+  assert.match(r.out, /android: checking on emulator-5556\nandroid: tablets on emulator-5554\n/);
+  for (const screen of ['android', 'android-landscape', 'android-tablet', 'android-tablet-landscape']) {
+    assert.match(r.out, new RegExp(`^${screen}: flows 1/1 passed, 1 screenshots in \\.amk/evidence/run/${screen}$`, 'm'));
+  }
+  // the tablet is landscape when Maestro calls it upright (its natural orientation, like a Pixel Tablet's): swapped
+  assert.strictEqual(r.maestro, 'emulator-5556 PORTRAIT smoke.yaml\nemulator-5556 LANDSCAPE_LEFT smoke.yaml\nemulator-5554 LANDSCAPE_LEFT smoke.yaml\nemulator-5554 PORTRAIT smoke.yaml\n');
+  assert.match(r.calls, /-s emulator-5554 install -r/);
+  assert.match(r.calls, /-s emulator-5554 shell settings put global hide_error_dialogs 1/);
+
+  const started = verifyAndroid({ connected: ['emulator-5556 P35'], avds: 'P35 Tab', tablets: 'Tab', rotates: true, build: true, maestro: record });
+  assert.match(started.out, /android: tablets on emulator-5600\n/);
+  assert.match(started.out, /^android-tablet-landscape: flows 1\/1 passed/m);
+
+  // no tablet emulator: says so, and checks the phone both ways
+  const none = verifyAndroid({ connected: ['emulator-5556 P35'], avds: 'P35', rotates: true, build: true, maestro: record });
+  assert.match(none.out, /the app runs on tablets, but there's no tablet emulator, so tablets aren't checked \(create one in Android Studio: Device Manager > Tablet, or set AMK_ANDROID_TABLET_AVD\)/);
+  assert.strictEqual(none.maestro, 'emulator-5556 PORTRAIT smoke.yaml\nemulator-5556 LANDSCAPE_LEFT smoke.yaml\n');
+  assert.doesNotMatch(none.out, /android-tablet/);
+
+  // without tablet or landscape support: the phone upright only, as before
+  const plain = verifyAndroid({ connected: ['emulator-5554 Big tablet', 'emulator-5556 P35'], avds: 'Big P35', tablets: 'Big', build: true, maestro: record });
+  assert.strictEqual(plain.maestro, 'emulator-5556 PORTRAIT smoke.yaml\n');
+  assert.doesNotMatch(plain.out, /tablets/);
 });

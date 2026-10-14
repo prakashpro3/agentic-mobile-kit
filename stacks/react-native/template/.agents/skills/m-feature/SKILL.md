@@ -45,7 +45,7 @@ From here the plan lives in files, so the building can also run in a fresh sessi
 ## 4. Build, one task at a time
 
 For each task:
-1. Implement only that task. Write tests first for logic (state, data, utils); UI can be tested after. Build screens to the screen rules in the React Native rules file `AGENTS.md` names (keyboard, system bars, scrolling, large text, announced messages): they're the bugs device checks and reviews find most.
+1. Implement only that task. Write tests first for logic (state, data, utils); UI can be tested after. Build screens to the screen rules in the React Native rules file `AGENTS.md` names (keyboard, system bars, scrolling, large text, announced messages), for every phone, tablet and orientation `AGENTS.md` lists: they're the bugs device checks and reviews find most.
 2. Run `lint`, `typecheck` and `test` (see AGENTS.md). Paste the real output. If something fails, fix it; after 2 failed attempts, stop and report.
 3. Commit with a clear message ending in `Spec: specs/<id>`.
 4. Tick the task in `tasks.md` and update the handoff block and log in `progress.md`.
@@ -55,7 +55,7 @@ If building shows the plan is wrong: when the intent is the same, update `requir
 ## 5. Check against the spec
 
 When all tasks are done:
-1. Run `sh scripts/amk/verify.sh all --spec <id>`. Off a Mac it checks Android only: record in `progress.md` that iOS still needs `verify.sh ios --spec <id>` on a Mac, and say so in the PR. Then **open the screenshots** in `.amk/evidence/<id>/` and check each one against its scenario. Maestro can report a tap as passed when nothing happened, so the screenshots are the evidence, not the log.
+1. Run `sh scripts/amk/verify.sh all --spec <id>`. Off a Mac it checks Android only: record in `progress.md` that iOS still needs `verify.sh ios --spec <id>` on a Mac, and say so in the PR. Then **open the screenshots** in `.amk/evidence/<id>/` and check each one against its scenario, in every screen's folder (phone, landscape, tablet). A turned screen's screenshots are landscape; one that shows the screen sideways means the app didn't turn. Maestro can report a tap as passed when nothing happened, so the screenshots are the evidence, not the log.
 2. Go through every scenario and note its evidence: a test name, command output, or the screen checked. Where the code and the spec disagree, fix whichever is wrong, asking first if it's the spec. The spec must describe what ships.
 
 ## 6. Update the living spec and the docs

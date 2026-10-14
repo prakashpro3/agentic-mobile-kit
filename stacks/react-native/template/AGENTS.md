@@ -8,6 +8,7 @@ This project may also use other AI workflow frameworks (for example Superpowers,
 ## Project
 
 - Bare React Native {{RN_VERSION}} ({{RN_ARCH}}), React {{REACT_VERSION}}, {{LANGUAGE}}, Node {{NODE_VERSION}}. Package manager: {{PM}}.
+- Screens: {{SCREENS}}. Build every screen for each of them (`docs/amk/react-native.md`, Tablets and landscape); `verify.sh` checks each one.
 - What the app does: `docs/amk/product.md`, and requirement by requirement, as it works now: `specs/current/`. Stack and services: `docs/amk/tech.md`. Folders and layers: `docs/amk/structure.md`. Code style: `docs/amk/conventions.md`.
 
 ## Commands
@@ -28,7 +29,7 @@ This project may also use other AI workflow frameworks (for example Superpowers,
 
 A task is done only when:
 1. `sh scripts/amk/verify.sh quick` passes (lint, typecheck, tests) and you show its output from this session. In an app whose base branch already fails some of them, it passes when your change adds no new failure, and lists the old ones: leave those alone unless the task is to fix them;
-2. UI changes were checked with `sh scripts/amk/verify.sh all --spec <id>` on both iOS and Android, and you looked at the screenshots. On Windows or Linux, that covers Android only: write in `progress.md` and the PR that iOS still needs checking on a Mac, and the PR isn't merged until a teammate with a Mac has done it;
+2. UI changes were checked with `sh scripts/amk/verify.sh all --spec <id>` on both iOS and Android, on each screen listed above, and you looked at the screenshots. On Windows or Linux, that covers Android only: write in `progress.md` and the PR that iOS still needs checking on a Mac, and the PR isn't merged until a teammate with a Mac has done it;
 3. the change stays inside the task's scope;
 4. `specs/<id>/progress.md` is updated, when working from a spec.
 

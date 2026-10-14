@@ -34,6 +34,24 @@ Rules for things AI agents commonly get wrong in Expo apps. Each one comes from 
 - Give every interactive element a `testID` (kebab-case, for example `dark-mode-switch`). End-to-end tools tap by `testID`. On iOS, React Native exposes a label and its control as duplicate accessibility elements, so tapping by text can hit the label: nothing happens, yet the tool reports success.
 - Give every interactive element an `accessibilityLabel` that says what it does and an `accessibilityRole` (`button`, `link`, `switch`, …), so screen readers can use it. Icon-only buttons need it most; screen readers don't read `testID`.
 
+## Tablets and landscape
+
+`AGENTS.md` lists the screens this app supports: phones and tablets, portrait and landscape. Build every screen for each of them, and skip what isn't listed. `verify.sh` checks each one.
+
+- One set of screens for every device: layouts adapt to the window. No separate tablet copies of screens, and no phone-width column centered on a tablet.
+- Read the window size with `useWindowDimensions()`, which updates on rotation, split view and resizable windows. `Dimensions.get` read once at startup goes stale.
+- Lay out by window width: under 600 points (dp on Android), the phone layout; from 600, the tablet layout, with more columns, and a list beside its detail where that helps. Text-heavy content and forms keep a readable width (about 600 to 700 points) instead of stretching edge to edge.
+- Sizes: when the app already has a way to size things (a scaling helper, or sizes in its theme), use it everywhere and don't mix in another. A new app takes sizes from its theme: spacing and a few text sizes step up from 600 points, and text follows the system font size. Judge the tablet and landscape screenshots like the phone's: each should look made for that screen, not stretched or tiny.
+- Landscape leaves little height: screens scroll, the keyboard covers more, and the safe-area insets include the left and right edges (the notch or Dynamic Island side).
+- Apps targeting Android 16 (API 36) can't lock the orientation or size on tablets and foldables (600 dp wide and up): the system ignores the lock there. So on Android tablets every screen has to work turned, whatever the app's settings say.
+- Don't lock the orientation in code to avoid layout work. Which orientations the app supports is a product decision, set in `app.json`: `orientation` (`default` turns, `portrait` or `landscape` locks) and `ios.supportsTablet` for the iPad app.
+
+## TypeScript
+
+- Keep the checks `tsconfig.json` has. Don't loosen them, or get past one with `any`, `@ts-ignore` or a non-null `!`.
+- New apps from `init --new` also turn on `noUncheckedIndexedAccess`, `noImplicitOverride`, `noImplicitReturns` and `noFallthroughCasesInSwitch`. In an existing app, turning these on is a change of its own (`m-change`), since they flag code that already exists.
+- Import with the app's path alias when `tsconfig.json` has one (`@/` for `src/` in new apps) instead of long relative paths. Expo's Metro reads the alias from `tsconfig.json` by itself.
+
 ## Performance and libraries
 
 - Prefer Expo's own modules (`expo-image`, `expo-file-system`, `expo-secure-store`, …) when one fits.
