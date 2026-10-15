@@ -17,6 +17,10 @@ appId: ${APP_ID}  # set by verify.sh
     id: "<testID of the element>"
 - takeScreenshot: <id>-1-<short-name>
 # Scenario 2: …
+# Something further down a screen can be off screen, most of all when it's turned (short): scroll to it first
+- scrollUntilVisible:
+    element:
+      id: "<testID>"
 - tapOn:
     id: "<testID>"
 - assertVisible:  # what THEN expects, so the screenshot shows the result and not the screen before it

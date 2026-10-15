@@ -37,7 +37,7 @@ If the input describes a bug rather than new behavior, suggest `m-bugfix` and st
 
 1. **Search the codebase before designing.** List the components, hooks, API clients and helpers you'll reuse in `design.md` under "Existing code to reuse". Read `docs/amk/structure.md` and `docs/amk/conventions.md`.
 2. Fill `design.md`: approach, files to change, risks (native changes, pod install, migrations).
-3. Fill `tasks.md`: small tasks (about an hour, under ~300 changed lines each). Each task names the requirement it serves and how it's checked, and its tests are written in the same task, not left for the end. The last task writes `.maestro/<id>.yaml` (from `specs/_templates/flow.yaml`): a Maestro flow with one step and screenshot per scenario, tapping elements by `testID`.
+3. Fill `tasks.md`: small tasks (about an hour, under ~300 changed lines each). Each task names the requirement it serves and how it's checked, and its tests are written in the same task, not left for the end. The last task writes `.maestro/<id>.yaml` (from `specs/_templates/flow.yaml`): a Maestro flow with one step and screenshot per scenario, tapping elements by `testID` and scrolling to the ones further down a screen first (`scrollUntilVisible`): turned screens are short.
 4. Show design and tasks and **stop until the user approves them**. Ask them to check that every task serves an approved requirement and nothing goes beyond the agreed scope.
 
 From here the plan lives in files, so the building can also run in a fresh session or another tool with `m-continue <id>`.
@@ -55,7 +55,11 @@ If building shows the plan is wrong: when the intent is the same, update `requir
 ## 5. Check against the spec
 
 When all tasks are done:
-1. Run `sh scripts/amk/verify.sh all --spec <id>`. Off a Mac it checks Android only: record in `progress.md` that iOS still needs `verify.sh ios --spec <id>` on a Mac, and say so in the PR. Then **open the screenshots** in `.amk/evidence/<id>/` and check each one against its scenario, in every screen's folder (phone, landscape, tablet). A turned screen's screenshots are landscape; one that shows the screen sideways means the app didn't turn. Maestro can report a tap as passed when nothing happened, so the screenshots are the evidence, not the log.
+1. Run `sh scripts/amk/verify.sh plan --spec <id>`. It says whether this machine has room to check the devices at the same time, and prints the commands.
+   - **One command** (`verify.sh all --spec <id>`): run it. Then **open the screenshots** in `.amk/evidence/<id>/` and check each one against its scenario, in every screen's folder (phone, landscape, tablet).
+   - **A plan, and your tool has subagents:** run its `quick` and `build` commands as printed (nothing added: the plain commands are the ones people allow), then start one `m-device-checker` subagent per device command, all at once; each runs its device, checks its screenshots and hands back a report. When all are back, check them yourself: every flow passed, every screen has screenshots in its folder (list them), and open every screenshot a report flags plus at least one per screen. A report alone isn't evidence. Without subagents, run `verify.sh all --spec <id>` instead.
+
+   Off a Mac it checks Android only: record in `progress.md` that iOS still needs `verify.sh ios --spec <id>` on a Mac, and say so in the PR. A turned screen's screenshots are landscape; a portrait one means the app didn't turn. Maestro can report a tap as passed when nothing happened, so the screenshots are the evidence, not the log.
 2. Go through every scenario and note its evidence: a test name, command output, or the screen checked. Where the code and the spec disagree, fix whichever is wrong, asking first if it's the spec. The spec must describe what ships.
 
 ## 6. Update the living spec and the docs
