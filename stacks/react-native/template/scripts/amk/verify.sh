@@ -23,7 +23,10 @@
 #      or UDID), AMK_ANDROID_DEVICE (adb serial: the only way to check on a phone, whose app data the flows clear),
 #      AMK_ANDROID_AVD (the emulator to use, started if it isn't running; other devices are left alone),
 #      AMK_IOS_TABLET (iPad simulator name or UDID), AMK_ANDROID_TABLET_AVD (tablet emulator), AMK_ANDROID_TABLET (serial),
-#      AMK_PARALLEL (1 or 0: overrides plan's choice)
+#      AMK_PARALLEL (1 or 0: overrides plan's choice), AMK_DEVICE_WAIT (minutes to wait for a device in use, 30),
+#      AMK_LOCK_DIR (where runs on this machine claim devices; /tmp/agentic-mobile-kit-<user id>)
+# A device in use by another run (any project on this machine) is skipped for a free one of the same kind, or waited
+# for when it was named or none is free.
 # Flows that log in read ${MAESTRO_EMAIL} and the like from a local, gitignored .maestro/.env.local (never committed).
 set -eu
 
@@ -77,6 +80,54 @@ screens_for() {
 maestro_version() { maestro --version 2> /dev/null | tail -n 1 | tr -d '\r '; }
 maestro_at_least() { [ "$(printf '%s\n%s\n' "$1" "$(maestro_version)" | sort -V | head -n 1)" = "$1" ]; }
 
+# Locks shared by every project and agent on this machine, so two runs never use one device (or build one project)
+# at once: a run claims a device by creating a folder named after it, and gives it back when it's done with it. A
+# claim whose run ended without giving it back is taken over.
+locks=${AMK_LOCK_DIR:-/tmp/agentic-mobile-kit-$(id -u 2> /dev/null || echo 0)}
+mkdir -p "$locks" 2> /dev/null || true
+project=$(printf %s "$root" | cksum | cut -d ' ' -f 1)
+held=""
+lock_path() { echo "$locks/$(printf %s "$1" | tr -c 'A-Za-z0-9._-' _)"; }
+# whether a Maestro run started outside the kit is using device $1 (its command line names the device)
+maestro_on() { ps -ax -o command 2> /dev/null | grep -E -- "--(device|udid)[ =]$1( |$)" | grep -q maestro; }
+# claims $1 for this run; with a device ID in $2, also when no other Maestro run is using that device
+claim() {
+  l=$(lock_path "$1")
+  if mkdir "$l" 2> /dev/null; then
+    printf '%s\n%s\n%s\n' "$$" "$(basename "$root") (${label:-${spec:-$mode}})" "$(date +%H:%M)" > "$l/owner"
+    held="$held $l"
+    if [ -n "${2:-}" ] && maestro_on "$2"; then unclaim "$1"; return 1; fi
+    return 0
+  fi
+  owner=$(sed -n 1p "$l/owner" 2> /dev/null || true)
+  [ "$owner" != "$$" ] || return 0 # this run holds it already
+  # its run ended, or was stopped before it could say who it was
+  if { [ -n "$owner" ] && ! kill -0 "$owner" 2> /dev/null; } || { [ -z "$owner" ] && [ -n "$(find "$l" -maxdepth 0 -mmin +1 2> /dev/null)" ]; }; then
+    rm -f "$l/owner"
+    rmdir "$l" 2> /dev/null && { claim "$@"; return; }
+  fi
+  return 1
+}
+unclaim() { l=$(lock_path "$1"); rm -f "$l/owner"; rmdir "$l" 2> /dev/null || true; held=$(echo "$held" | sed "s| $l||"); }
+release() { for l in $held; do rm -f "$l/owner"; rmdir "$l" 2> /dev/null || true; done; held=""; }
+trap release EXIT
+trap 'exit 130' INT TERM
+holder() {
+  l=$(lock_path "$1")
+  if [ -f "$l/owner" ]; then echo "$(sed -n 2p "$l/owner") since $(sed -n 3p "$l/owner")"; else echo "another Maestro run"; fi
+}
+# claims $1 as claim does, waiting while it's in use (AMK_DEVICE_WAIT minutes, 30 by default); $3 names it in messages
+claim_wait() {
+  claim "$1" "${2:-}" && return 0
+  echo "  waiting for $3: in use by $(holder "$1")"
+  waited=0
+  until claim "$1" "${2:-}"; do
+    [ "$waited" -lt $((${AMK_DEVICE_WAIT:-30} * 60)) ] || { echo "  gave up waiting for $3 after ${AMK_DEVICE_WAIT:-30} minutes"; return 1; }
+    sleep 5
+    waited=$((waited + 5))
+  done
+}
+
 run_flow() { # screen device app_id file name orientation
   # Maestro's own log, which has errors its output leaves out; it adds to the file, so one run's log at a time
   debug="$evidence/maestro-logs/$1-$5"
@@ -100,9 +151,12 @@ run_flow() { # screen device app_id file name orientation
   return $rc
 }
 
-run_flows() { # screen device app_id orientation (PORTRAIT, or LANDSCAPE_LEFT to turn it)
+run_flows() { # screen device app_id orientation (PORTRAIT, or LANDSCAPE_LEFT to turn it) [again]
   out="$evidence/$1"
   mkdir -p "$out"
+  # this run's screenshots are the ones newer than this; the status before it, for running the screen again
+  : > "$out/.started"
+  [ -n "${5:-}" ] || before=$status
   files=$(flow_files)
   if [ -z "$files" ]; then
     # launchApp returns before the app has drawn, and a splash screen stays up until the JavaScript has loaded:
@@ -117,8 +171,13 @@ run_flows() { # screen device app_id orientation (PORTRAIT, or LANDSCAPE_LEFT to
     name=$(basename "$f" .yaml)
     ok=0
     run_flow "$1" "$2" "$3" "$f" "$name" "$4" || ok=$?
-    # an emulator sometimes drops its adb connection for a moment: reconnect, then run the flow once more
-    if [ "$ok" != 0 ] && [ "${1%%-*}" = android ] && grep -qs 'device offline' "$debug/maestro.log"; then
+    # Maestro now and then stops before a flow starts (it printed nothing), and an emulator sometimes drops its adb
+    # connection for a moment: run the flow once more (after reconnecting)
+    if [ "$ok" != 0 ] && [ ! -s "$out/$name.log" ]; then
+      echo "  $1: Maestro stopped before flow $name started; running it once more"
+      ok=0
+      run_flow "$1" "$2" "$3" "$f" "$name" "$4" || ok=$?
+    elif [ "$ok" != 0 ] && [ "${1%%-*}" = android ] && grep -qs 'device offline' "$debug/maestro.log"; then
       echo "  $1: the device went offline during flow $name; running it once more"
       "$adb" reconnect offline > /dev/null 2>&1 || true
       android_ready "$2" || true
@@ -140,10 +199,31 @@ run_flows() { # screen device app_id orientation (PORTRAIT, or LANDSCAPE_LEFT to
         rm -f "$png.bmp"
       done ;;
   esac
+  # a screen checked in the wrong orientation would pass for another screen: a turned one's screenshots are wider than
+  # tall, an upright one's taller than wide. A device that didn't turn usually does the next time
+  case $1 in *-landscape) want=wide was=upright ;; *) want=tall was=turned ;; esac
+  wrong=$(find "$out" -name '*.png' -newer "$out/.started" | WANT=$want node -e '
+    const fs = require("fs");
+    for (const f of fs.readFileSync(0, "utf8").split("\n").filter(Boolean)) {
+      const b = Buffer.alloc(24), fd = fs.openSync(f, "r");
+      fs.readSync(fd, b, 0, 24, 0);
+      fs.closeSync(fd);
+      if ((b.readUInt32BE(16) > b.readUInt32BE(20)) !== (process.env.WANT === "wide")) console.log(f);
+    }' | wc -l | tr -d ' ')
+  if [ "$wrong" != 0 ] && [ -z "${5:-}" ]; then
+    echo "  $1: $wrong screenshots show the screen $was, not as this screen needs; running its flows once more"
+    find "$out" -name '*.png' -newer "$out/.started" -exec rm -f {} +
+    status=$before
+    run_flows "$1" "$2" "$3" "$4" again
+    return
+  fi
   shots=$(find "$out" -name '*.png' | wc -l | tr -d ' ')
   echo "$1: flows $passed/$total passed, $shots screenshots in ${out#"$root"/}"
   if [ "$shots" = 0 ]; then
     echo "  $1: no screenshots were saved, so there's no evidence; treating this as a failure"
+    status=1
+  elif [ "$wrong" != 0 ]; then
+    echo "  $1: $wrong screenshots show the screen $was: the device or the app didn't turn, so this screen isn't checked; treating this as a failure"
     status=1
   fi
 }
@@ -153,6 +233,10 @@ run_flows() { # screen device app_id orientation (PORTRAIT, or LANDSCAPE_LEFT to
 check_screens() { # platform phone tablet app_id screens…
   p=$1 phone=$2 tab=$3 id=$4
   shift 4
+  # before 2.6, two Maestro runs clash even on different devices (one port): checks on this machine take turns
+  if ! maestro_at_least 2.6.0; then
+    claim_wait maestro "" "Maestro (before 2.6 it runs one check at a time on this machine)" || { status=1; return; }
+  fi
   for screen in "$@"; do
     case $screen in
       tablet-*) [ -n "$tab" ] || continue; on=$tab where=$p-tablet ;;
@@ -174,6 +258,7 @@ check_screens() { # platform phone tablet app_id screens…
     fi
     run_flows "$where" "$on" "$id" "$turn"
   done
+  release # this platform's devices, and Maestro's turn, for other runs
 }
 
 quick() {
@@ -216,25 +301,30 @@ ios() {
     screens=$(screens_for ios)
     [ -n "$screens" ] || { echo "ios: none of the app's screens is $only"; return; }
     if echo "$screens" | grep -q '^phone-'; then
-      device=$(simulator iPhone "${AMK_IOS_DEVICE:-}")
+      take_simulator iPhone "${AMK_IOS_DEVICE:-}" || { status=1; return; }
+      device=$taken
       if [ -z "$device" ]; then
         if [ -n "${AMK_IOS_DEVICE:-}" ]; then echo "ios: no simulator has the name or UDID \"$AMK_IOS_DEVICE\""; else echo "ios: no iPhone simulator found (set AMK_IOS_DEVICE)"; fi
         status=1; return
       fi
     fi
     if echo "$screens" | grep -q '^tablet-'; then
-      tablet=$(simulator iPad "${AMK_IOS_TABLET:-}")
+      take_simulator iPad "${AMK_IOS_TABLET:-}" || { status=1; return; }
+      tablet=$taken
       if [ -z "$tablet" ] && [ -n "${AMK_IOS_TABLET:-}" ]; then echo "ios: no simulator has the name or UDID \"$AMK_IOS_TABLET\""; status=1; return; fi
       [ -n "$tablet" ] || echo "ios: the app runs on iPad, but there's no iPad simulator, so iPads aren't checked (add one in Xcode, or set AMK_IOS_TABLET)"
     fi
     for d in $device $tablet; do xcrun simctl boot "$d" 2> /dev/null || true; done
   fi
+  # one build of this project at a time; a check without its own build waits for one that's under way
+  claim_wait "build-ios-$project" "" "the iOS build of this project" || { status=1; return; }
   if [ "$no_build" = 0 ]; then
     if ! CONFIGURATION=Release sh scripts/amk/ios-build.sh > "$evidence/ios-build.log" 2>&1; then
       echo "ios: release build FAILED, see ${evidence#"$root"/}/ios-build.log"; status=1; return
     fi
-    [ "$build_only" = 0 ] || { echo "ios: release build done"; return; }
   fi
+  unclaim "build-ios-$project"
+  [ "$build_only" = 0 ] || { echo "ios: release build done"; return; }
   # the newest app: the scheme just built (another scheme's app may still be there from an earlier build)
   app=$(ls -dt ios/DerivedData/Build/Products/*-iphonesimulator/*.app 2> /dev/null | head -n 1)
   [ -n "$app" ] || { echo "ios: there's no build to check yet: run sh scripts/amk/verify.sh build first"; status=1; return; }
@@ -246,18 +336,32 @@ ios() {
   check_screens ios "$device" "$tablet" "$app_id" $screens
 }
 
-# a simulator's UDID: the one named in $2 (name or UDID), else a booted $1 (iPhone or iPad), else one with the newest iOS
-simulator() {
+# the simulators for $1 (iPhone or iPad), best first: the one named in $2 (name or UDID); else the booted ones,
+# then the others, newest iOS first
+simulators() {
   xcrun simctl list devices available -j | KIND=$1 WANT=$2 node -e '
     const all = Object.entries(JSON.parse(require("fs").readFileSync(0, "utf8")).devices)
       .flatMap(([rt, ds]) => ds.map(d => ({ ...d, v: (rt.match(/iOS-(\d+)-(\d+)/) || []).slice(1).map(Number) })))
       .filter(d => d.v.length);
     const want = process.env.WANT;
     // by device type: a simulator can have any name, such as a separate one kept for tests
-    const kind = all.filter(d => (d.deviceTypeIdentifier || d.name).includes(process.env.KIND));
-    const pick = want ? all.find(d => d.udid === want || d.name === want)
-      : kind.find(d => d.state === "Booted") || kind.sort((a, b) => b.v[0] - a.v[0] || b.v[1] - a.v[1])[0];
-    console.log(pick ? pick.udid : "");'
+    const kind = all.filter(d => (d.deviceTypeIdentifier || d.name).includes(process.env.KIND))
+      .sort((a, b) => (b.state === "Booted") - (a.state === "Booted") || b.v[0] - a.v[0] || b.v[1] - a.v[1]);
+    const list = want ? all.filter(d => d.udid === want || d.name === want).slice(0, 1) : kind;
+    console.log(list.map(d => d.udid).join("\n"));'
+}
+# a simulator for $1 (iPhone or iPad) that this run holds, in $taken: the one named in $2, once it's free; else the
+# first free one; else the best one, once it's free. Empty when there's none
+take_simulator() {
+  taken=""
+  candidates=$(simulators "$1" "$2")
+  [ -n "$candidates" ] || return 0
+  first=$(echo "$candidates" | head -n 1)
+  if [ -z "$2" ]; then
+    for u in $candidates; do claim "ios-$u" "$u" && { taken=$u; break; }; done
+    [ -z "$taken" ] || [ "$taken" = "$first" ] || echo "ios: $first is in use by $(holder "ios-$first"), so checking on $taken"
+  fi
+  [ -n "$taken" ] || { claim_wait "ios-$first" "$first" "the $1 simulator $first" || return 1; taken=$first; }
 }
 
 # a running emulator's adb serial: of the AVD named in $1 if one is, else of the kind in $2 (phone or tablet) if given
@@ -285,11 +389,42 @@ avd_width() {
     END { if (d) print int((w + 0 < h + 0 ? w : h) * 160 / d) }' \
     "${ANDROID_AVD_HOME:-${ANDROID_USER_HOME:-$HOME/.android}/avd}/$1.avd/config.ini" 2> /dev/null || true
 }
-# the first AVD of the kind $1 (phone or tablet)
-first_avd() {
-  for a in $avds; do
-    if [ "$(kind_of "$(avd_width "$a")")" = "$1" ]; then echo "$a"; return; fi
-  done
+# the emulators of the kind $1 (phone or tablet), best first: the running ones, then the others
+emulators() {
+  {
+    for d in $("$adb" devices | awk 'NR > 1 && $2 == "device" && /^emulator-/ { print $1 }'); do
+      [ "$(kind_of "$(device_width "$d")")" != "$1" ] || "$adb" -s "$d" emu avd name 2> /dev/null | head -n 1 | tr -d '\r'
+    done
+    for a in $avds; do [ "$(kind_of "$(avd_width "$a")")" != "$1" ] || echo "$a"; done
+  } | awk 'NF && !seen[$0]++'
+}
+# an Android device of the kind $1 that this run holds, in $taken (its serial): the device ($2, an adb serial) or
+# emulator ($3) named for it, once it's free; else the first free emulator of that kind, running or not; else the
+# best one, once it's free. Empty when there's none of that kind. An emulator is claimed by its name, however named
+take_android() {
+  taken="" pick=""
+  if [ -n "$2" ]; then
+    key=android-$2
+    case $2 in emulator-*) key=android-avd-$("$adb" -s "$2" emu avd name 2> /dev/null | head -n 1 | tr -d '\r') ;; esac
+    claim_wait "$key" "$2" "$2" || return 1
+    taken=$2
+    return 0
+  fi
+  if [ -n "$3" ]; then
+    echo "$avds" | grep -qxF "$3" || { echo "android: there's no emulator named $3 (see: emulator -list-avds)"; return 1; }
+    names=$3
+  else
+    names=$(emulators "$1")
+  fi
+  [ -n "$names" ] || return 0
+  first=$(echo "$names" | head -n 1)
+  if [ -z "$3" ]; then
+    for n in $names; do claim "android-avd-$n" "$(running_emulator "$n")" && { pick=$n; break; }; done
+    [ -z "$pick" ] || [ "$pick" = "$first" ] || echo "android: emulator $first is in use by $(holder "android-avd-$first"), so checking on $pick"
+  fi
+  [ -n "$pick" ] || { claim_wait "android-avd-$first" "$(running_emulator "$first")" "emulator $first" || return 1; pick=$first; }
+  taken=$(running_emulator "$pick")
+  [ -n "$taken" ] || taken=$(start_emulator "$pick") || { echo "android: emulator $pick didn't start"; return 1; }
 }
 # starts the AVD $1 and prints its serial once adb sees it (up to 5 minutes)
 start_emulator() {
@@ -350,19 +485,15 @@ android() {
     [ -n "$screens" ] || { echo "android: none of the app's screens is $only"; return; }
     avds=$("$sdk/emulator/emulator" -list-avds 2> /dev/null || true)
     if echo "$screens" | grep -q '^phone-'; then
-      device=${AMK_ANDROID_DEVICE:-$(running_emulator "${AMK_ANDROID_AVD:-}" phone)}
+      take_android phone "${AMK_ANDROID_DEVICE:-}" "${AMK_ANDROID_AVD:-}" || { status=1; return; }
+      # only tablet emulators: one of them
+      [ -n "$taken" ] || take_android tablet "" "" || { status=1; return; }
+      device=$taken
       if [ -z "$device" ]; then
-        avd=${AMK_ANDROID_AVD:-$(first_avd phone)}
-        [ -n "$avd" ] || avd=$(echo "$avds" | head -n 1) # only tablet emulators: one of them
-        if [ -n "$avd" ]; then
-          echo "$avds" | grep -qxF "$avd" || { echo "android: there's no emulator named $avd (see: emulator -list-avds)"; status=1; return; }
-          device=$(start_emulator "$avd") || { echo "android: emulator $avd didn't start"; status=1; return; }
-        else
           phone=$("$adb" devices | awk 'NR > 1 && $2 == "device" { print $1; exit }')
           echo "android: no emulator found (create one in Android Studio)"
           [ -z "$phone" ] || echo "  or check on the phone $phone, which clears the app's data on it: AMK_ANDROID_DEVICE=$phone sh scripts/amk/verify.sh android"
           status=1; return
-        fi
       fi
       case $device in
         emulator-*) echo "android: checking on $device" ;;
@@ -370,17 +501,9 @@ android() {
       esac
     fi
     if echo "$screens" | grep -q '^tablet-'; then
-      tablet=${AMK_ANDROID_TABLET:-$(running_emulator "${AMK_ANDROID_TABLET_AVD:-}" tablet)}
-      if [ -z "$tablet" ]; then
-        tablet_avd=${AMK_ANDROID_TABLET_AVD:-$(first_avd tablet)}
-        if [ -z "$tablet_avd" ]; then
-          echo "android: the app runs on tablets, but there's no tablet emulator, so tablets aren't checked (create one in Android Studio: Device Manager > Tablet, or set AMK_ANDROID_TABLET_AVD)"
-        elif ! echo "$avds" | grep -qxF "$tablet_avd"; then
-          echo "android: there's no emulator named $tablet_avd (see: emulator -list-avds)"; status=1; return
-        else
-          tablet=$(start_emulator "$tablet_avd") || { echo "android: emulator $tablet_avd didn't start, so tablets aren't checked"; tablet=""; }
-        fi
-      fi
+      take_android tablet "${AMK_ANDROID_TABLET:-}" "${AMK_ANDROID_TABLET_AVD:-}" || { status=1; return; }
+      tablet=$taken
+      [ -n "$tablet" ] || echo "android: the app runs on tablets, but there's no tablet emulator, so tablets aren't checked (create one in Android Studio: Device Manager > Tablet, or set AMK_ANDROID_TABLET_AVD)"
       [ "$tablet" != "$device" ] || tablet="" # only tablet emulators: the one in use is checked as the phone
       case $tablet in
         "") ;;
@@ -398,6 +521,8 @@ android() {
       sleep 2
     done
   fi
+  # one build of this project at a time; a check without its own build waits for one that's under way
+  claim_wait "build-android-$project" "" "the Android build of this project" || { status=1; return; }
   if [ "$no_build" = 0 ]; then
     # native code for that CPU type only, as run-android --active-arch-only does: much faster than all four
     set -- -PreactNativeArchitectures="$abi"
@@ -410,8 +535,9 @@ android() {
     if ! (cd android && ./gradlew "assemble${variant}Release" --no-daemon -q "$@") > "$evidence/android-build.log" 2>&1; then
       echo "android: release build FAILED, see ${evidence#"$root"/}/android-build.log"; status=1; return
     fi
-    [ "$build_only" = 0 ] || { echo "android: release build done"; return; }
   fi
+  unclaim "build-android-$project"
+  [ "$build_only" = 0 ] || { echo "android: release build done"; return; }
   # apps that split APKs by CPU type get one per type: take this device's, else the universal one
   apks=$(ls android/app/build/outputs/apk/${flavor:+$flavor/}release/*.apk 2> /dev/null || true)
   [ -n "$apks" ] || { echo "android: there's no build to check yet: run sh scripts/amk/verify.sh build first"; status=1; return; }
@@ -446,10 +572,10 @@ build() {
   build_only=1
   ios_pid=""
   if [ "$(uname -s)" = Darwin ]; then
-    (ios; exit $status) > "$evidence/build-ios.out" 2>&1 &
+    (trap release EXIT; ios; exit $status) > "$evidence/build-ios.out" 2>&1 &
     ios_pid=$!
   fi
-  (android; exit $status) > "$evidence/build-android.out" 2>&1 &
+  (trap release EXIT; android; exit $status) > "$evidence/build-android.out" 2>&1 &
   android_pid=$!
   [ -z "$ios_pid" ] || wait "$ios_pid" || status=1
   wait "$android_pid" || status=1

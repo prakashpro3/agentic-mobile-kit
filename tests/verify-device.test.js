@@ -16,7 +16,8 @@ const skip = process.platform === 'win32' && 'fakes adb with a shell script';
 // the device lines matter; with it a stand-in gradlew "builds" an APK. `maestro` is the stand-in's script body.
 // `rotates`: the app supports iPad and isn't locked to portrait, as React Native's template is. `args`: verify.sh's.
 // Maestro says it's 2.11.0, or FAKE_MAESTRO_VERSION; gradlew logs its arguments in calls.
-function verifyAndroid({ connected, avds = '', tablets = '', env = {}, build = false, rotates = false, maestro = '', args = ['android', '--flavor', 'x', '--label', 'run'], files = {} }) {
+// `held`: device locks another run holds, as { key: [pid, who, since] }; `ps`: the processes the stand-in ps lists.
+function verifyAndroid({ connected, avds = '', tablets = '', env = {}, build = false, rotates = false, maestro = '', args = ['android', '--flavor', 'x', '--label', 'run'], files = {}, held = {}, ps = '' }) {
   const dir = tmpDir('amk-verify-device-');
   fs.cpSync(path.join(TEMPLATE, 'scripts/amk'), path.join(dir, 'app/scripts/amk'), { recursive: true });
   write(dir, 'state', connected.map(d => `${d}\n`).join(''));
@@ -45,6 +46,11 @@ esac
   write(dir, 'bin/maestro', `#!/bin/sh\n[ "$1" = --version ] && { echo "\${FAKE_MAESTRO_VERSION:-2.11.0}"; exit 0; }\n${maestro}`, 0o755);
   for (const a of tablets.split(' ').filter(Boolean)) write(dir, `avd/${a}.avd/config.ini`, 'hw.lcd.density=320\nhw.lcd.height=2560\nhw.lcd.width=1600\n');
   for (const [f, text] of Object.entries(files)) write(dir, `app/${f}`, text);
+  fs.mkdirSync(path.join(dir, 'app'), { recursive: true });
+  // {project} in a key: this app's build locks, named from its folder's path as verify.sh sees it
+  const project = spawnSync('sh', ['-c', 'printf %s "$(pwd)" | cksum | cut -d " " -f 1'], { cwd: path.join(dir, 'app') }).stdout.toString().trim();
+  for (const [key, owner] of Object.entries(held)) write(dir, `locks/${key.replace('{project}', project)}/owner`, `${owner.join('\n')}\n`);
+  write(dir, 'bin/ps', `#!/bin/sh\nprintf '%s\\n' "${ps}"\n`, 0o755);
   if (rotates) {
     write(dir, 'app/ios/App.xcodeproj/project.pbxproj', 'INFOPLIST_FILE = App/Info.plist;\nTARGETED_DEVICE_FAMILY = "1,2";\n');
     write(dir, 'app/ios/App/Info.plist', '<key>UISupportedInterfaceOrientations</key>\n<array>\n<string>UIInterfaceOrientationPortrait</string>\n</array>\n');
@@ -57,10 +63,11 @@ esac
   }
   const r = spawnSync('sh', ['scripts/amk/verify.sh', ...args], {
     cwd: path.join(dir, 'app'), encoding: 'utf8',
-    env: { ...process.env, FAKE_STATE: path.join(dir, 'state'), ANDROID_HOME: path.join(dir, 'sdk'), ANDROID_AVD_HOME: path.join(dir, 'avd'), PATH: `${path.join(dir, 'bin')}${path.delimiter}${process.env.PATH}`, AMK_ANDROID_DEVICE: '', AMK_ANDROID_AVD: '', ...env },
+    env: { ...process.env, FAKE_STATE: path.join(dir, 'state'), ANDROID_HOME: path.join(dir, 'sdk'), ANDROID_AVD_HOME: path.join(dir, 'avd'), AMK_LOCK_DIR: path.join(dir, 'locks'), PATH: `${path.join(dir, 'bin')}${path.delimiter}${process.env.PATH}`, AMK_ANDROID_DEVICE: '', AMK_ANDROID_AVD: '', ...env },
   });
   const readIf = f => (fs.existsSync(path.join(dir, f)) ? fs.readFileSync(path.join(dir, f), 'utf8') : '');
-  return { out: r.stdout + r.stderr, calls: readIf('state.calls'), maestro: readIf('state.maestro') };
+  const locks = fs.existsSync(path.join(dir, 'locks')) ? fs.readdirSync(path.join(dir, 'locks')) : [];
+  return { out: r.stdout + r.stderr, calls: readIf('state.calls'), maestro: readIf('state.maestro'), locks, status: r.status, app: path.join(dir, 'app') };
 }
 
 const chooseDevice = o => {
@@ -100,25 +107,29 @@ test('verify.sh android: runs a flow once more when the emulator went offline, a
   // Maestro writes "device offline" only to its own log (--debug-output); the first run fails that way
   const offlineOnce = `debug=$(echo "$@" | sed 's/.*--debug-output \\([^ ]*\\).*/\\1/'); out=$(echo "$@" | sed 's/.*--test-output-dir \\([^ ]*\\).*/\\1/')
 mkdir -p "$debug"
-if [ ! -f "$out/../tried" ]; then touch "$out/../tried"; echo "IOException: Command failed (host:transport:emulator-5556): device offline" >> "$debug/maestro.log"; exit 1; fi
+if [ ! -f "$out/../tried" ]; then touch "$out/../tried"; echo "IOException: Command failed (host:transport:emulator-5556): device offline" >> "$debug/maestro.log"; echo "Launch app... FAILED"; exit 1; fi
 touch "$out/shot.png"`;
   const r = verifyAndroid({ connected: ['emulator-5556 P35'], build: true, maestro: offlineOnce });
   assert.match(r.out, /the device went offline during flow smoke; running it once more/);
   assert.match(r.out, /android: flows 1\/1 passed, 1 screenshots/);
   assert.match(r.calls, /^reconnect offline$/m);
-  const failing = verifyAndroid({ connected: ['emulator-5556 P35'], build: true, maestro: 'exit 1' });
+  const failing = verifyAndroid({ connected: ['emulator-5556 P35'], build: true, maestro: 'echo "Assert that id: x is visible... FAILED"; exit 1' });
   assert.doesNotMatch(failing.out, /once more/, 'other failures aren\'t run again');
   assert.match(failing.out, /flow smoke failed, see \.amk\/evidence\/run\/android\/smoke\.log and Maestro's own log \.amk\/evidence\/run\/maestro-logs\/android-smoke\/maestro\.log/);
 });
 
 // records the device, and the orientation a flow is turned to or "direct" for a flow run as it is, then saves a screenshot
+// the shape the device shows: a phone tall and a tablet wide, unless turned (NOTURN set: the app never turns)
 const record = String.raw`for last; do :; done
 out=$(echo "$@" | sed 's/.*--test-output-dir \([^ ]*\).*/\1/'); device=$(echo "$@" | sed 's/.*--device \([^ ]*\).*/\1/')
 case $last in
-  */screen.yaml) echo "$device $(sed -n 's/^- setOrientation: //p' "$last") $(sed -n "s/^- runFlow: '\(.*\)'$/\1/p" "$last" | sed 's/.*\///')" ;;
-  *) echo "$device direct $(basename "$last")" ;;
+  */screen.yaml) o=$(sed -n 's/^- setOrientation: //p' "$last"); echo "$device $o $(sed -n "s/^- runFlow: '\(.*\)'$/\1/p" "$last" | sed 's/.*\///')" ;;
+  *) o=natural; echo "$device direct $(basename "$last")" ;;
 esac >> "$FAKE_STATE.maestro"
-touch "$out/shot.png"`;
+if [ "$(awk -v s="$device" '$1 == s { print $3 }' "$FAKE_STATE")" = tablet ]; then w=2560 h=1600; else w=1080 h=2400; fi
+[ "$o" != LANDSCAPE_LEFT ] || [ -n "$NOTURN" ] || { t=$w; w=$h; h=$t; }
+[ ! -f "$out/../noturn-once" ] || { rm "$out/../noturn-once"; t=$w; w=$h; h=$t; }
+node -e 'const b = Buffer.alloc(24); b.writeUInt32BE(+process.argv[2], 16); b.writeUInt32BE(+process.argv[3], 20); require("fs").writeFileSync(process.argv[1], b)' "$out/shot.png" $w $h`;
 
 test('verify.sh android: an app that turns and runs on tablets is checked on a phone and a tablet, upright and turned', { skip }, () => {
   // a running tablet emulator isn't taken for the phone; a tablet AVD starts for the tablet screens
@@ -204,4 +215,64 @@ touch "$debug/flow/takeScreenshot/launch.png"`;
   const stale = { '.amk/evidence/run/maestro-logs/android-smoke/flow/takeScreenshot/earlier.png': '' };
   const r = verifyAndroid({ connected: ['emulator-5556 P35'], avds: 'P35', build: true, maestro: bundled, files: stale });
   assert.match(r.out, /^android: flows 1\/1 passed, 1 screenshots in \.amk\/evidence\/run\/android$/m, 'launch.png, not earlier.png');
+});
+
+test('verify.sh android: a device another run is using is skipped for a free one, or waited for; locks are given back', { skip }, () => {
+  const other = [String(process.pid), 'OtherApp (x1)', '10:00']; // a run that's still going: this test's own process
+  const two = { connected: ['emulator-5556 P35', 'emulator-5558 P36'], avds: 'P35 P36', build: true, maestro: record };
+  // not named: the free one
+  const free = verifyAndroid({ ...two, held: { 'android-avd-P35': other } });
+  assert.match(free.out, /android: emulator P35 is in use by OtherApp \(x1\) since 10:00, so checking on P36\nandroid: checking on emulator-5558\n/);
+  assert.strictEqual(free.maestro, 'emulator-5558 direct smoke.yaml\n');
+  assert.deepStrictEqual(free.locks, ['android-avd-P35'], 'its own given back, the other run\'s left alone');
+  // named, or named by its serial (claimed by its emulator's name): waits, here not at all
+  for (const env of [{ AMK_ANDROID_AVD: 'P35' }, { AMK_ANDROID_DEVICE: 'emulator-5556' }]) {
+    const named = verifyAndroid({ ...two, held: { 'android-avd-P35': other }, env: { ...env, AMK_DEVICE_WAIT: '0' } });
+    assert.match(named.out, /waiting for (emulator P35|emulator-5556): in use by OtherApp \(x1\) since 10:00\n {2}gave up waiting for .* after 0 minutes/);
+    assert.doesNotMatch(named.out, /checking on/);
+    assert.notStrictEqual(named.status, 0);
+  }
+  // a run that ended without giving its lock back: taken over
+  const ended = spawnSync('sh', ['-c', 'echo $$']).stdout.toString().trim();
+  const stale = verifyAndroid({ ...two, held: { 'android-avd-P35': [ended, 'OtherApp (x1)', '09:00'] } });
+  assert.match(stale.out, /android: checking on emulator-5556\n/);
+  assert.deepStrictEqual(stale.locks, []);
+  // a Maestro run outside the kit on a device: in use
+  const outside = verifyAndroid({ ...two, ps: 'java -classpath /x/maestro/lib/* maestro.cli.AppKt --device emulator-5556 test flow.yaml' });
+  assert.match(outside.out, /emulator P35 is in use by another Maestro run, so checking on P36/);
+});
+
+test('verify.sh: before Maestro 2.6 checks on this machine take turns, and one build of a project at a time', { skip }, () => {
+  const other = [String(process.pid), 'OtherApp (x1)', '10:00'];
+  const old = verifyAndroid({ connected: ['emulator-5556 P35'], avds: 'P35', build: true, maestro: record, held: { maestro: other }, env: { FAKE_MAESTRO_VERSION: '2.2.0', AMK_DEVICE_WAIT: '0' } });
+  assert.match(old.out, /waiting for Maestro \(before 2\.6 it runs one check at a time on this machine\): in use by OtherApp \(x1\) since 10:00/);
+  assert.strictEqual(old.maestro, '', 'no flow ran');
+  // a build of this project under way: a build waits for it, and so does a check of the build that's there
+  for (const args of [['build', '--flavor', 'x', '--label', 'run'], ['android', '--flavor', 'x', '--label', 'run', '--no-build']]) {
+    const r = verifyAndroid({ connected: ['emulator-5556 P35'], avds: 'P35', build: true, maestro: record, args, held: { 'build-android-{project}': other }, env: { AMK_DEVICE_WAIT: '0' } });
+    assert.match(r.out, /waiting for the Android build of this project: in use by OtherApp \(x1\) since 10:00\n {2}gave up waiting/);
+    assert.doesNotMatch(r.calls, /gradlew/);
+    assert.strictEqual(r.maestro, '');
+  }
+});
+
+test('verify.sh: a flow Maestro stopped before it started (it printed nothing) runs once more', { skip }, () => {
+  const stopsOnce = String.raw`out=$(echo "$@" | sed 's/.*--test-output-dir \([^ ]*\).*/\1/')
+if [ ! -f "$out/../tried" ]; then touch "$out/../tried"; exit 1; fi
+echo "Launch app... COMPLETED"; touch "$out/shot.png"`;
+  const r = verifyAndroid({ connected: ['emulator-5556 P35'], avds: 'P35', build: true, maestro: stopsOnce });
+  assert.match(r.out, /android: Maestro stopped before flow smoke started; running it once more\nandroid: flows 1\/1 passed, 1 screenshots/);
+});
+
+test("verify.sh: a screen whose screenshots aren't in its orientation runs once more, then fails; the device didn't turn", { skip }, () => {
+  const devices = { connected: ['emulator-5556 P35'], avds: 'P35', rotates: true, build: true, maestro: record, env: { AMK_SCREENS: 'phone-landscape' } };
+  // turned the second time
+  const once = verifyAndroid({ ...devices, files: { '.amk/evidence/run/noturn-once': '' } });
+  assert.match(once.out, /android-landscape: 1 screenshots show the screen upright, not as this screen needs; running its flows once more\nandroid-landscape: flows 1\/1 passed, 1 screenshots/);
+  assert.doesNotMatch(once.out, /isn't checked/);
+  assert.strictEqual(once.status, 0);
+  // never turns
+  const never = verifyAndroid({ ...devices, env: { ...devices.env, NOTURN: '1' } });
+  assert.match(never.out, /android-landscape: flows 1\/1 passed, 1 screenshots in .*\n {2}android-landscape: 1 screenshots show the screen upright: the device or the app didn't turn, so this screen isn't checked; treating this as a failure/);
+  assert.notStrictEqual(never.status, 0);
 });

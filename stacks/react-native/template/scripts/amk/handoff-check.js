@@ -15,7 +15,7 @@ const inProgress = d => {
 const specs = fs.existsSync('specs') ? fs.readdirSync('specs').filter(inProgress) : [];
 if (specs.length === 0) process.exit(0); // no spec in progress (quick change, bug fix, or finished work)
 
-const changed = execSync('git status --porcelain', { encoding: 'utf8' })
+const changed = execSync('git status --porcelain --untracked-files=all', { encoding: 'utf8' }) // every new file, not just its new folder
   .split('\n').filter(Boolean).map(l => l.slice(3));
 const codeChanged = changed.some(f => !f.startsWith('specs/') && !f.startsWith('.amk/'));
 const handoffUpdated = changed.some(f => /^specs\/[^/]+\/progress\.md$/.test(f));
