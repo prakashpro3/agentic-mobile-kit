@@ -4,6 +4,9 @@
 # archives with: apps with one per environment (for example "Release Staging") get theirs.
 # AMK_IOS_SCHEME picks the scheme (default: the one named like the workspace).
 # Output goes to ios/DerivedData: ios/build holds React Native codegen files from pod install.
+# `ios-build.sh device <UDID>` builds for that iPhone or iPad instead, signed by Xcode's automatic signing for the team
+# in AMK_IOS_TEAM, with the Apple account in Xcode: the first time, Xcode registers the device with the team and makes a
+# development profile for it. The project's own signing settings stay as they are.
 set -eu
 config=${CONFIGURATION:-Debug}
 workspace=$(ls -d ios/*.xcworkspace 2>/dev/null | head -n 1)
@@ -13,6 +16,17 @@ if [ "$config" = Release ]; then
   file=$(ls ios/*.xcodeproj/xcshareddata/xcschemes/"$scheme".xcscheme ios/*.xcworkspace/xcshareddata/xcschemes/"$scheme".xcscheme 2> /dev/null | head -n 1)
   [ -z "$file" ] || config=$(awk '/<ArchiveAction/ { a = 1 } a && /buildConfiguration/ { split($0, q, "\""); print q[2]; exit }' "$file")
   [ -n "$config" ] || config=Release
+fi
+
+if [ "${1:-}" = device ]; then
+  [ -n "${AMK_IOS_TEAM:-}" ] || { echo "Set AMK_IOS_TEAM to the Apple team to sign with (Xcode > Settings > Accounts lists them)."; exit 1; }
+  # signed for development whatever the project signs its releases with (a distribution profile doesn't install)
+  xcodebuild -workspace "$workspace" -scheme "$scheme" -configuration "$config" -destination "id=$2" \
+    -derivedDataPath ios/DerivedData -allowProvisioningUpdates -allowProvisioningDeviceRegistration \
+    DEVELOPMENT_TEAM="$AMK_IOS_TEAM" CODE_SIGN_STYLE=Automatic CODE_SIGN_IDENTITY="Apple Development" \
+    PROVISIONING_PROFILE_SPECIFIER= -quiet build
+  echo "iOS device build OK ($scheme, $config, team $AMK_IOS_TEAM)"
+  exit 0
 fi
 
 # only this Mac's simulator architecture: a Release build would otherwise compile Intel and Apple silicon both,

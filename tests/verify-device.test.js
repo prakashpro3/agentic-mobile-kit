@@ -17,7 +17,7 @@ const skip = process.platform === 'win32' && 'fakes adb with a shell script';
 // `rotates`: the app supports iPad and isn't locked to portrait, as React Native's template is. `args`: verify.sh's.
 // Maestro says it's 2.11.0, or FAKE_MAESTRO_VERSION; gradlew logs its arguments in calls.
 // `held`: device locks another run holds, as { key: [pid, who, since] }; `ps`: the processes the stand-in ps lists.
-function verifyAndroid({ connected, avds = '', tablets = '', env = {}, build = false, rotates = false, maestro = '', args = ['android', '--flavor', 'x', '--label', 'run'], files = {}, held = {}, ps = '' }) {
+function verifyAndroid({ connected, avds = '', tablets = '', env = {}, build = false, rotates = false, maestro = '', args = ['android', '--flavor', 'x', '--label', 'run'], files = {}, held = {}, ps = '', git = false }) {
   const dir = tmpDir('amk-verify-device-');
   fs.cpSync(path.join(TEMPLATE, 'scripts/amk'), path.join(dir, 'app/scripts/amk'), { recursive: true });
   write(dir, 'state', connected.map(d => `${d}\n`).join(''));
@@ -61,6 +61,7 @@ esac
     write(dir, 'app/android/app/build/outputs/apk/x/release/app-x-release.apk', '');
     write(dir, 'app/android/app/build.gradle', 'android { defaultConfig { applicationId "com.example.app" } }\n');
   }
+  if (git) spawnSync('sh', ['-c', 'git init -q && git add -A'], { cwd: path.join(dir, 'app') });
   const r = spawnSync('sh', ['scripts/amk/verify.sh', ...args], {
     cwd: path.join(dir, 'app'), encoding: 'utf8',
     env: { ...process.env, FAKE_STATE: path.join(dir, 'state'), ANDROID_HOME: path.join(dir, 'sdk'), ANDROID_AVD_HOME: path.join(dir, 'avd'), AMK_LOCK_DIR: path.join(dir, 'locks'), PATH: `${path.join(dir, 'bin')}${path.delimiter}${process.env.PATH}`, AMK_ANDROID_DEVICE: '', AMK_ANDROID_AVD: '', ...env },
@@ -264,6 +265,137 @@ echo "Launch app... COMPLETED"; touch "$out/shot.png"`;
   assert.match(r.out, /android: Maestro stopped before flow smoke started; running it once more\nandroid: flows 1\/1 passed, 1 screenshots/);
 });
 
+// verify.sh ios on a Mac, with stand-ins for Xcode's tools (xcrun simctl and devicectl, xcodebuild) and for maestro-runner
+// (npx). A bare app that runs on iPhone only, upright and turned, signed by the project's team unless `team` says
+// otherwise. One simulator, "iPhone 17", and one connected iPhone, "Tester's iPhone" (00008020-AAAA). xcrun and
+// xcodebuild log their arguments in calls, maestro-runner in runner; the crash reports on the iPhone are listed in crashes.
+// FAKE_UNTRUSTED: the iPhone doesn't open the app; FAKE_REFUSED_ONCE: not the first time; FAKE_FLOW_REFUSED_ONCE: not in
+// the first flow; FAKE_CLOSES: the app closes at once; FAKE_CRASH: it crashes in a flow
+const skipIos = process.platform !== 'darwin' && 'needs a Mac (PlistBuddy)';
+function verifyIos({ env = {}, team = 'ABCDE12345', args = ['ios', '--label', 'run'], crashes = '', files = {} }) {
+  const dir = tmpDir('amk-verify-ios-');
+  fs.cpSync(path.join(TEMPLATE, 'scripts/amk'), path.join(dir, 'app/scripts/amk'), { recursive: true });
+  write(dir, 'state.crashes', crashes);
+  const sims = { devices: { 'com.apple.CoreSimulator.SimRuntime.iOS-26-5': [{ udid: 'SIM-1', name: 'iPhone 17', state: 'Shutdown', deviceTypeIdentifier: 'com.apple.CoreSimulator.SimDeviceType.iPhone-17' }] } };
+  const reals = { result: { devices: [{ identifier: 'CORE-1', deviceProperties: { name: "Tester's iPhone" }, hardwareProperties: { reality: 'physical', udid: '00008020-AAAA' } }] } };
+  write(dir, 'bin/xcrun', String.raw`#!/bin/sh
+echo "xcrun $*" >> "$FAKE_STATE.calls"
+to() { while [ $# -gt 0 ]; do [ "$1" != --json-output ] || { echo "$2"; return; }; shift; done; }
+case "$1 $2 $3 $4" in
+  "simctl list"*) echo '${JSON.stringify(sims)}' ;;
+  "devicectl list"*) echo '${JSON.stringify(reals).replace(/'/g, "'\\''")}' > "$(to "$@")" ;;
+  "devicectl device process launch") if [ -n "$FAKE_UNTRUSTED" ] || { [ -n "$FAKE_REFUSED_ONCE" ] && [ ! -f "$FAKE_STATE.refused" ] && touch "$FAKE_STATE.refused"; }; then
+      echo "ERROR: Unable to launch com.example.app because it has an invalid code signature, inadequate entitlements or its profile has not been explicitly trusted by the user."; exit 1
+    fi ;;
+  "devicectl device info processes") p='{"executable":"file:///private/var/containers/Bundle/Application/U/App.app/App"}'; [ -z "$FAKE_CLOSES" ] || p=""
+    echo "{\"result\":{\"runningProcesses\":[$p]}}" > "$(to "$@")" ;;
+  "devicectl device info files") node -e 'console.log(JSON.stringify({ result: { files: require("fs").readFileSync(process.argv[1], "utf8").split("\n").filter(Boolean).map(f => ({ relativePath: f })) } }))' "$FAKE_STATE.crashes" > "$(to "$@")" ;;
+  "devicectl device copy from") echo report > "$(echo "$@" | sed 's/.*--destination \([^ ]*\).*/\1/')" ;;
+esac
+`, 0o755);
+  write(dir, 'bin/xcodebuild', String.raw`#!/bin/sh
+echo "xcodebuild $*" >> "$FAKE_STATE.calls"
+case "$*" in *"-destination id="*) p=Release-iphoneos ;; *) p=Release-iphonesimulator ;; esac
+mkdir -p "ios/DerivedData/Build/Products/$p/App.app"
+printf '<plist version="1.0"><dict><key>CFBundleIdentifier</key><string>com.example.app</string><key>CFBundleExecutable</key><string>App</string></dict></plist>\n' > "ios/DerivedData/Build/Products/$p/App.app/Info.plist"
+`, 0o755);
+  // maestro-runner: a screenshot the shape the iPhone shows, saved in its report and next to the flow file as it does,
+  // and one of a failed step, which isn't evidence
+  write(dir, 'bin/npx', String.raw`#!/bin/sh
+echo "$* (telemetry off: $MAESTRO_RUNNER_NO_TELEMETRY)" >> "$FAKE_STATE.runner"
+if [ -n "$FAKE_FLOW_REFUSED_ONCE" ] && [ ! -f "$FAKE_STATE.flow-refused" ]; then
+  touch "$FAKE_STATE.flow-refused"; echo "Failed to launch app: com.example.app (cause: its profile has not been explicitly trusted by the user)"; exit 1
+fi
+for last; do :; done
+out=$(echo "$@" | sed 's/.*--output \([^ ]*\).*/\1/')
+o=$(sed -n 's/^ *orientation: //p' "$last" | tail -n 1)
+flow=$(sed -n "s/^- runFlow: '\(.*\)'$/\1/p" "$last")
+if [ "$o" = landscape ]; then w=2688 h=1242; else w=1242 h=2688; fi
+mkdir -p "$out/assets/flow-000"
+for f in "cmd-003-shot.png $w $h" "nested-000-after.png 10 10"; do
+  node -e 'const b = Buffer.alloc(24); b.writeUInt32BE(+process.argv[2], 16); b.writeUInt32BE(+process.argv[3], 20); require("fs").writeFileSync(process.argv[1], b)' "$out/assets/flow-000/"$f
+done
+[ -n "$flow" ] || flow=$last
+cp "$out/assets/flow-000/cmd-003-shot.png" "$(dirname "$flow")/shot.png"
+[ -z "$FAKE_CRASH" ] || grep -qx App-2026-10-16-120000.ips "$FAKE_STATE.crashes" || echo App-2026-10-16-120000.ips >> "$FAKE_STATE.crashes"
+`, 0o755);
+  write(dir, 'bin/maestro', '#!/bin/sh\necho 2.11.0\n', 0o755);
+  for (const tool of ['ps', 'sleep', 'sips']) write(dir, `bin/${tool}`, '#!/bin/sh\n', 0o755);
+  write(dir, 'app/ios/App.xcodeproj/project.pbxproj', `INFOPLIST_FILE = App/Info.plist;\nTARGETED_DEVICE_FAMILY = 1;\n${team ? `DEVELOPMENT_TEAM = ${team};\n` : ''}`);
+  write(dir, 'app/ios/App/Info.plist', '<key>UISupportedInterfaceOrientations</key>\n<array>\n<string>UIInterfaceOrientationPortrait</string>\n<string>UIInterfaceOrientationLandscapeLeft</string>\n</array>\n');
+  for (const f of ['Podfile', 'Pods/Manifest.lock', 'build/generated/.keep', 'App.xcworkspace/contents.xcworkspacedata']) write(dir, `app/ios/${f}`, '');
+  for (const [f, text] of Object.entries(files)) write(dir, `app/${f}`, text);
+  const r = spawnSync('sh', ['scripts/amk/verify.sh', ...args], {
+    cwd: path.join(dir, 'app'), encoding: 'utf8',
+    env: { ...process.env, FAKE_STATE: path.join(dir, 'state'), AMK_LOCK_DIR: path.join(dir, 'locks'), PATH: `${path.join(dir, 'bin')}${path.delimiter}${process.env.PATH}`, AMK_IOS_DEVICE: '', AMK_IOS_TABLET: '', AMK_IOS_TEAM: '', ...env },
+  });
+  const readIf = f => (fs.existsSync(path.join(dir, f)) ? fs.readFileSync(path.join(dir, f), 'utf8') : '');
+  return { out: r.stdout + r.stderr, calls: readIf('state.calls'), runner: readIf('state.runner'), status: r.status, app: path.join(dir, 'app') };
+}
+
+test('verify.sh ios: a connected iPhone, when named: a build signed for it, opened once, then the flows through maestro-runner', { skip: skipIos }, () => {
+  const r = verifyIos({ env: { AMK_IOS_DEVICE: "Tester's iPhone" } });
+  assert.match(r.out, /^ios: checking on 00008020-AAAA, a real device; the flows clear the app's data on it$/m);
+  // signed for development by the project's team, for this device; no simulator build, as no simulator is checked
+  assert.match(r.calls, /^xcodebuild .*-destination id=00008020-AAAA .*-allowProvisioningUpdates -allowProvisioningDeviceRegistration DEVELOPMENT_TEAM=ABCDE12345 CODE_SIGN_STYLE=Automatic/m);
+  assert.doesNotMatch(r.calls, /iphonesimulator|simctl (boot|install)/);
+  assert.match(r.calls, /^xcrun devicectl device install app --device 00008020-AAAA .*Release-iphoneos\/App\.app$/m);
+  assert.match(r.calls, /^xcrun devicectl device process launch --device 00008020-AAAA --terminate-existing com\.example\.app$/m);
+  // upright, then turned with the name maestro-runner's WebDriverAgent driver turns a device with, a turn that doesn't
+  // fail when the home screen in front doesn't turn: the screenshots show whether the app did
+  const runs = r.runner.trim().split('\n');
+  assert.strictEqual(runs.length, 2, r.runner);
+  for (const run of runs) assert.match(run, /^-y maestro-runner@\d+\.\d+\.\d+ --platform ios --driver wda --device 00008020-AAAA --team-id ABCDE12345 --wda-bundle-id com\.example\.app\.wda --app-file \S+\/Release-iphoneos\/App\.app test -e APP_ID=com\.example\.app --output \S+ --flatten \S+\/screen\.yaml \(telemetry off: 1\)$/);
+  // each flow runs inside one that starts with a launchApp that never runs (on Android only) and says to leave
+  // permissions alone, so maestro-runner doesn't answer the app's own alerts
+  const first = "- runFlow:\n    when:\n      platform: Android\n    commands:\n      - launchApp:\n          permissions:\n            all: unset\n";
+  assert.strictEqual(fs.readFileSync(path.join(r.app, '.amk/evidence/run/maestro-logs/ios-smoke/screen.yaml'), 'utf8'),
+    `appId: com.example.app\n---\n${first}- runFlow: '${fs.realpathSync(r.app)}/.amk/evidence/run/ios/smoke.yaml'\n`);
+  assert.match(fs.readFileSync(path.join(r.app, '.amk/evidence/run/maestro-logs/ios-landscape-smoke/screen.yaml'), 'utf8'),
+    new RegExp(`^appId: com\\.example\\.app\\nonFlowComplete:\\n {2}- setOrientation:\\n {6}orientation: PORTRAIT\\n {6}optional: true\\n---\\n${first.replace(/\./g, '\\.')}- setOrientation:\\n {4}orientation: landscape\\n {4}optional: true\\n- runFlow: '\\S+/smoke\\.yaml'\\n$`));
+  // the screenshots the flows took, not the one of a step that failed
+  for (const screen of ['ios', 'ios-landscape']) assert.match(r.out, new RegExp(`^${screen}: flows 1/1 passed, 1 screenshots in \\.amk/evidence/run/${screen}$`, 'm'));
+  assert.strictEqual(r.status, 0, r.out);
+
+  // a spec's flow: the screenshots maestro-runner also saves next to it leave the project; a picture already there stays
+  const spec = verifyIos({ env: { AMK_IOS_DEVICE: '00008020-AAAA' }, args: ['ios', '--label', 'run', '--spec', 'x1'], files: { '.maestro/x1-home.yaml': 'appId: ${APP_ID}\n---\n- launchApp\n', '.maestro/media/photo.png': '' } });
+  for (const screen of ['ios', 'ios-landscape']) assert.match(spec.out, new RegExp(`^${screen}: flows 1/1 passed, 1 screenshots`, 'm'));
+  assert.deepStrictEqual(fs.readdirSync(path.join(spec.app, '.maestro'), { recursive: true }).sort(), ['media', 'media/photo.png', 'x1-home.yaml']);
+
+  // a crash report the app left during the flows joins the evidence and fails the check; an older one doesn't
+  const crashed = verifyIos({ env: { AMK_IOS_DEVICE: '00008020-AAAA', FAKE_CRASH: '1' }, crashes: 'App-2026-10-01-090000.ips\nOther-2026-10-16-120000.ips\n' });
+  assert.match(crashed.out, /^ios: the app crashed on 00008020-AAAA during the checks: 1 crash reports in \.amk\/evidence\/run\/crashes$/m);
+  assert.deepStrictEqual(fs.readdirSync(path.join(crashed.app, '.amk/evidence/run/crashes')), ['App-2026-10-16-120000.ips']);
+  assert.notStrictEqual(crashed.status, 0);
+});
+
+test('verify.sh ios: what a real device needs first is said before any flow runs: a team, trusting it, an app that stays open', { skip: skipIos }, () => {
+  const noTeam = verifyIos({ team: '', env: { AMK_IOS_DEVICE: '00008020-AAAA' } });
+  assert.match(noTeam.out, /^ios: a real device runs only apps signed by an Apple team: set AMK_IOS_TEAM to your team ID \(Xcode > Settings > Accounts lists them\)$/m);
+  assert.doesNotMatch(noTeam.calls, /xcodebuild/);
+  assert.notStrictEqual(noTeam.status, 0);
+  // AMK_IOS_TEAM signs instead of the project's team
+  assert.match(verifyIos({ env: { AMK_IOS_DEVICE: '00008020-AAAA', AMK_IOS_TEAM: 'ZYXWV98765' } }).calls, /DEVELOPMENT_TEAM=ZYXWV98765/);
+  const untrusted = verifyIos({ env: { AMK_IOS_DEVICE: '00008020-AAAA', FAKE_UNTRUSTED: '1' } });
+  assert.match(untrusted.out, /^ios: 00008020-AAAA doesn't open apps from this team yet: on it, Settings > General > VPN & Device Management > Developer App > Trust, then run this again$/m);
+  assert.strictEqual(untrusted.calls.match(/process launch/g).length, 3, 'asked three times, as a device refuses a new install for a moment now and then');
+  assert.strictEqual(untrusted.runner, '');
+  assert.notStrictEqual(untrusted.status, 0);
+  // refused for a moment: opened the next time, then a flow refused once (after clearState installed the app again) runs once more
+  const moment = verifyIos({ env: { AMK_IOS_DEVICE: '00008020-AAAA', FAKE_REFUSED_ONCE: '1', FAKE_FLOW_REFUSED_ONCE: '1' }, args: ['ios', '--label', 'run', '--screens', 'phone-portrait'] });
+  assert.doesNotMatch(moment.out, /doesn't open apps from this team/);
+  assert.match(moment.out, /^ {2}ios: the device didn't open the app it had just installed again; running flow smoke once more\nios: flows 1\/1 passed, 1 screenshots/m);
+  assert.strictEqual(moment.status, 0, moment.out);
+  const closes = verifyIos({ env: { AMK_IOS_DEVICE: '00008020-AAAA', FAKE_CLOSES: '1' } });
+  assert.match(closes.out, /^ios: the app closed within 10 seconds of opening on 00008020-AAAA$/m);
+  assert.strictEqual(closes.runner, '');
+  // not a simulator's name or a connected device's; and a simulator's name still means the simulator
+  assert.match(verifyIos({ env: { AMK_IOS_DEVICE: 'nope' } }).out, /^ios: no simulator or connected iPhone or iPad has the name or UDID "nope"$/m);
+  const sim = verifyIos({ env: { AMK_IOS_DEVICE: 'iPhone 17' }, args: ['ios', '--label', 'run', '--screens', 'portrait'] });
+  assert.match(sim.calls, /^xcrun simctl install SIM-1 /m);
+  assert.doesNotMatch(sim.calls, /devicectl device|-destination id=/);
+});
+
 test("verify.sh: a screen whose screenshots aren't in its orientation runs once more, then fails; the device didn't turn", { skip }, () => {
   const devices = { connected: ['emulator-5556 P35'], avds: 'P35', rotates: true, build: true, maestro: record, env: { AMK_SCREENS: 'phone-landscape' } };
   // turned the second time
@@ -274,5 +406,10 @@ test("verify.sh: a screen whose screenshots aren't in its orientation runs once 
   // never turns
   const never = verifyAndroid({ ...devices, env: { ...devices.env, NOTURN: '1' } });
   assert.match(never.out, /android-landscape: flows 1\/1 passed, 1 screenshots in .*\n {2}android-landscape: 1 screenshots show the screen upright: the device or the app didn't turn, so this screen isn't checked; treating this as a failure/);
+  assert.doesNotMatch(never.out, /sets its orientation/, 'nothing in its code to point at');
   assert.notStrictEqual(never.status, 0);
+  // never turns, and its code locks it upright although its native settings allow turning: says where
+  const locked = verifyAndroid({ ...devices, env: { ...devices.env, NOTURN: '1' }, git: true, files: { 'src/screen/splash/index.js': 'Orientation.lockToPortrait();\n', 'README.md': 'lockToPortrait\n' } });
+  assert.match(locked.out, /treating this as a failure\n {2}android-landscape: the app sets its orientation in its code \(src\/screen\/splash\/index\.js\), which can keep it upright\. If it's meant to stay upright, take landscape out of its native settings \(UISupportedInterfaceOrientations in Info\.plist, screenOrientation in AndroidManifest\.xml\) and this screen isn't checked any more; otherwise change that code\n/);
+  assert.notStrictEqual(locked.status, 0);
 });
