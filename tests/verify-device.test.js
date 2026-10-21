@@ -425,7 +425,7 @@ test("verify.sh: a screen whose screenshots aren't in its orientation runs once 
   assert.notStrictEqual(locked.status, 0);
 });
 
-test('evidence stays small: the newest 5 folders, each with its latest run, and the device\'s log only for a failure', { skip }, () => {
+test('evidence stays small: the newest 5 folders and every prototype\'s, each with its latest run, and the device\'s log only for a failure', { skip }, () => {
   // seven older checks' folders, a day apart
   const old = app => {
     for (let i = 1; i <= 7; i++) {
@@ -434,6 +434,9 @@ test('evidence stays small: the newest 5 folders, each with its latest run, and 
       const t = new Date(Date.now() - i * 86400e3);
       fs.utimesSync(d, t, t);
     }
+    const demo = path.join(app, '.amk/evidence/20260101-onboarding-prototype');
+    fs.mkdirSync(demo, { recursive: true });
+    fs.utimesSync(demo, new Date(Date.now() - 30 * 86400e3), new Date(Date.now() - 30 * 86400e3));
   };
   // a passing flow that leaves the device's log and Maestro's own next to its screenshot
   const logs = String.raw`debug=$(echo "$@" | sed 's/.*--debug-output \([^ ]*\).*/\1/'); out=$(echo "$@" | sed 's/.*--test-output-dir \([^ ]*\).*/\1/')
@@ -442,13 +445,14 @@ touch "$out/shot.png"; [ -z "$FAIL" ] || exit 1`;
   const r = verifyAndroid({ connected: ['emulator-5556 P35'], avds: 'P35', build: true, maestro: logs, prepare: old,
     files: { '.amk/evidence/run/android/screenshots/from-an-earlier-run.png': '', '.amk/evidence/run/maestro-logs/android-smoke/smoke-2/logs/device-logcat.txt': 'old' } });
   assert.match(r.out, /^evidence: removed 3 older folders from \.amk\/evidence, keeping the newest 5 \(AMK_EVIDENCE_KEEP sets how many; 0 keeps them all\)$/m);
-  assert.deepStrictEqual(fs.readdirSync(path.join(r.app, '.amk/evidence')).sort(), ['old1', 'old2', 'old3', 'old4', 'run'], 'this check\'s and the four newest');
+  assert.deepStrictEqual(fs.readdirSync(path.join(r.app, '.amk/evidence')).sort(), ['20260101-onboarding-prototype', 'old1', 'old2', 'old3', 'old4', 'run'],
+    'this check\'s, the four newest, and a prototype\'s, however old');
   assert.match(r.out, /^android: flows 1\/1 passed, 1 screenshots in \.amk\/evidence\/run\/android$/m, 'not the earlier run\'s screenshot');
   assert.deepStrictEqual(fs.readdirSync(path.join(r.app, '.amk/evidence/run/maestro-logs/android-smoke')), ['smoke'], 'only the latest run\'s logs');
   assert.deepStrictEqual(fs.readdirSync(path.join(r.app, '.amk/evidence/run/maestro-logs/android-smoke/smoke/logs')), ['maestro.log'], 'a passing flow keeps no device log');
   // a failing flow keeps it; and AMK_EVIDENCE_KEEP=0 keeps every folder
   const failed = verifyAndroid({ connected: ['emulator-5556 P35'], avds: 'P35', build: true, maestro: logs, prepare: old, env: { FAIL: '1', AMK_EVIDENCE_KEEP: '0' } });
   assert.ok(fs.existsSync(path.join(failed.app, '.amk/evidence/run/maestro-logs/android-smoke/smoke/logs/device-logcat.txt')));
-  assert.strictEqual(fs.readdirSync(path.join(failed.app, '.amk/evidence')).length, 8);
+  assert.strictEqual(fs.readdirSync(path.join(failed.app, '.amk/evidence')).length, 9);
   assert.doesNotMatch(failed.out, /evidence: removed/);
 });

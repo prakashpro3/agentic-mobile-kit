@@ -19,7 +19,8 @@
 #   --no-build      check the last build instead of building again (after `build`)
 #   (no flows found: a smoke check that launches the app and takes a screenshot)
 #   Evidence per screen: ios/ and android/ (phone, portrait), then -landscape/, -tablet/ and -tablet-landscape/, each
-#   with its latest run only (the device's own log only for a flow that failed); the newest 5 evidence folders stay
+#   with its latest run only (the device's own log only for a flow that failed); the newest 5 evidence folders stay,
+#   and every prototype's
 # Env: AMK_ANDROID_FLAVOR, AMK_IOS_SCHEME, AMK_SCREENS (defaults for the options), AMK_IOS_DEVICE (simulator name
 #      or UDID, or a connected iPhone's or iPad's: the only way to check on one, whose app data the flows clear),
 #      AMK_ANDROID_DEVICE (adb serial: the only way to check on a phone, whose app data the flows clear),
@@ -64,11 +65,12 @@ root=$(pwd)
 evidence="$root/.amk/evidence/${label:-${spec:-$(date +%Y%m%d-%H%M%S)}}"
 mkdir -p "$evidence"
 # Evidence stays on this machine (.amk/ is out of git): the newest AMK_EVIDENCE_KEEP folders stay, this one among
-# them, and older ones go (5; 0 keeps them all)
+# them, and older ones go (5; 0 keeps them all). A prototype's folder (<id>-prototype, material for a demo) always
+# stays and isn't counted
 touch "$evidence"
 keep=${AMK_EVIDENCE_KEEP:-5}
 if [ "$keep" -gt 0 ] 2> /dev/null; then
-  old=$(ls -dt "$root"/.amk/evidence/*/ 2> /dev/null | tail -n +$((keep + 1)))
+  old=$(ls -dt "$root"/.amk/evidence/*/ 2> /dev/null | grep -v -- '-prototype/$' | tail -n +$((keep + 1)))
   if [ -n "$old" ]; then
     echo "$old" | while IFS= read -r d; do rm -r "${d:?}" || true; done
     echo "evidence: removed $(echo "$old" | wc -l | tr -d ' ') older folders from .amk/evidence, keeping the newest $keep (AMK_EVIDENCE_KEEP sets how many; 0 keeps them all)"
