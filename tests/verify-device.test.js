@@ -425,7 +425,7 @@ test("verify.sh: a screen whose screenshots aren't in its orientation runs once 
   assert.notStrictEqual(locked.status, 0);
 });
 
-test('evidence stays small: the newest 5 folders and every prototype\'s, each with its latest run, and the device\'s log only for a failure', { skip }, () => {
+test('evidence stays small: the newest 5 folders and every prototype\'s, runs without a spec in one, each with its latest run, and the device\'s log only for a failure', { skip }, () => {
   // seven older checks' folders, a day apart
   const old = app => {
     for (let i = 1; i <= 7; i++) {
@@ -455,4 +455,10 @@ touch "$out/shot.png"; [ -z "$FAIL" ] || exit 1`;
   assert.ok(fs.existsSync(path.join(failed.app, '.amk/evidence/run/maestro-logs/android-smoke/smoke/logs/device-logcat.txt')));
   assert.strictEqual(fs.readdirSync(path.join(failed.app, '.amk/evidence')).length, 9);
   assert.doesNotMatch(failed.out, /evidence: removed/);
+  // runs without --spec or --label (verify.sh quick, mostly) share one folder, so they don't push out a feature's
+  const plain = verifyAndroid({ connected: ['emulator-5556 P35'], avds: 'P35', build: true, maestro: logs, prepare: old, args: ['android', '--flavor', 'x'],
+    files: { '.amk/evidence/no-spec/lint.log': 'an earlier quick run' } });
+  assert.match(plain.out, /^android: flows 1\/1 passed, 1 screenshots in \.amk\/evidence\/no-spec\/android$/m);
+  assert.deepStrictEqual(fs.readdirSync(path.join(plain.app, '.amk/evidence')).sort(), ['20260101-onboarding-prototype', 'no-spec', 'old1', 'old2', 'old3', 'old4']);
+  assert.ok(fs.existsSync(path.join(plain.app, '.amk/evidence/no-spec/lint.log')), 'the quick run\'s logs stay');
 });

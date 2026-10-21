@@ -11,7 +11,7 @@
 #   build           the release builds only, iOS and Android at the same time, for --no-build checks after it
 #   plan            whether this machine can check the devices at the same time, and the commands to run
 #   --spec <id>     run .maestro/<id>*.yaml and save evidence in .amk/evidence/<id>/
-#   --label <n>     evidence folder name (default: the spec id, or a timestamp)
+#   --label <n>     evidence folder name (default: the spec id, or no-spec)
 #   --flavor <name> Android product flavor to check (default: the first one in build.gradle)
 #   --scheme <name> iOS scheme to check (default: the one named like the workspace)
 #   --screens <l>   only these of the screens the app supports, comma-separated: phone, tablet, portrait,
@@ -62,7 +62,8 @@ done
 
 root=$(pwd)
 . scripts/amk/maestro-env.sh
-evidence="$root/.amk/evidence/${label:-${spec:-$(date +%Y%m%d-%H%M%S)}}"
+# runs without a spec or a label (verify.sh quick, mostly) share one folder, so they don't push out a feature's
+evidence="$root/.amk/evidence/${label:-${spec:-no-spec}}"
 mkdir -p "$evidence"
 # Evidence stays on this machine (.amk/ is out of git): the newest AMK_EVIDENCE_KEEP folders stay, this one among
 # them, and older ones go (5; 0 keeps them all). A prototype's folder (<id>-prototype, material for a demo) always
