@@ -41,7 +41,7 @@ Never say a check passed unless you ran it in this session.
 - Stay inside the task. Ask before touching unrelated files.
 - Ask before adding or upgrading dependencies, and before editing `package.json`, lockfiles, `Podfile`, `build.gradle`, `Info.plist`, `AndroidManifest.xml` or `.github/workflows/`.
 - Don't hand-edit `ios/*.xcodeproj/project.pbxproj`. If a native file must be added to the Xcode project, stop and ask.
-- Never read, print or commit `.env` files, keystores or signing files. Secrets don't belong in this repo.
+- Never read, print or commit `.env` files, keystores, signing files or the files `.amk-secrets` lists. Secrets don't belong in this repo.
 - Never use `git commit --no-verify`, `git push --force`, `git reset --hard` or `rm -rf`.
 - After 2 failed attempts at the same fix, stop and report what you found.
 - Chat is not memory: write decisions into the spec or `docs/amk/decisions.md` straight away.

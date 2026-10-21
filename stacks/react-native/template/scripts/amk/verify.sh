@@ -343,7 +343,9 @@ ios() {
     fi
     # pod install also generates React Native codegen files into ios/build/generated; a newer Podfile needs it again
     if [ ! -d ios/Pods ] || [ ! -d ios/build/generated ] || [ ios/Podfile -nt ios/Pods/Manifest.lock ]; then
-      sh scripts/amk/pod-install.sh > "$evidence/pod-install.log" 2>&1
+      if ! sh scripts/amk/pod-install.sh > "$evidence/pod-install.log" 2>&1; then
+        echo "ios: pod install FAILED, see ${evidence#"$root"/}/pod-install.log"; status=1; return
+      fi
     fi
   fi
   # the simulators first, so they boot while Xcode builds. A real iPhone or iPad only when named, as the flows clear
@@ -685,7 +687,9 @@ android() {
       set -- "$@" -Pandroid.injected.signing.store.file="$keystore" -Pandroid.injected.signing.store.password=android \
         -Pandroid.injected.signing.key.alias=androiddebugkey -Pandroid.injected.signing.key.password=android
     fi
-    if ! (cd android && ./gradlew "assemble${variant}Release" --no-daemon -q "$@") > "$evidence/android-build.log" 2>&1; then
+    # a check build isn't a release: its mapping files and debug symbols stay off the crash reporters
+    set -- "$@" --init-script "$(cd scripts/amk && { pwd -W 2> /dev/null || pwd; })/no-symbol-upload.gradle"
+    if ! (cd android && SENTRY_DISABLE_AUTO_UPLOAD=true ./gradlew "assemble${variant}Release" --no-daemon -q "$@") > "$evidence/android-build.log" 2>&1; then
       echo "android: release build FAILED, see ${evidence#"$root"/}/android-build.log"; status=1; return
     fi
   fi

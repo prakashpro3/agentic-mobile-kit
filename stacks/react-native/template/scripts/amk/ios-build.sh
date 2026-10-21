@@ -18,10 +18,14 @@ if [ "$config" = Release ]; then
   [ -n "$config" ] || config=Release
 fi
 
+# A check build isn't a release: with no dSYMs, and dSYMs looked for in a folder that never exists, the app's
+# crash-reporter build phases (Crashlytics, PostHog, Sentry, …) find nothing to upload under the real app's version
+check_build() { xcodebuild "$@" DEBUG_INFORMATION_FORMAT=dwarf DWARF_DSYM_FOLDER_PATH="$(pwd)/ios/DerivedData/no-dsyms" SENTRY_DISABLE_AUTO_UPLOAD=true; }
+
 if [ "${1:-}" = device ]; then
   [ -n "${AMK_IOS_TEAM:-}" ] || { echo "Set AMK_IOS_TEAM to the Apple team to sign with (Xcode > Settings > Accounts lists them)."; exit 1; }
   # signed for development whatever the project signs its releases with (a distribution profile doesn't install)
-  xcodebuild -workspace "$workspace" -scheme "$scheme" -configuration "$config" -destination "id=$2" \
+  check_build -workspace "$workspace" -scheme "$scheme" -configuration "$config" -destination "id=$2" \
     -derivedDataPath ios/DerivedData -allowProvisioningUpdates -allowProvisioningDeviceRegistration \
     DEVELOPMENT_TEAM="$AMK_IOS_TEAM" CODE_SIGN_STYLE=Automatic CODE_SIGN_IDENTITY="Apple Development" \
     PROVISIONING_PROFILE_SPECIFIER= -quiet build
@@ -37,7 +41,7 @@ arch=x86_64
 set -- ARCHS="$arch"
 ! grep -rqsE "EXCLUDED_ARCHS\[sdk=iphonesimulator\*\]\"? = [^;]*$arch" ios/*.xcodeproj/project.pbxproj "ios/Pods/Target Support Files" || set --
 
-xcodebuild -workspace "$workspace" -scheme "$scheme" -configuration "$config" \
+check_build -workspace "$workspace" -scheme "$scheme" -configuration "$config" \
   -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' \
   -derivedDataPath ios/DerivedData "$@" CODE_SIGNING_ALLOWED=NO -quiet build
 echo "iOS simulator build OK ($scheme, $config)"

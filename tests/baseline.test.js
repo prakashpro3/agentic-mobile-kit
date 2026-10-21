@@ -34,7 +34,9 @@ process.exit(bad.length ? 1 : 0);
 const args = process.argv.slice(2).filter(a => a !== '--format' && a !== 'json');
 const report = (file, text) => ({ filePath: path.resolve(file), messages: text.split('\\n').filter(l => /BAD/.test(l)).map(l => ({ ruleId: 'no-bad', message: l.trim(), severity: 2 })) });
 const i = args.indexOf('--stdin-filename');
-console.log(JSON.stringify(i >= 0 ? [report(args[i + 1], fs.readFileSync(0, 'utf8'))] : args.map(f => report(f, fs.readFileSync(f, 'utf8')))));
+const results = i >= 0 ? [report(args[i + 1], fs.readFileSync(0, 'utf8'))] : args.map(f => report(f, fs.readFileSync(f, 'utf8')));
+console.log(JSON.stringify(results));
+process.exit(results.some(r => r.messages.length) ? 1 : 0);
 `);
   write(dir, '.gitignore', 'node_modules/\n');
   fs.mkdirSync(path.join(dir, 'scripts/amk'), { recursive: true });
@@ -105,6 +107,58 @@ test('a script the base branch doesn\'t have yet (the kit adds typecheck) runs o
   const r = check(dir, 'typecheck');
   assert.strictEqual(r.code, 0, r.out);
   assert.match(r.out, /all already on main/);
+});
+
+test('a default branch left at an old first commit without the app is passed over for the branch that has it', () => {
+  // main: a first commit with no package.json; master: the app; work branches from master
+  const dir = tmpDir('amk-baseline-stale-');
+  write(dir, 'README.md', 'first\n');
+  git(dir, 'init', '-q', '-b', 'main');
+  commit(dir, 'first');
+  git(dir, 'switch', '-q', '-c', 'master');
+  const full = app();
+  for (const f of git(full, 'ls-files').split('\n')) write(dir, f, fs.readFileSync(path.join(full, f), 'utf8'));
+  fs.cpSync(path.join(full, 'node_modules'), path.join(dir, 'node_modules'), { recursive: true });
+  commit(dir, 'the app');
+  git(dir, 'switch', '-q', '-c', 'feature');
+  write(dir, 'src/b.ts', 'export const b = 2;\n');
+  const r = check(dir, 'typecheck');
+  assert.strictEqual(r.code, 0, r.out);
+  assert.match(r.out, /typecheck: comparing with master, as main has no package\.json where it meets this branch \(AMK_BASE sets the base\)/);
+  assert.match(r.out, /all already on master/);
+  // what reviews diff against
+  const base = spawnSync(process.execPath, [path.join(KIT, 'baseline.js'), 'base'], { cwd: dir, encoding: 'utf8' });
+  assert.strictEqual(base.stdout, 'master\n');
+  // named, but without the app: says so, not a stack trace
+  const named = check(dir, 'typecheck', { AMK_BASE: 'main' });
+  assert.strictEqual(named.code, 1);
+  assert.match(named.out, /typecheck: failed, and it can't be compared with main \([0-9a-f]{7}\), which has no package\.json: set AMK_BASE to the branch this work is based on/);
+  assert.doesNotMatch(named.out, /ENOENT|at /);
+});
+
+test('pre-commit lint (staged): errors a file had at HEAD don\'t block a commit; a new one does', () => {
+  const dir = app();
+  const staged = (...files) => {
+    const r = spawnSync(process.execPath, [path.join(KIT, 'baseline.js'), 'staged', ...files], { cwd: dir, encoding: 'utf8' });
+    return { code: r.status, out: `${r.stdout}${r.stderr}` };
+  };
+  write(dir, 'src/a.js', 'const x = 1; // BAD old\nconst y = 2;\n');
+  git(dir, 'add', 'src/a.js');
+  const old = staged('src/a.js');
+  assert.strictEqual(old.code, 0, old.out);
+  assert.match(old.out, /lint: the files had all of these errors before this commit, so none is new/);
+  write(dir, 'src/a.js', 'const x = 1; // BAD old\nconst y = 2; // BAD new\n');
+  git(dir, 'add', 'src/a.js');
+  const fresh = staged('src/a.js');
+  assert.strictEqual(fresh.code, 1);
+  assert.match(fresh.out, /lint: 1 new compared with HEAD:\n {2}src\/a\.js: no-bad: const y = 2; \/\/ BAD new/);
+  // a clean file passes at once
+  write(dir, 'src/clean.js', 'const z = 3;\n');
+  git(dir, 'add', 'src/clean.js');
+  assert.strictEqual(staged('src/clean.js').code, 0);
+  // no ESLint CLI to compare with: 3, so the hook lints the files as before
+  fs.rmSync(path.join(dir, 'node_modules/eslint/bin'), { recursive: true });
+  assert.strictEqual(staged('src/a.js').code, 3);
 });
 
 test('no base branch to compare with: a failure stays a failure', () => {

@@ -57,7 +57,7 @@ esac
     write(dir, 'app/android/app/src/main/AndroidManifest.xml', '<activity android:name=".MainActivity">\n<action android:name="android.intent.action.MAIN" />\n</activity>\n');
   }
   if (build) {
-    write(dir, 'app/android/gradlew', '#!/bin/sh\necho "gradlew $*" >> "$FAKE_STATE.calls"\n', 0o755);
+    write(dir, 'app/android/gradlew', '#!/bin/sh\necho "gradlew $* (sentry upload off: $SENTRY_DISABLE_AUTO_UPLOAD)" >> "$FAKE_STATE.calls"\n', 0o755);
     write(dir, 'app/android/app/build/outputs/apk/x/release/app-x-release.apk', '');
     write(dir, 'app/android/app/build.gradle', 'android { defaultConfig { applicationId "com.example.app" } }\n');
   }
@@ -184,6 +184,7 @@ test('verify.sh build and --no-build: build once, then check each device without
   assert.match(built.out, /^android: release build done$/m);
   assert.match(built.calls, new RegExp(`^gradlew assembleXRelease --no-daemon -q -PreactNativeArchitectures=${process.arch === 'arm64' ? 'arm64-v8a' : 'x86_64'}`, 'm'));
   assert.doesNotMatch(built.calls, /install|devices/, 'no device');
+  assert.match(built.calls, /^gradlew assembleXRelease .*--init-script \S+\/scripts\/amk\/no-symbol-upload\.gradle \(sentry upload off: true\)$/m, 'a check build sends no symbols to crash reporters');
   // --no-build: the APK that's there, no Gradle
   const checked = verifyAndroid({ connected: ['emulator-5556 P35'], avds: 'P35', build: true, maestro: record, args: ['android', '--flavor', 'x', '--label', 'run', '--no-build'] });
   assert.doesNotMatch(checked.calls, /gradlew/);
@@ -272,7 +273,7 @@ echo "Launch app... COMPLETED"; touch "$out/shot.png"`;
 // FAKE_UNTRUSTED: the iPhone doesn't open the app; FAKE_REFUSED_ONCE: not the first time; FAKE_FLOW_REFUSED_ONCE: not in
 // the first flow; FAKE_CLOSES: the app closes at once; FAKE_CRASH: it crashes in a flow
 const skipIos = process.platform !== 'darwin' && 'needs a Mac (PlistBuddy)';
-function verifyIos({ env = {}, team = 'ABCDE12345', args = ['ios', '--label', 'run'], crashes = '', files = {} }) {
+function verifyIos({ env = {}, team = 'ABCDE12345', args = ['ios', '--label', 'run'], crashes = '', files = {}, pods = true }) {
   const dir = tmpDir('amk-verify-ios-');
   fs.cpSync(path.join(TEMPLATE, 'scripts/amk'), path.join(dir, 'app/scripts/amk'), { recursive: true });
   write(dir, 'state.crashes', crashes);
@@ -323,7 +324,8 @@ cp "$out/assets/flow-000/cmd-003-shot.png" "$(dirname "$flow")/shot.png"
   for (const tool of ['ps', 'sleep', 'sips']) write(dir, `bin/${tool}`, '#!/bin/sh\n', 0o755);
   write(dir, 'app/ios/App.xcodeproj/project.pbxproj', `INFOPLIST_FILE = App/Info.plist;\nTARGETED_DEVICE_FAMILY = 1;\n${team ? `DEVELOPMENT_TEAM = ${team};\n` : ''}`);
   write(dir, 'app/ios/App/Info.plist', '<key>UISupportedInterfaceOrientations</key>\n<array>\n<string>UIInterfaceOrientationPortrait</string>\n<string>UIInterfaceOrientationLandscapeLeft</string>\n</array>\n');
-  for (const f of ['Podfile', 'Pods/Manifest.lock', 'build/generated/.keep', 'App.xcworkspace/contents.xcworkspacedata']) write(dir, `app/ios/${f}`, '');
+  for (const f of ['Podfile', ...(pods ? ['Pods/Manifest.lock', 'build/generated/.keep'] : []), 'App.xcworkspace/contents.xcworkspacedata']) write(dir, `app/ios/${f}`, '');
+  write(dir, 'bin/pod', '#!/bin/sh\necho "[!] CocoaPods could not find compatible versions"\nexit 1\n', 0o755);
   for (const [f, text] of Object.entries(files)) write(dir, `app/${f}`, text);
   const r = spawnSync('sh', ['scripts/amk/verify.sh', ...args], {
     cwd: path.join(dir, 'app'), encoding: 'utf8',
@@ -338,6 +340,8 @@ test('verify.sh ios: a connected iPhone, when named: a build signed for it, open
   assert.match(r.out, /^ios: checking on 00008020-AAAA, a real device; the flows clear the app's data on it$/m);
   // signed for development by the project's team, for this device; no simulator build, as no simulator is checked
   assert.match(r.calls, /^xcodebuild .*-destination id=00008020-AAAA .*-allowProvisioningUpdates -allowProvisioningDeviceRegistration DEVELOPMENT_TEAM=ABCDE12345 CODE_SIGN_STYLE=Automatic/m);
+  // a check build isn't a release: no dSYMs, looked for where there are none, and Sentry's upload off
+  assert.match(r.calls, /^xcodebuild .*-destination id=00008020-AAAA .* DEBUG_INFORMATION_FORMAT=dwarf DWARF_DSYM_FOLDER_PATH=\S+\/ios\/DerivedData\/no-dsyms SENTRY_DISABLE_AUTO_UPLOAD=true$/m);
   assert.doesNotMatch(r.calls, /iphonesimulator|simctl (boot|install)/);
   assert.match(r.calls, /^xcrun devicectl device install app --device 00008020-AAAA .*Release-iphoneos\/App\.app$/m);
   assert.match(r.calls, /^xcrun devicectl device process launch --device 00008020-AAAA --terminate-existing com\.example\.app$/m);
@@ -393,6 +397,12 @@ test('verify.sh ios: what a real device needs first is said before any flow runs
   assert.match(verifyIos({ env: { AMK_IOS_DEVICE: 'nope' } }).out, /^ios: no simulator or connected iPhone or iPad has the name or UDID "nope"$/m);
   const sim = verifyIos({ env: { AMK_IOS_DEVICE: 'iPhone 17' }, args: ['ios', '--label', 'run', '--screens', 'portrait'] });
   assert.match(sim.calls, /^xcrun simctl install SIM-1 /m);
+  assert.match(sim.calls, /^xcodebuild .*-sdk iphonesimulator .* DEBUG_INFORMATION_FORMAT=dwarf DWARF_DSYM_FOLDER_PATH=\S+\/ios\/DerivedData\/no-dsyms SENTRY_DISABLE_AUTO_UPLOAD=true$/m);
+  // pod install failing: said, not a silent stop
+  const pods = verifyIos({ env: { AMK_IOS_DEVICE: 'iPhone 17' }, pods: false });
+  assert.match(pods.out, /^ios: pod install FAILED, see \.amk\/evidence\/run\/pod-install\.log$/m);
+  assert.match(pods.out, /^Evidence: /m, 'verify.sh carries on to its end');
+  assert.notStrictEqual(pods.status, 0);
   assert.doesNotMatch(sim.calls, /devicectl device|-destination id=/);
 });
 

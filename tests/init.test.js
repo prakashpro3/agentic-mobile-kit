@@ -76,6 +76,27 @@ test('--ci github,codemagic adds the CI files, fills codemagic.yaml, and later r
   assert.throws(() => init(fakeApp(), { ci: ['jenkins'], skipGenerate: true }), /Unknown CI "jenkins"/);
 });
 
+test('texts about CI say what the chosen CI does, and that nothing does without one', () => {
+  const texts = dir => ['scripts/amk/set-version.sh', 'docs/amk/team-process.md', '.githooks/pre-commit'].map(f => read(dir, f)).join('\n');
+  const both = fakeApp();
+  init(both, { ci: ['github', 'codemagic'], skipGenerate: true });
+  assert.match(texts(both), /# Build numbers are left alone \(codemagic\.yaml sets them at build time\)\./);
+  assert.match(texts(both), /Keep PRs under 600 changed lines \(CI enforces it; the `large-pr` label overrides\)\./);
+  assert.match(texts(both), /# 7\. warn about large commits \(the PR size check in CI is the hard limit\)/);
+  const none = fakeApp();
+  init(none, { skipGenerate: true });
+  assert.match(read(none, 'AGENTS.md'), / ci=none /);
+  assert.doesNotMatch(texts(none), /codemagic|CI enforces|check in CI is|\{\{/);
+  assert.match(texts(none), /# Build numbers are left alone, and no CI here sets them: raise them for each store upload/);
+  assert.match(texts(none), /Keep PRs under 600 changed lines \(nothing enforces it: the app has no CI check for it\)\./);
+  assert.match(texts(none), /# 7\. warn about large commits \(there's no PR size check in CI here\)/);
+  // choosing a CI later updates them, as the files are still the kit's
+  commitAll(none);
+  sync(none, { ci: ['github'], skipGenerate: true });
+  assert.match(texts(none), /CI enforces it/);
+  assert.match(texts(none), /no CI here sets them/, 'still no Codemagic');
+});
+
 test('running init twice changes nothing the second time', () => {
   const dir = fakeApp();
   init(dir, { skipGenerate: true });
@@ -402,6 +423,47 @@ test('hooks another tool installed in .git/hooks: the kit leaves core.hooksPath 
   assert.match(warnings.join('\n'), /git hooks already run from \.git\/hooks, so the kit left core\.hooksPath alone/);
   assert.strictEqual(localHooks(dir), null);
   assert.doesNotMatch(read(dir, 'package.json'), /core\.hooksPath/);
+});
+
+test('other hooks a tool installed in .git/hooks keep running: a .githooks file passes each on; uninstall removes it', () => {
+  const dir = fakeApp();
+  // a time tracker's post-commit, which core.hooksPath .githooks would otherwise switch off
+  fs.writeFileSync(path.join(dir, '.git/hooks/post-commit'), '#!/bin/sh\necho tracked >> "$(git rev-parse --git-dir)/tracked"\n', { mode: 0o755 });
+  fs.writeFileSync(path.join(dir, '.git/hooks/commit-msg.sample'), '#!/bin/sh\n');
+  const { warnings } = init(dir, { skipGenerate: true });
+  assert.strictEqual(localHooks(dir), '.githooks', 'the kit\'s own checks still run');
+  assert.match(warnings.join('\n'), /\.git\/hooks has post-commit from another tool, which core\.hooksPath would switch off: \.githooks\/post-commit now runs it\. Commit it with the kit, so it runs in every clone that has one/);
+  assert.deepStrictEqual(fs.readdirSync(path.join(dir, '.githooks')).sort(), ['post-commit', 'pre-commit', 'pre-push'], 'not for .sample files');
+  if (process.platform !== 'win32') {
+    // a commit runs it, and a clone without it commits all the same
+    git(dir, 'add', 'App.tsx');
+    fs.writeFileSync(path.join(dir, 'App.tsx'), 'export default { a: 1 };\n');
+    git(dir, 'add', 'App.tsx');
+    git(dir, '-c', 'user.name=t', '-c', 'user.email=t@example.invalid', 'commit', '-qm', 'change', '--', 'App.tsx');
+    assert.strictEqual(read(dir, '.git/tracked'), 'tracked\n');
+    fs.unlinkSync(path.join(dir, '.git/hooks/post-commit'));
+    fs.writeFileSync(path.join(dir, 'App.tsx'), 'export default { a: 2 };\n');
+    git(dir, '-c', 'user.name=t', '-c', 'user.email=t@example.invalid', 'commit', '-qm', 'again', '--', 'App.tsx');
+    assert.strictEqual(read(dir, '.git/tracked'), 'tracked\n', 'no hook to pass on: nothing ran');
+  }
+  commitAll(dir);
+  const { report } = uninstall(dir);
+  assert.ok(report.removed.includes('.githooks/post-commit'), report.removed.join(', '));
+  assert.strictEqual(fs.existsSync(path.join(dir, '.githooks')), false, 'the folder goes once it\'s empty');
+
+  // a team that keeps .githooks and rulesync.jsonc out of git: a fresh clone has neither, and sync still works,
+  // making the folder for the hook and saying why the tools' settings weren't generated
+  const ignored = fakeApp({ files: { '.gitignore': '.githooks\nrulesync.jsonc\n' } });
+  init(ignored, { skipGenerate: true });
+  commitAll(ignored);
+  fs.rmSync(path.join(ignored, '.githooks'), { recursive: true });
+  fs.rmSync(path.join(ignored, 'rulesync.jsonc'));
+  fs.writeFileSync(path.join(ignored, '.git/hooks/post-commit'), '#!/bin/sh\n', { mode: 0o755 });
+  const synced = sync(ignored, { skipGenerate: true });
+  assert.ok(synced.report.added.includes('.githooks/post-commit'), synced.report.added.join(', '));
+  assert.match(read(ignored, '.githooks/post-commit'), /runs this clone's own \.git\/hooks\/post-commit/);
+  assert.match(synced.warnings.join('\n'), /\.githooks is kept out of git here, so each clone gets that when it runs sync/);
+  assert.match(synced.warnings.join('\n'), /rulesync\.jsonc isn't here \(deleted, or kept out of git\), so the AI tools' settings, hooks and subagents weren't generated/);
 });
 
 test('an earlier kit install next to husky: core.hooksPath goes back to husky and the kit\'s postinstall goes', () => {

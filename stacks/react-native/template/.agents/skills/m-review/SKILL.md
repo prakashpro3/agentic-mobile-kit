@@ -12,7 +12,7 @@ If your tool has subagents, hand the review to the `m-reviewer` subagent, so it 
 
 ## Reviewing
 
-1. Get the changes: `git diff main...HEAD` and `git log main..HEAD --oneline`. If there's a spec, read its `requirements.md`.
+1. Get the changes since the base branch the kit's checks use: `node scripts/amk/baseline.js base` prints it, then `git diff <base>...HEAD` and `git log <base>..HEAD --oneline`. If there's a spec, read its `requirements.md`.
 2. Check, in order:
    - **Against the spec**, when there is one:
      - *Complete:* every task is ticked, every requirement is implemented, and every scenario has evidence (a test or a screenshot).

@@ -1,0 +1,12 @@
+// Gradle init script for verify.sh's Android check builds, which aren't releases: it turns off the tasks that send a
+// build's mapping files, debug symbols or source maps somewhere (Crashlytics, PostHog, Sentry, Bugsnag, Datadog, …),
+// which would file them under the real app's version. They're named for it: upload…, …Upload…, bugsnagRelease….
+// Usage: ./gradlew --init-script scripts/amk/no-symbol-upload.gradle assembleRelease
+allprojects {
+    tasks.configureEach { task ->
+        if (task.name.startsWith('upload') || task.name.contains('Upload') || task.name.startsWith('bugsnagRelease')) {
+            task.enabled = false
+            println "agentic-mobile-kit: a check build, so ${task.path} doesn't run"
+        }
+    }
+}

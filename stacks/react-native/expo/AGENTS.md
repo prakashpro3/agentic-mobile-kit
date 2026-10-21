@@ -42,7 +42,7 @@ Never say a check passed unless you ran it in this session.
 - Ask before adding or upgrading dependencies, and before editing `package.json`, lockfiles, `app.json`, `app.config.*`, `eas.json` or `.github/workflows/`.
 - Never edit `ios/` or `android/`: the next prebuild overwrites them. Native settings go in `app.json` or `app.config.*`, through config plugins; native code goes in an Expo module (`expo-module` skill). Ask before adding a config plugin.
 - Never run `eas build`, `eas submit` or `eas update`: they build, ship or publish with the team's accounts, so a person runs them.
-- Never read, print or commit `.env` files, keystores or signing files. Secrets don't belong in this repo.
+- Never read, print or commit `.env` files, keystores, signing files or the files `.amk-secrets` lists. Secrets don't belong in this repo.
 - Never use `git commit --no-verify`, `git push --force`, `git reset --hard` or `rm -rf`.
 - After 2 failed attempts at the same fix, stop and report what you found.
 - Chat is not memory: write decisions into the spec or `docs/amk/decisions.md` straight away.

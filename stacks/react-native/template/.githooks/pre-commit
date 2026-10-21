@@ -30,12 +30,17 @@ if command -v plutil > /dev/null; then
   done
 fi
 
-# 4. lint the staged JS/TS files with the project's own ESLint config (the kit's own scripts aren't the app's code)
+# 4. lint the staged JS/TS files with the project's own ESLint config (the kit's own scripts aren't the app's code).
+#    Errors a file had before this commit don't block it, as verify.sh doesn't block them: only new ones do
 files=$(echo "$staged" | grep -E '\.(js|jsx|ts|tsx)$' | grep -v '^scripts/amk/' || true)
 if [ -n "$files" ]; then
   if [ -x node_modules/.bin/eslint ]; then
     # ponytail: file names with spaces aren't supported here; split on newlines if that ever matters
-    node_modules/.bin/eslint $files || fail "fix the ESLint errors above"
+    r=0
+    node scripts/amk/baseline.js staged $files || r=$?
+    # 3: it couldn't compare with HEAD, so every error blocks, as before
+    [ "$r" != 3 ] || { r=0; node_modules/.bin/eslint $files || r=$?; }
+    [ "$r" = 0 ] || fail "fix the ESLint errors listed above"
   else
     echo "pre-commit: ESLint isn't installed, so staged files weren't linted (Expo: run 'npx expo lint' once)" >&2
   fi
@@ -52,7 +57,7 @@ if [ -f scripts/amk/case-check.js ]; then
   node scripts/amk/case-check.js || fail "rename them through git as shown above"
 fi
 
-# 7. warn about large commits (the PR size check in CI is the hard limit)
+# 7. warn about large commits ({{PR_SIZE_HOOK}})
 lines=$(git diff --cached --numstat -- . ':(exclude)*.lock' ':(exclude)package-lock.json' ':(exclude)pnpm-lock.yaml' ':(exclude)*.snap' |
   awk '{ s += $1 + $2 } END { print s + 0 }')
 [ "$lines" -le 400 ] || echo "pre-commit: warning: $lines changed lines; consider smaller commits" >&2

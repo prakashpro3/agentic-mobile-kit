@@ -1,7 +1,7 @@
 #!/bin/sh
 # Sets the version users see on both platforms: iOS MARKETING_VERSION and Android versionName, or in Expo
 # apps without native folders, expo.version in app.json.
-# Build numbers are left alone (codemagic.yaml sets them at build time).
+# {{BUILD_NUMBERS}}
 # Usage: sh scripts/amk/set-version.sh 1.4.0
 set -eu
 v=${1:-}

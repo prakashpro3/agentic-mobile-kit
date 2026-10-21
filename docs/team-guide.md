@@ -78,11 +78,11 @@ If an agent says "done" without these, it isn't done. Open the screenshots yours
 
 | Where | What |
 |---|---|
-| `pre-commit` hook | Blocks `.env` files, keystores and signing files, and secrets (gitleaks). Checks Xcode project files, and files renamed only in letter case that git missed. Lints staged files. Warns above 400 changed lines. |
+| `pre-commit` hook | Blocks `.env` files, keystores and signing files, and secrets (gitleaks). Checks Xcode project files, and files renamed only in letter case that git missed. Lints staged files: errors a file already had before the commit don't block it, new ones do. Warns above 400 changed lines. |
 | `pre-push` hook | Typecheck and tests |
 | CI on every PR | Lint, typecheck, tests, secret scan, config drift, PR size ≤ 600 lines (`large-pr` label to override), Android build, and the iOS build when native files change |
 | Nightly, or the `e2e` label | Android emulator with the Maestro flows; the screenshots are attached to the run |
-| Inside AI tools | A guard hook blocks `rm -rf`, force pushes, `git reset --hard`, `--no-verify` and reading secret files. Permission rules ask before dependency and native config changes. A stop hook reminds the agent to update the handoff. |
+| Inside AI tools | A guard hook blocks `rm -rf` (and `-Rf`, `--recursive --force`), force pushes (`--force`, `-f`, `+branch`), `git reset --hard`, `--no-verify` and reading secret files: `.env` files, keystores, and the paths listed in `.amk-secrets`. Permission rules ask before dependency and native config changes. A stop hook reminds the agent to update the handoff. |
 | Releases | `scripts/amk/release-check.js` before tagging, and again on Codemagic before every signed build (with `--ci codemagic`) |
 
 Never bypass a hook with `--no-verify`. If a hook is wrong, fix the hook in a PR.
@@ -117,8 +117,11 @@ From `docs/amk/team-process.md`:
 | The agent made a mistake you had to correct | `m-learn`, so it doesn't happen again |
 | `pre-commit` says to fix the spec format | Each requirement needs a SHALL sentence and a scenario with WHEN and THEN; see `specs/current/README.md` |
 | Hooks don't run | `npx agentic-mobile-kit doctor` says why. Without a hook manager, `git config core.hooksPath` must print `.githooks` (`sh scripts/amk/install-deps.sh` sets it). With husky or lefthook, your install sets them up |
+| A hook another tool put in `.git/hooks` (a time tracker's `post-commit`, say) stopped running | `core.hooksPath .githooks` switches `.git/hooks` off. `init` and `sync` add a `.githooks/<name>` for each such hook they find, which runs the clone's own `.git/hooks/<name>` (and nothing in a clone without one): run `npx agentic-mobile-kit@latest sync` on that machine and commit the file |
 | `pre-commit` says a file was renamed only in letter case | Rename it through git in two steps, as the message shows. macOS and Windows don't tell the two names apart, so git kept the old one and the app fails on other machines |
-| The app's lint or tests already fail on `main` | Nothing to do first: `verify.sh quick`, the `pre-push` hook and CI pass when a change adds no new failure, and list the old ones. They compare with the remote's default branch, or `AMK_BASE` |
+| The app's lint or tests already fail on `main` | Nothing to do first: `verify.sh quick`, the `pre-push` hook and CI pass when a change adds no new failure, and list the old ones. The `pre-commit` hook lets a file's old lint errors through the same way. They compare with the remote's default branch, or `origin/main`, `origin/master`, `main` or `master`: the first that has the app where it meets your branch. `node scripts/amk/baseline.js base` prints it. Another base: set `AMK_BASE` (for example `export AMK_BASE=origin/develop` in your shell profile) |
+| An agent may read a secret file that isn't a `.env` file or a keystore | List it in `.amk-secrets` at the project root, one path from the root per line (a folder ends in `/`), and commit that file: the guard hook then blocks agents from reading it |
+| Debug symbols from check builds turned up in the crash reporter | `verify.sh`'s check builds aren't releases. On iOS they make no dSYMs and look for them where there are none, and on Android a Gradle init script turns off every task named for uploading (Crashlytics, PostHog, Sentry, Bugsnag, Datadog, …). Sentry's automatic upload is off for both. Release builds (`release-build.sh`) still upload |
 | `pre-push` says dependencies aren't installed | `sh scripts/amk/install-deps.sh` |
 | `verify.sh` checks the wrong Android flavor or iOS app | Add `--flavor <name>` or `--scheme <name>`, or set `AMK_ANDROID_FLAVOR` / `AMK_IOS_SCHEME` in your shell |
 | A Maestro flow needs a test login | Put `MAESTRO_EMAIL=…`, `MAESTRO_PASSWORD=…` (any `MAESTRO_` name) in `.maestro/.env.local`, which git ignores; flows read them as `${MAESTRO_EMAIL}`. `verify.sh` loads them, and values set in your shell win |

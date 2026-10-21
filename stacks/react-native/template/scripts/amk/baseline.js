@@ -5,9 +5,13 @@
 //   lint       ESLint errors in the files changed since the base, compared with those files at the base
 //   typecheck  TypeScript errors (file, code, message), compared with a type check of the base
 //   test       failing Jest tests and test files, compared with a test run of the base
-// The base: AMK_BASE, else the remote's default branch, else main or master. Its merge base is checked out once
-// into a temporary git worktree that shares node_modules, and its results are kept for the next run.
-// Usage: node scripts/amk/baseline.js lint|typecheck|test
+// The base: AMK_BASE, else the first of the remote's default branch, origin/main, origin/master, main and master
+// whose merge base with HEAD has a package.json (a default branch left at an old first commit isn't the app's base).
+// Its merge base is checked out once into a temporary git worktree that shares node_modules, and its results are kept
+// for the next run.
+// `base` prints the base, for reviews of a branch's changes. `staged <files>` is the pre-commit hook's lint: it passes
+// when the files have no ESLint error they didn't have at HEAD, and exits with 3 when it can't find ESLint's CLI.
+// Usage: node scripts/amk/baseline.js lint|typecheck|test|base|staged <files>
 'use strict';
 const fs = require('fs');
 const os = require('os');
@@ -16,8 +20,8 @@ const crypto = require('crypto');
 const { spawnSync, execFileSync } = require('child_process');
 
 const check = process.argv[2];
-if (!['lint', 'typecheck', 'test'].includes(check)) {
-  console.error('usage: node scripts/amk/baseline.js lint|typecheck|test');
+if (!['lint', 'typecheck', 'test', 'base', 'staged'].includes(check)) {
+  console.error('usage: node scripts/amk/baseline.js lint|typecheck|test|base|staged <files>');
   process.exit(2);
 }
 const root = process.cwd();
@@ -76,10 +80,16 @@ function failingTests(r) {
   });
 }
 
+const hasApp = sha => Boolean(sha && git('rev-parse', '--verify', '--quiet', `${sha}:package.json`));
+// { ref, note }: the note says when the remote's default branch was passed over
 function baseRef() {
-  if (process.env.AMK_BASE) return process.env.AMK_BASE;
+  if (process.env.AMK_BASE) return { ref: process.env.AMK_BASE, note: '' };
   const remoteDefault = git('symbolic-ref', '--quiet', '--short', 'refs/remotes/origin/HEAD');
-  return [remoteDefault, 'origin/main', 'origin/master', 'main', 'master'].find(r => r && git('rev-parse', '--verify', '--quiet', `${r}^{commit}`));
+  const refs = [...new Set([remoteDefault, 'origin/main', 'origin/master', 'main', 'master'])]
+    .filter(r => r && git('rev-parse', '--verify', '--quiet', `${r}^{commit}`));
+  const ref = refs.find(r => hasApp(git('merge-base', 'HEAD', r))) || refs[0];
+  if (!ref) return null;
+  return { ref, note: ref === refs[0] ? '' : `comparing with ${ref}, as ${refs[0]} has no package.json where it meets this branch (AMK_BASE sets the base)` };
 }
 
 // the base commit, checked out once into a temporary worktree that shares the app's node_modules
@@ -114,25 +124,26 @@ function baseProblems(sha, extract) {
   return problems;
 }
 
-// ESLint errors in the files changed since the base, minus the errors those files had at the base. Errors in
-// files the change didn't touch were there before, unless the change edits the ESLint setup itself.
-function newLintErrors(sha) {
-  const changed = [...new Set([...git('diff', '--name-only', '--diff-filter=ACMR', sha).split('\n'),
-    ...git('ls-files', '--others', '--exclude-standard').split('\n')])].filter(Boolean);
-  // the kit's own .eslintignore lines (for scripts/amk/) don't change how the app's code is checked
-  // (scripts/ai/ until 0.7.0)
+// the ESLint setup files among changed that differ from sha's: with them, any error could be new. The kit's own
+// .eslintignore lines (for scripts/amk/, scripts/ai/ until 0.7.0) don't change how the app's code is checked
+function eslintSetupChanges(changed, sha) {
   const withoutKit = t => t.split('\n').filter(l => !/^scripts\/(amk|ai)\/$/.test(l.trim()) && !l.startsWith('# agentic-mobile-kit')).join('\n').trim();
-  const setup = changed.filter(f => /(^|\/)(\.eslintrc(\.\w+)?|eslint\.config\.\w+|\.eslintignore)$/.test(f))
+  return changed.filter(f => /(^|\/)(\.eslintrc(\.\w+)?|eslint\.config\.\w+|\.eslintignore)$/.test(f))
     .filter(f => path.basename(f) !== '.eslintignore' || withoutKit(git('show', `${sha}:${f}`)) !== withoutKit(fs.readFileSync(path.join(root, f), 'utf8')));
-  if (setup.length) return { reason: `the change edits the ESLint setup (${setup.join(', ')}), so any error could be new` };
-  // ESLint 8 and 9 export only package.json, so find the CLI next to it
-  let eslint;
+}
+
+// ESLint 8 and 9 export only package.json, so find the CLI next to it
+function eslintCli() {
   try {
-    eslint = path.join(path.dirname(require.resolve('eslint/package.json', { paths: [root] })), 'bin', 'eslint.js');
-    if (!fs.existsSync(eslint)) throw new Error('no CLI');
+    const cli = path.join(path.dirname(require.resolve('eslint/package.json', { paths: [root] })), 'bin', 'eslint.js');
+    return fs.existsSync(cli) ? cli : null;
   } catch {
-    return { reason: 'ESLint isn\'t installed' };
+    return null;
   }
+}
+
+// ESLint errors in files that they didn't have at sha (null without ESLint's report)
+function lintErrorsNotAt(sha, files, eslint) {
   const lint = (args, input) => {
     const r = spawnSync(process.execPath, [eslint, '--format', 'json', ...args], { cwd: root, input, encoding: 'utf8', maxBuffer: 2 ** 28 });
     try {
@@ -142,9 +153,8 @@ function newLintErrors(sha) {
     }
   };
   const errors = results => (results || []).flatMap(f => f.messages.filter(m => m.severity === 2).map(m => `${m.ruleId || 'parsing'}: ${m.message}`));
-  const files = changed.filter(f => /\.(js|jsx|ts|tsx)$/.test(f) && !f.startsWith('scripts/amk/') && fs.existsSync(path.join(root, f)));
   const results = files.length ? lint(files) : [];
-  if (!results) return { reason: 'ESLint gave no report' };
+  if (!results) return null;
   const fresh = [];
   for (const result of results) {
     const file = slash(path.relative(root, result.filePath));
@@ -157,20 +167,77 @@ function newLintErrors(sha) {
     }
     fresh.push(...minus(now, before).map(p => `${file}: ${p}`));
   }
-  return { fresh, files: files.length };
+  return fresh;
+}
+
+// ESLint errors in the files changed since the base, minus the errors those files had at the base. Errors in
+// files the change didn't touch were there before, unless the change edits the ESLint setup itself.
+function newLintErrors(sha) {
+  const changed = [...new Set([...git('diff', '--name-only', '--diff-filter=ACMR', sha).split('\n'),
+    ...git('ls-files', '--others', '--exclude-standard').split('\n')])].filter(Boolean);
+  const setup = eslintSetupChanges(changed, sha);
+  if (setup.length) return { reason: `the change edits the ESLint setup (${setup.join(', ')}), so any error could be new` };
+  const eslint = eslintCli();
+  if (!eslint) return { reason: 'ESLint isn\'t installed' };
+  const files = changed.filter(f => /\.(js|jsx|ts|tsx)$/.test(f) && !f.startsWith('scripts/amk/') && fs.existsSync(path.join(root, f)));
+  const fresh = lintErrorsNotAt(sha, files, eslint);
+  return fresh ? { fresh, files: files.length } : { reason: 'ESLint gave no report' };
+}
+
+if (check === 'base') {
+  const found = baseRef();
+  if (!found) {
+    console.error('no base branch found: set AMK_BASE to the branch this work is based on');
+    process.exit(1);
+  }
+  if (found.note) console.error(found.note);
+  console.log(found.ref);
+  process.exit(0);
+}
+
+if (check === 'staged') {
+  // ESLint's own report on the files first, then whether any error in them is new since HEAD: a commit that touches
+  // a file with errors from before isn't blocked by them, as verify.sh isn't
+  const files = process.argv.slice(3);
+  if (!files.length) process.exit(0);
+  const eslint = eslintCli();
+  if (!eslint) process.exit(3); // can't compare: the hook lints the files as they are
+
+  if (spawnSync(process.execPath, [eslint, ...files], { cwd: root, stdio: 'inherit' }).status === 0) process.exit(0);
+  if (!git('rev-parse', '--verify', '--quiet', 'HEAD')) process.exit(1); // the first commit: nothing to compare with
+  const setup = eslintSetupChanges(git('diff', '--cached', '--name-only', '--diff-filter=ACMR').split('\n').filter(Boolean), 'HEAD');
+  if (setup.length) {
+    console.log(`lint: the commit edits the ESLint setup (${setup.join(', ')}), so any of these errors could be new`);
+    process.exit(1);
+  }
+  const fresh = lintErrorsNotAt('HEAD', files, eslint);
+  if (!fresh) process.exit(1);
+  if (!fresh.length) {
+    console.log('lint: the files had all of these errors before this commit, so none is new');
+    process.exit(0);
+  }
+  console.log(`lint: ${fresh.length} new compared with HEAD:`);
+  for (const p of fresh.slice(0, 30)) console.log(`  ${p}`);
+  if (fresh.length > 30) console.log(`  … and ${fresh.length - 30} more`);
+  process.exit(1);
 }
 
 const now = runScript(root);
 process.stdout.write(now.out);
 if (now.code === 0) process.exit(0);
 
-const base = baseRef();
-const sha = base && git('merge-base', 'HEAD', base);
+const found = baseRef();
+const sha = found && git('merge-base', 'HEAD', found.ref);
 if (!sha) {
   console.log(`${check}: failed, and there's no base branch to compare with (set AMK_BASE)`);
   process.exit(1);
 }
-const label = `${base} (${sha.slice(0, 7)})`;
+const label = `${found.ref} (${sha.slice(0, 7)})`;
+if (found.note) console.log(`${check}: ${found.note}`);
+if (!hasApp(sha)) {
+  console.log(`${check}: failed, and it can't be compared with ${label}, which has no package.json: set AMK_BASE to the branch this work is based on`);
+  process.exit(1);
+}
 let fresh;
 let summary;
 if (check === 'lint') {
