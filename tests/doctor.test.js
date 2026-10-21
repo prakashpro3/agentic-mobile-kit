@@ -53,8 +53,10 @@ test('finds inactive hooks, a tracked .env, an oversized AGENTS.md and a broken 
   fs.mkdirSync(path.join(dir, '.claude'), { recursive: true });
   fs.writeFileSync(path.join(dir, '.claude/settings.json'), '{}');
   fs.unlinkSync(path.join(dir, '.claude/skills'));
+  fs.rmSync(path.join(dir, '.githooks/pre-push'));
   const checks = projectChecks(dir, { skipNetwork: true });
   assert.strictEqual(levelOf(checks, /Git hooks/), 'fail');
+  assert.strictEqual(levelOf(checks, /This clone has no \.githooks\/pre-push, so the kit's checks don't run/), 'fail');
   assert.strictEqual(levelOf(checks, /Secret files tracked/), 'fail');
   assert.strictEqual(levelOf(checks, /AGENTS\.md is/), 'warn');
   assert.strictEqual(levelOf(checks, /skills link/), 'fail');

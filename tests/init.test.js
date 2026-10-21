@@ -347,8 +347,8 @@ test('husky 9: the kit runs from husky\'s files, core.hooksPath stays husky\'s, 
   const dir = fakeApp({ pkg: { devDependencies: { husky: '^9.1.7' }, scripts: { prepare: 'husky' } }, files: { '.husky/pre-commit': lintStaged, '.husky/_/h': '' } });
   git(dir, 'config', 'core.hooksPath', '.husky/_');
   const { report } = init(dir, { skipGenerate: true });
-  assert.strictEqual(read(dir, '.husky/pre-commit'), `sh .githooks/pre-commit || exit 1 # agentic-mobile-kit\n${lintStaged}`);
-  assert.strictEqual(read(dir, '.husky/pre-push'), '#!/usr/bin/env sh\nsh .githooks/pre-push "$@" || exit 1 # agentic-mobile-kit\n');
+  assert.strictEqual(read(dir, '.husky/pre-commit'), `sh scripts/amk/run-hook.sh .githooks/pre-commit || exit 1 # agentic-mobile-kit\n${lintStaged}`);
+  assert.strictEqual(read(dir, '.husky/pre-push'), '#!/usr/bin/env sh\nsh scripts/amk/run-hook.sh .githooks/pre-push "$@" || exit 1 # agentic-mobile-kit\n');
   if (process.platform !== 'win32') assert.ok(fs.statSync(path.join(dir, '.husky/pre-push')).mode & 0o111, 'executable, for husky 5 to 8');
   assert.ok(report.merged.includes('.husky/pre-commit') && report.created.includes('.husky/pre-push'));
   assert.strictEqual(localHooks(dir), '.husky/_');
@@ -361,8 +361,21 @@ test('husky 9: the kit runs from husky\'s files, core.hooksPath stays husky\'s, 
   assert.match(hook.stderr, /don't commit \.env files/);
   git(dir, 'rm', '-q', '--cached', '.env');
   fs.unlinkSync(path.join(dir, '.env'));
+  // a clone without .githooks (a team may keep it out of git) skips the kit's checks with a hint, instead of failing
+  // every commit and push
+  fs.renameSync(path.join(dir, '.githooks'), path.join(dir, 'githooks-away'));
+  const skipped = sh(dir, 'sh -e .husky/pre-push origin https://example.invalid/app.git');
+  assert.strictEqual(skipped.status, 0, skipped.stderr);
+  assert.match(skipped.stderr, /this clone has no \.githooks\/pre-push yet, so the kit's checks were skipped: run npx agentic-mobile-kit sync/);
+  fs.renameSync(path.join(dir, 'githooks-away'), path.join(dir, '.githooks'));
   commitAll(dir);
   assert.ok(Object.values(sync(dir, { skipGenerate: true }).report).every(a => a.length === 0), 'sync adds nothing twice');
+  // an earlier kit's plain call, which failed there: sync upgrades it
+  fs.writeFileSync(path.join(dir, '.husky/pre-commit'), `sh .githooks/pre-commit || exit 1 # agentic-mobile-kit\n${lintStaged}`);
+  commitAll(dir);
+  sync(dir, { skipGenerate: true });
+  assert.strictEqual(read(dir, '.husky/pre-commit'), `sh scripts/amk/run-hook.sh .githooks/pre-commit || exit 1 # agentic-mobile-kit\n${lintStaged}`);
+  commitAll(dir);
   uninstall(dir, { skipGenerate: true });
   assert.strictEqual(read(dir, '.husky/pre-commit'), lintStaged);
   assert.ok(!fs.existsSync(path.join(dir, '.husky/pre-push')), 'the hook file the kit created is gone');
@@ -372,13 +385,13 @@ test('husky 8 and a team\'s own hooks folder: the kit\'s line goes after the set
   const dir = fakeApp({ pkg: { devDependencies: { husky: '^8.0.3' } }, files: { '.husky/pre-commit': '#!/usr/bin/env sh\n. "$(dirname -- "$0")/_/husky.sh"\n\nnpx lint-staged\n' } });
   git(dir, 'config', 'core.hooksPath', '.husky');
   init(dir, { skipGenerate: true });
-  assert.strictEqual(read(dir, '.husky/pre-commit'), '#!/usr/bin/env sh\n. "$(dirname -- "$0")/_/husky.sh"\n\nsh .githooks/pre-commit || exit 1 # agentic-mobile-kit\nnpx lint-staged\n');
+  assert.strictEqual(read(dir, '.husky/pre-commit'), '#!/usr/bin/env sh\n. "$(dirname -- "$0")/_/husky.sh"\n\nsh scripts/amk/run-hook.sh .githooks/pre-commit || exit 1 # agentic-mobile-kit\nnpx lint-staged\n');
   assert.strictEqual(localHooks(dir), '.husky');
 
   const own = fakeApp({ files: { '.hooks/pre-commit': '#!/bin/sh\n# team checks\nset -e\n./scripts/check.sh\nexit 0\n' } });
   git(own, 'config', 'core.hooksPath', '.hooks/');
   init(own, { skipGenerate: true });
-  assert.strictEqual(read(own, '.hooks/pre-commit'), '#!/bin/sh\n# team checks\nsh .githooks/pre-commit || exit 1 # agentic-mobile-kit\nset -e\n./scripts/check.sh\nexit 0\n');
+  assert.strictEqual(read(own, '.hooks/pre-commit'), '#!/bin/sh\n# team checks\nsh scripts/amk/run-hook.sh .githooks/pre-commit || exit 1 # agentic-mobile-kit\nset -e\n./scripts/check.sh\nexit 0\n');
   assert.ok(fs.existsSync(path.join(own, '.hooks/pre-push')));
   assert.strictEqual(localHooks(own), '.hooks/');
 });
@@ -386,24 +399,43 @@ test('husky 8 and a team\'s own hooks folder: the kit\'s line goes after the set
 test('husky 4 and simple-git-hooks: the kit\'s command goes first in package.json, and uninstall removes it', () => {
   const dir = fakeApp({ pkg: { devDependencies: { husky: '^4.3.8' }, husky: { hooks: { 'pre-commit': 'lint-staged' } } } });
   init(dir, { skipGenerate: true });
-  assert.deepStrictEqual(JSON.parse(read(dir, 'package.json')).husky.hooks, { 'pre-commit': 'sh .githooks/pre-commit && lint-staged', 'pre-push': 'sh .githooks/pre-push' });
+  assert.deepStrictEqual(JSON.parse(read(dir, 'package.json')).husky.hooks, { 'pre-commit': 'sh scripts/amk/run-hook.sh .githooks/pre-commit && lint-staged', 'pre-push': 'sh scripts/amk/run-hook.sh .githooks/pre-push' });
   assert.strictEqual(localHooks(dir), null, 'husky 4 hooks live in .git/hooks, so core.hooksPath stays unset');
+  commitAll(dir);
+  // an earlier kit's plain command: sync upgrades it, and the team's own still runs after it
+  const pkg = JSON.parse(read(dir, 'package.json'));
+  pkg.husky.hooks['pre-commit'] = 'sh .githooks/pre-commit && lint-staged';
+  fs.writeFileSync(path.join(dir, 'package.json'), `${JSON.stringify(pkg, null, 2)}\n`);
+  commitAll(dir);
+  sync(dir, { skipGenerate: true });
+  assert.strictEqual(JSON.parse(read(dir, 'package.json')).husky.hooks['pre-commit'], 'sh scripts/amk/run-hook.sh .githooks/pre-commit && lint-staged');
   commitAll(dir);
   uninstall(dir, { skipGenerate: true });
   assert.deepStrictEqual(JSON.parse(read(dir, 'package.json')).husky.hooks, { 'pre-commit': 'lint-staged' });
 
   const sgh = fakeApp({ pkg: { 'simple-git-hooks': { 'pre-commit': 'npx lint-staged' } } });
   const { warnings } = init(sgh, { skipGenerate: true });
-  assert.strictEqual(JSON.parse(read(sgh, 'package.json'))['simple-git-hooks']['pre-commit'], 'sh .githooks/pre-commit && npx lint-staged');
+  assert.strictEqual(JSON.parse(read(sgh, 'package.json'))['simple-git-hooks']['pre-commit'], 'sh scripts/amk/run-hook.sh .githooks/pre-commit && npx lint-staged');
   assert.match(warnings.join('\n'), /run "npx simple-git-hooks" once/);
+  // uninstall also takes out an earlier kit's plain command
+  const sghPkg = JSON.parse(read(sgh, 'package.json'));
+  sghPkg['simple-git-hooks'] = { 'pre-commit': 'sh .githooks/pre-commit && npx lint-staged', 'pre-push': 'sh .githooks/pre-push' };
+  fs.writeFileSync(path.join(sgh, 'package.json'), `${JSON.stringify(sghPkg, null, 2)}\n`);
+  commitAll(sgh);
+  uninstall(sgh, { skipGenerate: true });
+  assert.deepStrictEqual(JSON.parse(read(sgh, 'package.json'))['simple-git-hooks'], { 'pre-commit': 'npx lint-staged' });
+
+  // a team that keeps .githooks out of git hears that each clone needs sync once
+  const ignored = fakeApp({ pkg: { devDependencies: { husky: '^4.3.8' }, husky: { hooks: { 'pre-commit': 'lint-staged' } } }, files: { '.gitignore': '.githooks\n' } });
+  assert.match(init(ignored, { skipGenerate: true }).warnings.join('\n'), /\.githooks is kept out of git here, so a fresh clone has none until it runs npx agentic-mobile-kit sync\. Until then, husky skips the kit's checks and says so/);
 });
 
 test('lefthook: the kit\'s command goes under commands: or jobs:, or into a new hook; uninstall restores the file', () => {
   const yml = 'pre-commit:\n  parallel: true\n  commands:\n    lint:\n      run: npx eslint {staged_files}\n';
   const dir = fakeApp({ files: { 'lefthook.yml': yml } });
   init(dir, { skipGenerate: true });
-  assert.strictEqual(read(dir, 'lefthook.yml'), 'pre-commit:\n  parallel: true\n  commands:\n    agentic-mobile-kit:\n      run: sh .githooks/pre-commit\n    lint:\n      run: npx eslint {staged_files}\n'
-    + 'pre-push: # agentic-mobile-kit\n  commands: # agentic-mobile-kit\n    agentic-mobile-kit:\n      run: sh .githooks/pre-push\n');
+  assert.strictEqual(read(dir, 'lefthook.yml'), 'pre-commit:\n  parallel: true\n  commands:\n    agentic-mobile-kit:\n      run: sh scripts/amk/run-hook.sh .githooks/pre-commit\n    lint:\n      run: npx eslint {staged_files}\n'
+    + 'pre-push: # agentic-mobile-kit\n  commands: # agentic-mobile-kit\n    agentic-mobile-kit:\n      run: sh scripts/amk/run-hook.sh .githooks/pre-push\n');
   assert.strictEqual(localHooks(dir), null);
   commitAll(dir);
   uninstall(dir, { skipGenerate: true });
@@ -412,7 +444,7 @@ test('lefthook: the kit\'s command goes under commands: or jobs:, or into a new 
   const jobs = 'pre-commit:\n  jobs:\n  - name: lint\n    run: yarn lint\npre-push:\n  scripts:\n    "check.sh":\n      runner: bash\n';
   const dir2 = fakeApp({ files: { '.lefthook.yml': jobs } });
   const { warnings } = init(dir2, { skipGenerate: true });
-  assert.strictEqual(read(dir2, '.lefthook.yml'), 'pre-commit:\n  jobs:\n  - name: agentic-mobile-kit\n    run: sh .githooks/pre-commit\n  - name: lint\n    run: yarn lint\npre-push:\n  scripts:\n    "check.sh":\n      runner: bash\n');
+  assert.strictEqual(read(dir2, '.lefthook.yml'), 'pre-commit:\n  jobs:\n  - name: agentic-mobile-kit\n    run: sh scripts/amk/run-hook.sh .githooks/pre-commit\n  - name: lint\n    run: yarn lint\npre-push:\n  scripts:\n    "check.sh":\n      runner: bash\n');
   assert.match(warnings.join('\n'), /couldn't add the kit's pre-push check to \.lefthook\.yml/);
 });
 
@@ -461,6 +493,9 @@ test('other hooks a tool installed in .git/hooks keep running: a .githooks file 
   fs.writeFileSync(path.join(ignored, '.git/hooks/post-commit'), '#!/bin/sh\n', { mode: 0o755 });
   const synced = sync(ignored, { skipGenerate: true });
   assert.ok(synced.report.added.includes('.githooks/post-commit'), synced.report.added.join(', '));
+  // the kit's own hooks come back too: git keeps them out, so the team didn't delete them
+  assert.ok(['.githooks/pre-commit', '.githooks/pre-push'].every(f => synced.report.added.includes(f) && fs.existsSync(path.join(ignored, f))), synced.report.added.join(', '));
+  assert.ok(synced.report.kept.includes('rulesync.jsonc (you deleted it)'), 'not rulesync.jsonc, which holds the team\'s choice of tools');
   assert.match(read(ignored, '.githooks/post-commit'), /runs this clone's own \.git\/hooks\/post-commit/);
   assert.match(synced.warnings.join('\n'), /\.githooks is kept out of git here, so each clone gets that when it runs sync/);
   assert.match(synced.warnings.join('\n'), /rulesync\.jsonc isn't here \(deleted, or kept out of git\), so the AI tools' settings, hooks and subagents weren't generated/);
