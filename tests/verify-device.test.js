@@ -17,7 +17,7 @@ const skip = process.platform === 'win32' && 'fakes adb with a shell script';
 // `rotates`: the app supports iPad and isn't locked to portrait, as React Native's template is. `args`: verify.sh's.
 // Maestro says it's 2.11.0, or FAKE_MAESTRO_VERSION; gradlew logs its arguments in calls.
 // `held`: device locks another run holds, as { key: [pid, who, since] }; `ps`: the processes the stand-in ps lists.
-function verifyAndroid({ connected, avds = '', tablets = '', env = {}, build = false, rotates = false, maestro = '', args = ['android', '--flavor', 'x', '--label', 'run'], files = {}, held = {}, ps = '', git = false }) {
+function verifyAndroid({ connected, avds = '', tablets = '', env = {}, build = false, rotates = false, maestro = '', args = ['android', '--flavor', 'x', '--label', 'run'], files = {}, held = {}, ps = '', git = false, prepare = null }) {
   const dir = tmpDir('amk-verify-device-');
   fs.cpSync(path.join(TEMPLATE, 'scripts/amk'), path.join(dir, 'app/scripts/amk'), { recursive: true });
   write(dir, 'state', connected.map(d => `${d}\n`).join(''));
@@ -62,6 +62,7 @@ esac
     write(dir, 'app/android/app/build.gradle', 'android { defaultConfig { applicationId "com.example.app" } }\n');
   }
   if (git) spawnSync('sh', ['-c', 'git init -q && git add -A'], { cwd: path.join(dir, 'app') });
+  if (prepare) prepare(path.join(dir, 'app'));
   const r = spawnSync('sh', ['scripts/amk/verify.sh', ...args], {
     cwd: path.join(dir, 'app'), encoding: 'utf8',
     env: { ...process.env, FAKE_STATE: path.join(dir, 'state'), ANDROID_HOME: path.join(dir, 'sdk'), ANDROID_AVD_HOME: path.join(dir, 'avd'), AMK_LOCK_DIR: path.join(dir, 'locks'), PATH: `${path.join(dir, 'bin')}${path.delimiter}${process.env.PATH}`, AMK_ANDROID_DEVICE: '', AMK_ANDROID_AVD: '', ...env },
@@ -422,4 +423,32 @@ test("verify.sh: a screen whose screenshots aren't in its orientation runs once 
   const locked = verifyAndroid({ ...devices, env: { ...devices.env, NOTURN: '1' }, git: true, files: { 'src/screen/splash/index.js': 'Orientation.lockToPortrait();\n', 'README.md': 'lockToPortrait\n' } });
   assert.match(locked.out, /treating this as a failure\n {2}android-landscape: the app sets its orientation in its code \(src\/screen\/splash\/index\.js\), which can keep it upright\. If it's meant to stay upright, take landscape out of its native settings \(UISupportedInterfaceOrientations in Info\.plist, screenOrientation in AndroidManifest\.xml\) and this screen isn't checked any more; otherwise change that code\n/);
   assert.notStrictEqual(locked.status, 0);
+});
+
+test('evidence stays small: the newest 5 folders, each with its latest run, and the device\'s log only for a failure', { skip }, () => {
+  // seven older checks' folders, a day apart
+  const old = app => {
+    for (let i = 1; i <= 7; i++) {
+      const d = path.join(app, `.amk/evidence/old${i}`);
+      fs.mkdirSync(d, { recursive: true });
+      const t = new Date(Date.now() - i * 86400e3);
+      fs.utimesSync(d, t, t);
+    }
+  };
+  // a passing flow that leaves the device's log and Maestro's own next to its screenshot
+  const logs = String.raw`debug=$(echo "$@" | sed 's/.*--debug-output \([^ ]*\).*/\1/'); out=$(echo "$@" | sed 's/.*--test-output-dir \([^ ]*\).*/\1/')
+mkdir -p "$debug/smoke/logs"; echo log > "$debug/smoke/logs/device-logcat.txt"; echo steps > "$debug/smoke/logs/maestro.log"
+touch "$out/shot.png"; [ -z "$FAIL" ] || exit 1`;
+  const r = verifyAndroid({ connected: ['emulator-5556 P35'], avds: 'P35', build: true, maestro: logs, prepare: old,
+    files: { '.amk/evidence/run/android/screenshots/from-an-earlier-run.png': '', '.amk/evidence/run/maestro-logs/android-smoke/smoke-2/logs/device-logcat.txt': 'old' } });
+  assert.match(r.out, /^evidence: removed 3 older folders from \.amk\/evidence, keeping the newest 5 \(AMK_EVIDENCE_KEEP sets how many; 0 keeps them all\)$/m);
+  assert.deepStrictEqual(fs.readdirSync(path.join(r.app, '.amk/evidence')).sort(), ['old1', 'old2', 'old3', 'old4', 'run'], 'this check\'s and the four newest');
+  assert.match(r.out, /^android: flows 1\/1 passed, 1 screenshots in \.amk\/evidence\/run\/android$/m, 'not the earlier run\'s screenshot');
+  assert.deepStrictEqual(fs.readdirSync(path.join(r.app, '.amk/evidence/run/maestro-logs/android-smoke')), ['smoke'], 'only the latest run\'s logs');
+  assert.deepStrictEqual(fs.readdirSync(path.join(r.app, '.amk/evidence/run/maestro-logs/android-smoke/smoke/logs')), ['maestro.log'], 'a passing flow keeps no device log');
+  // a failing flow keeps it; and AMK_EVIDENCE_KEEP=0 keeps every folder
+  const failed = verifyAndroid({ connected: ['emulator-5556 P35'], avds: 'P35', build: true, maestro: logs, prepare: old, env: { FAIL: '1', AMK_EVIDENCE_KEEP: '0' } });
+  assert.ok(fs.existsSync(path.join(failed.app, '.amk/evidence/run/maestro-logs/android-smoke/smoke/logs/device-logcat.txt')));
+  assert.strictEqual(fs.readdirSync(path.join(failed.app, '.amk/evidence')).length, 8);
+  assert.doesNotMatch(failed.out, /evidence: removed/);
 });

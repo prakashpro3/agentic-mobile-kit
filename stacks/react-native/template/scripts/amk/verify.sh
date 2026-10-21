@@ -18,7 +18,8 @@
 #                   landscape, or one such as tablet-landscape
 #   --no-build      check the last build instead of building again (after `build`)
 #   (no flows found: a smoke check that launches the app and takes a screenshot)
-#   Evidence per screen: ios/ and android/ (phone, portrait), then -landscape/, -tablet/ and -tablet-landscape/
+#   Evidence per screen: ios/ and android/ (phone, portrait), then -landscape/, -tablet/ and -tablet-landscape/, each
+#   with its latest run only (the device's own log only for a flow that failed); the newest 5 evidence folders stay
 # Env: AMK_ANDROID_FLAVOR, AMK_IOS_SCHEME, AMK_SCREENS (defaults for the options), AMK_IOS_DEVICE (simulator name
 #      or UDID, or a connected iPhone's or iPad's: the only way to check on one, whose app data the flows clear),
 #      AMK_ANDROID_DEVICE (adb serial: the only way to check on a phone, whose app data the flows clear),
@@ -26,7 +27,8 @@
 #      AMK_IOS_TABLET (iPad simulator, or a connected iPad: name or UDID), AMK_ANDROID_TABLET_AVD (tablet emulator),
 #      AMK_ANDROID_TABLET (serial), AMK_IOS_TEAM (the Apple team ID that signs builds for real iPhones and iPads;
 #      default: the project's), AMK_PARALLEL (1 or 0: overrides plan's choice), AMK_DEVICE_WAIT (minutes to wait for a
-#      device in use, 30), AMK_LOCK_DIR (where runs on this machine claim devices; /tmp/agentic-mobile-kit-<user id>)
+#      device in use, 30), AMK_LOCK_DIR (where runs on this machine claim devices; /tmp/agentic-mobile-kit-<user id>),
+#      AMK_EVIDENCE_KEEP (how many evidence folders stay, newest first: 5; 0 keeps them all)
 # A device in use by another run (any project on this machine) is skipped for a free one of the same kind, or waited
 # for when it was named or none is free.
 # Real iPhones and iPads (iOS 17 or later): Maestro doesn't run on them, so their flows run through maestro-runner, with
@@ -61,6 +63,17 @@ root=$(pwd)
 . scripts/amk/maestro-env.sh
 evidence="$root/.amk/evidence/${label:-${spec:-$(date +%Y%m%d-%H%M%S)}}"
 mkdir -p "$evidence"
+# Evidence stays on this machine (.amk/ is out of git): the newest AMK_EVIDENCE_KEEP folders stay, this one among
+# them, and older ones go (5; 0 keeps them all)
+touch "$evidence"
+keep=${AMK_EVIDENCE_KEEP:-5}
+if [ "$keep" -gt 0 ] 2> /dev/null; then
+  old=$(ls -dt "$root"/.amk/evidence/*/ 2> /dev/null | tail -n +$((keep + 1)))
+  if [ -n "$old" ]; then
+    echo "$old" | while IFS= read -r d; do rm -r "${d:?}" || true; done
+    echo "evidence: removed $(echo "$old" | wc -l | tr -d ' ') older folders from .amk/evidence, keeping the newest $keep (AMK_EVIDENCE_KEEP sets how many; 0 keeps them all)"
+  fi
+fi
 status=0
 
 flow_files() {
@@ -133,12 +146,11 @@ claim_wait() {
 }
 
 run_flow() { # screen device app_id file name orientation
-  # Maestro's own log, which has errors its output leaves out; it adds to the file, so one run's log at a time
+  # Maestro's own logs, which have errors its output leaves out: of this flow's latest run only (each run adds a folder
+  # of its own), as an earlier run's screenshots aren't this run's evidence
   debug="$evidence/maestro-logs/$1-$5"
+  [ ! -d "$debug" ] || rm -r "$debug"
   mkdir -p "$debug" "$out/screenshots"
-  rm -f "$debug/maestro.log"
-  # an earlier run's screenshots, which aren't this run's evidence
-  find "$debug" \( -path '*/takeScreenshot/*.png' -o -path '*/assets/*.png' \) -exec rm -f {} +
   target=$4
   # Maestro reads the path in the flows below itself, so it's a native path (a Windows path in Git Bash)
   native=$(cd "$(dirname "$4")" && { pwd -W 2> /dev/null || pwd; })/$(basename "$4")
@@ -187,6 +199,8 @@ run_flow() { # screen device app_id file name orientation
 
 run_flows() { # screen device app_id orientation (PORTRAIT, or LANDSCAPE_LEFT to turn it) [again]
   out="$evidence/$1"
+  # the screen's latest run only: an earlier run's screenshots aren't this run's evidence
+  [ -n "${5:-}" ] || [ ! -d "$out" ] || rm -r "$out"
   mkdir -p "$out"
   # this run's screenshots are the ones newer than this; the status before it, for running the screen again
   : > "$out/.started"
@@ -226,6 +240,8 @@ run_flows() { # screen device app_id orientation (PORTRAIT, or LANDSCAPE_LEFT to
     fi
     if [ "$ok" = 0 ]; then
       passed=$((passed + 1))
+      # the device's own log (the simulator's or the emulator's, up to 25 MB a run) helps only with a failure
+      find "$debug" -path '*/logs/device-*' -type f -exec rm -f {} +
     elif is_real "$2"; then
       echo "  $1: flow $name failed, see ${out#"$root"/}/$name.log and maestro-runner's own log ${debug#"$root"/}/maestro-runner.log"
       status=1
