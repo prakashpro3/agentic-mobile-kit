@@ -121,3 +121,14 @@ test('an install from before 0.7.0 is told to update, and its docs are still che
   assert.strictEqual(levelOf(checks, /old names/), 'warn');
   assert.strictEqual(levelOf(checks, /docs\/ai not filled/), 'warn');
 });
+
+test('with .githooks kept out of git, inactive hooks point to sync, which puts the folder back and turns them on', () => {
+  const dir = installedApp();
+  fs.writeFileSync(path.join(dir, '.gitignore'), '.githooks\n');
+  git(dir, 'add', '-A');
+  git(dir, '-c', 'user.name=t', '-c', 'user.email=t@example.invalid', 'commit', '-qm', 'ignore');
+  init(dir, { skipGenerate: true });
+  git(dir, 'config', '--unset', 'core.hooksPath');
+  const hooks = projectChecks(dir, { skipNetwork: true }).find(c => /Git hooks/.test(c.label));
+  assert.deepStrictEqual([hooks.level, hooks.fix], ['fail', 'run: npx agentic-mobile-kit sync']);
+});

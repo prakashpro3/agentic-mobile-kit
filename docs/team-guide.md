@@ -19,7 +19,7 @@ Every AI tool reads the same rules (`AGENTS.md`), the same project facts (`docs/
 - records the kit version and CI choice there, so `sync` knows what's installed;
 - adds `.env`, `.env.*` and `.amk/` to `.gitignore`, and in Expo apps also `/ios` and `/android`, which `expo prebuild` generates;
 - adds a `typecheck` script for TypeScript apps;
-- turns on the kit's git hooks: with a `postinstall` script that does it for every clone, and for this clone right away. If the app already uses husky, lefthook, simple-git-hooks or its own hooks folder, it adds one line to those hooks instead, and leaves `core.hooksPath` to them. That line runs the kit's hook through `scripts/amk/run-hook.sh`, which skips it with a hint in a clone that doesn't have `.githooks` yet;
+- turns on the kit's git hooks: with a `postinstall` script that does it for every clone, and for this clone right away. A team that keeps `.githooks` out of git gets no such script, as a fresh clone has no `.githooks` to point git at: each clone turns the hooks on when it runs `sync`, which puts the folder back. If the app already uses husky, lefthook, simple-git-hooks or its own hooks folder, it adds one line to those hooks instead, and leaves `core.hooksPath` to them. That line runs the kit's hook through `scripts/amk/run-hook.sh`, which skips it with a hint in a clone that doesn't have `.githooks` yet;
 - generates each chosen tool's permissions, hooks and reviewer agent, and links the skills folder for Claude Code and Kiro.
 
 **What `doctor` checks**, with a fix for each problem:

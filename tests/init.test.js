@@ -501,6 +501,28 @@ test('other hooks a tool installed in .git/hooks keep running: a .githooks file 
   assert.match(synced.warnings.join('\n'), /rulesync\.jsonc isn't here \(deleted, or kept out of git\), so the AI tools' settings, hooks and subagents weren't generated/);
 });
 
+test('.githooks kept out of git, no hook manager: install doesn\'t point git at a folder a fresh clone lacks; sync does', () => {
+  // an earlier kit's postinstall line, after the app's own command
+  const dir = fakeApp({ pkg: { scripts: { test: 'jest', postinstall: 'patch-package && (git config core.hooksPath .githooks || true)' } }, files: { '.gitignore': '.githooks\n' } });
+  const { warnings } = init(dir, { skipGenerate: true });
+  assert.strictEqual(JSON.parse(read(dir, 'package.json')).scripts.postinstall, 'patch-package', 'the line goes, the app\'s own command stays');
+  assert.strictEqual(localHooks(dir), '.githooks', 'this clone has the folder, so its hooks are on');
+  assert.match(warnings.join('\n'), /\.githooks is kept out of git here, so a fresh clone has none until it runs npx agentic-mobile-kit sync, which turns the kit's hooks on/);
+  commitAll(dir);
+  // a fresh clone: no .githooks and no core.hooksPath, so git runs .git/hooks, until sync puts both back
+  git(dir, 'config', '--unset', 'core.hooksPath');
+  fs.rmSync(path.join(dir, '.githooks'), { recursive: true });
+  sync(dir, { skipGenerate: true });
+  assert.strictEqual(JSON.parse(read(dir, 'package.json')).scripts.postinstall, 'patch-package', 'sync doesn\'t put the line back');
+  assert.strictEqual(localHooks(dir), '.githooks');
+  assert.ok(fs.existsSync(path.join(dir, '.githooks/pre-commit')));
+
+  // tracked .githooks: install still turns the hooks on in every clone
+  const tracked = fakeApp();
+  init(tracked, { skipGenerate: true });
+  assert.match(JSON.parse(read(tracked, 'package.json')).scripts.postinstall, /core\.hooksPath \.githooks/);
+});
+
 test('an earlier kit install next to husky: core.hooksPath goes back to husky and the kit\'s postinstall goes', () => {
   const dir = fakeApp({
     pkg: { devDependencies: { husky: '^9.1.7' }, scripts: { prepare: 'husky', postinstall: 'patch-package && (git config core.hooksPath .githooks || true)' } },
