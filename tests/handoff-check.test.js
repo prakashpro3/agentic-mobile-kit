@@ -44,9 +44,19 @@ test('handoff check: code changed (a new folder too) without the handoff asks fo
   assert.strictEqual(hook(dir), 0);
 });
 
-test('the hooks start with ./, so rulesync anchors them to the project folder for Claude Code, which keeps a cd', () => {
-  // a relative command isn't found after a cd into a subfolder: the guard then exits 1, which lets every command through
-  const hooks = fs.readFileSync(path.join(__dirname, '../stacks/react-native/template/.rulesync/hooks.jsonc'), 'utf8');
-  const commands = [...hooks.matchAll(/"command":\s*"([^"]+)"/g)].map(m => m[1]);
-  assert.deepStrictEqual(commands, ['node ./scripts/amk/guard.js', 'node ./scripts/amk/handoff-check.js']);
+test('the hook commands find the project from any folder a tool starts them in: the project, a subfolder, .agents', () => {
+  // Claude Code keeps the agent's cd, Antigravity runs hooks from .agents/, Codex from the project. A command that
+  // isn't found exits 1: Claude Code then lets every command through, and Antigravity blocks every one
+  const hooks = fs.readFileSync(path.join(__dirname, '../stacks/react-native/template/.rulesync/hooks.jsonc'), 'utf8').replace(/^\s*\/\/.*$/gm, '');
+  const { preToolUse: [guard], stop: [handoff] } = JSON.parse(hooks).hooks;
+  const dir = app();
+  write(dir, 'scripts/amk/guard.js', fs.readFileSync(path.join(path.dirname(SCRIPT), 'guard.js'), 'utf8'));
+  for (const from of ['.', 'android', '.agents']) {
+    fs.mkdirSync(path.join(dir, from), { recursive: true });
+    const run = (command, input) => spawnSync('sh', ['-c', command], { cwd: path.join(dir, from), input, encoding: 'utf8' });
+    assert.strictEqual(run(guard.command, '{"tool_input":{"command":"rm -rf build"}}').status, 2, `the guard blocks, from ${from}`);
+    assert.strictEqual(run(guard.command, '{"tool_input":{"command":"echo hello"}}').status, 0, `the guard allows, from ${from}`);
+    const stop = run(handoff.command, '{}');
+    assert.strictEqual(stop.status, 0, `the stop hook runs, from ${from}: ${stop.stderr}`);
+  }
 });

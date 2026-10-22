@@ -523,6 +523,25 @@ test('.githooks kept out of git, no hook manager: install doesn\'t point git at 
   assert.match(JSON.parse(read(tracked, 'package.json')).scripts.postinstall, /core\.hooksPath \.githooks/);
 });
 
+test('Antigravity\'s Stop hooks become a plain list of handlers, which is all its hook runner accepts', () => {
+  const { flattenAntigravityStop } = require('../lib/init');
+  const dir = tmpDir('amk-agy-');
+  const guard = { type: 'command', command: 'node guard.js' };
+  const stop = { type: 'command', command: 'node handoff-check.js' };
+  // what rulesync before 40 writes
+  const written = { rulesync: { PreToolUse: [{ hooks: [guard] }], Stop: [{ hooks: [stop] }] }, team: { Stop: [{ type: 'command', command: 'echo bye' }] } };
+  fs.mkdirSync(path.join(dir, '.agents'));
+  fs.writeFileSync(path.join(dir, '.agents/hooks.json'), JSON.stringify(written));
+  flattenAntigravityStop(dir);
+  const fixed = JSON.parse(read(dir, '.agents/hooks.json'));
+  assert.deepStrictEqual(fixed.rulesync, { PreToolUse: [{ hooks: [guard] }], Stop: [stop] }, 'PreToolUse keeps its matcher shape');
+  assert.deepStrictEqual(fixed.team, written.team, 'a handler list stays as it is');
+  const before = read(dir, '.agents/hooks.json');
+  flattenAntigravityStop(dir);
+  assert.strictEqual(read(dir, '.agents/hooks.json'), before, 'nothing left to change');
+  flattenAntigravityStop(tmpDir('amk-agy-none-')); // no Antigravity hooks: nothing to do
+});
+
 test('an earlier kit install next to husky: core.hooksPath goes back to husky and the kit\'s postinstall goes', () => {
   const dir = fakeApp({
     pkg: { devDependencies: { husky: '^9.1.7' }, scripts: { prepare: 'husky', postinstall: 'patch-package && (git config core.hooksPath .githooks || true)' } },
