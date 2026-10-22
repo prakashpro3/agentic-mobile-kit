@@ -2,6 +2,9 @@
 // Agent guard hook (preToolUse). Blocks destructive shell commands and access to secret files.
 // Each AI tool sends a differently shaped JSON payload, so look for command and path fields anywhere in it.
 const fs = require('fs');
+const path = require('path');
+// the project this script is in (scripts/amk/): the agent may have moved into a subfolder
+const root = path.join(__dirname, '..', '..');
 
 let payload;
 const raw = fs.readFileSync(0, 'utf8');
@@ -28,7 +31,7 @@ const destructive = /\brm(?=[^;&|\n]*\s(-[a-zA-Z]*[rR][a-zA-Z]*|--recursive)\b)(
 const secretFile = /(^|[\s/'"=])\.env(?![\w.-]*\.(?:example|sample|template)(?=$|[\s'";|&)]))(\.[\w.-]+)?(?=$|[\s'";|&)])|\.(keystore|jks|p8|p12|mobileprovision)\b/;
 // the project's own secret files: .amk-secrets lists them, one path from the project root per line (a folder ends in /)
 let listed = [];
-try { listed = fs.readFileSync('.amk-secrets', 'utf8').split('\n').map(l => l.trim()).filter(l => l && !l.startsWith('#')); } catch {}
+try { listed = fs.readFileSync(path.join(root, '.amk-secrets'), 'utf8').split('\n').map(l => l.trim()).filter(l => l && !l.startsWith('#')); } catch {}
 const secret = s => secretFile.test(s) || listed.some(p => s.includes(p));
 
 const block = reason => { process.stderr.write(`Blocked by scripts/amk/guard.js: ${reason}\n`); process.exit(2); };

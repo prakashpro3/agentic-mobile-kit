@@ -1,8 +1,10 @@
 {
   "version": 1,
   "hooks": {
-    // no matcher: runs for every tool call; guard.js decides from the payload
-    "preToolUse": [{ "command": "node scripts/amk/guard.js" }],
-    "stop": [{ "command": "node scripts/amk/handoff-check.js" }]
+    // "./" lets rulesync anchor each command to the project folder for a tool that keeps the agent's cd between
+    // commands (Claude Code: "$CLAUDE_PROJECT_DIR"/scripts/...): a relative one isn't found after a cd into a
+    // subfolder, which turns the guard off. No matcher: runs for every tool call; guard.js decides from the payload
+    "preToolUse": [{ "command": "node ./scripts/amk/guard.js" }],
+    "stop": [{ "command": "node ./scripts/amk/handoff-check.js" }]
   }
 }

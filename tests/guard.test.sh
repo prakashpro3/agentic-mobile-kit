@@ -35,11 +35,13 @@ done
 # a commit message that mentions one is blocked, and says how to commit it
 r=$(printf '%s' '{"tool_input":{"command":"git commit -m \"guard: blocks rm -rf\""}}' | node scripts/amk/guard.js 2>&1)
 case $r in *'git commit -F <file>'*) echo "ok   says how to commit a message that mentions one" ;; *) echo "FAIL commit message hint: $r"; fails=$((fails + 1)) ;; esac
-# the project's own secret files, from .amk-secrets (in a copy, as the guard reads it from the project root)
-d=$(mktemp -d) && cp scripts/amk/guard.js "$d/" && printf '# tokens\nconfig/token.json\nsecrets/\n' > "$d/.amk-secrets"
-s() { printf '%s' "$2" | (cd "$d" && node guard.js 2>/dev/null); r=$?; if [ "$r" = "$1" ]; then echo "ok   $3"; else echo "FAIL $3 (exit $r, want $1)"; fails=$((fails + 1)); fi; }
+# the project's own secret files, from .amk-secrets (in a copy of a project, as the guard reads it from the project
+# it's in), also when the agent has moved into a subfolder
+d=$(mktemp -d) && mkdir -p "$d/scripts/amk" "$d/android" && cp scripts/amk/guard.js "$d/scripts/amk/" && printf '# tokens\nconfig/token.json\nsecrets/\n' > "$d/.amk-secrets"
+s() { printf '%s' "$2" | (cd "$d/$4" && node "$d/scripts/amk/guard.js" 2>/dev/null); r=$?; if [ "$r" = "$1" ]; then echo "ok   $3"; else echo "FAIL $3 (exit $r, want $1)"; fails=$((fails + 1)); fi; }
 s 2 '{"tool_input":{"command":"cat config/token.json"}}' ".amk-secrets: a listed file"
 s 2 '{"tool_input":{"file_path":"/repo/secrets/play.json"}}' ".amk-secrets: a file in a listed folder"
 s 0 '{"tool_input":{"command":"cat config/app.json"}}' ".amk-secrets: other files allowed"
+s 2 '{"tool_input":{"command":"cat ../config/token.json"}}' ".amk-secrets: from a subfolder" android
 rm -r "$d"
 [ "$fails" = 0 ] && echo "all passed" || { echo "$fails failed"; exit 1; }
