@@ -219,6 +219,21 @@ run_flow() { # screen device app_id file name orientation
   return $rc
 }
 
+# whether a flow failed because the Android device dropped out: Maestro says so in its own log or the flow's ($1)
+lost_device() {
+  grep -qs -E 'device offline|DeviceServerDiedException|Device server died' "$debug/maestro.log" ||
+    grep -qs -E 'was requested, but it is not connected|Device server died' "$1"
+}
+# waits until the Android device $1 answers three times in a row, 10 seconds apart (3 minutes at most)
+steady() {
+  "$adb" reconnect offline > /dev/null 2>&1 || true
+  in_row=0 tries=0
+  while [ "$in_row" -lt 3 ] && [ "$tries" -lt 18 ]; do
+    tries=$((tries + 1))
+    if [ "$("$adb" -s "$1" shell getprop sys.boot_completed 2> /dev/null | tr -d '\r')" = 1 ]; then in_row=$((in_row + 1)); else in_row=0; "$adb" reconnect offline > /dev/null 2>&1 || true; fi
+    [ "$in_row" -ge 3 ] || sleep 10
+  done
+}
 run_flows() { # screen device app_id orientation (PORTRAIT, or LANDSCAPE_LEFT to turn it) [again]
   out="$evidence/$1"
   # a part of the flows has a folder of its own in the screen's, as the parts run at the same time: part 1 clears what
@@ -259,13 +274,17 @@ run_flows() { # screen device app_id orientation (PORTRAIT, or LANDSCAPE_LEFT to
       echo "  $1: Maestro stopped before flow $name started; running it once more"
       ok=0
       run_flow "$1" "$2" "$3" "$f" "$name" "$4" || ok=$?
-    # (or missed it as it started: another emulator starting or stopping on this machine can drop it for a moment)
-    elif [ "$ok" != 0 ] && [ "${1%%-*}" = android ] && { grep -qs 'device offline' "$debug/maestro.log" || grep -qs 'was requested, but it is not connected' "$out/$name.log"; }; then
-      echo "  $1: the device went offline during flow $name; running it once more"
-      "$adb" reconnect offline > /dev/null 2>&1 || true
-      android_ready "$2" || true
-      ok=0
-      run_flow "$1" "$2" "$3" "$f" "$name" "$4" || ok=$?
+    # (or missed it as it started, or Maestro's server on it died: an emulator under load, with other devices starting
+    # or running on this machine, can drop it for a few minutes). Once it answers steadily, run it again, twice at most
+    elif [ "$ok" != 0 ] && [ "${1%%-*}" = android ] && lost_device "$out/$name.log"; then
+      again=0
+      while [ "$ok" != 0 ] && [ "$again" -lt 2 ] && lost_device "$out/$name.log"; do
+        again=$((again + 1))
+        echo "  $1: the device went offline during flow $name; running it once more when it answers steadily"
+        steady "$2"
+        ok=0
+        run_flow "$1" "$2" "$3" "$f" "$name" "$4" || ok=$?
+      done
     elif [ "$ok" != 0 ] && is_real "$2" && grep -qs 'explicitly trusted' "$out/$name.log"; then
       # as launch_check found it does: here after clearState installed the app again, which it opened a moment later
       echo "  $1: the device didn't open the app it had just installed again; running flow $name once more"
@@ -740,6 +759,8 @@ android() {
     *) default_sdk=$HOME/Android/Sdk ;;
   esac
   sdk=${ANDROID_HOME:-${ANDROID_SDK_ROOT:-$default_sdk}}
+  # Gradle finds the SDK through it too: an AI tool started from the Dock or a menu doesn't load the shell's profile
+  [ -n "${ANDROID_HOME:-}" ] || export ANDROID_HOME="$sdk"
   adb="$sdk/platform-tools/adb"
   # Expo apps without native folders in git: generate android/ first
   if [ "$no_build" = 0 ] && ! sh scripts/amk/prebuild.sh android > "$evidence/prebuild-android.log" 2>&1; then

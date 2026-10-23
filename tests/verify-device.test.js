@@ -17,7 +17,7 @@ const skip = process.platform === 'win32' && 'fakes adb with a shell script';
 // `rotates`: the app supports iPad and isn't locked to portrait, as React Native's template is. `args`: verify.sh's.
 // Maestro says it's 2.11.0, or FAKE_MAESTRO_VERSION; gradlew logs its arguments in calls.
 // `held`: device locks another run holds, as { key: [pid, who, since] }; `ps`: the processes the stand-in ps lists.
-function verifyAndroid({ connected, avds = '', tablets = '', env = {}, build = false, rotates = false, maestro = '', args = ['android', '--flavor', 'x', '--label', 'run'], files = {}, held = {}, ps = '', git = false, prepare = null }) {
+function verifyAndroid({ connected, avds = '', tablets = '', env = {}, build = false, rotates = false, maestro = '', args = ['android', '--flavor', 'x', '--label', 'run'], files = {}, held = {}, ps = '', git = false, prepare = null, sleepless = false }) {
   const dir = tmpDir('amk-verify-device-');
   fs.cpSync(path.join(TEMPLATE, 'scripts/amk'), path.join(dir, 'app/scripts/amk'), { recursive: true });
   write(dir, 'state', connected.map(d => `${d}\n`).join(''));
@@ -52,13 +52,15 @@ esac
   const project = spawnSync('sh', ['-c', 'printf %s "$(pwd)" | cksum | cut -d " " -f 1'], { cwd: path.join(dir, 'app') }).stdout.toString().trim();
   for (const [key, owner] of Object.entries(held)) write(dir, `locks/${key.replace('{project}', project)}/owner`, `${owner.join('\n')}\n`);
   write(dir, 'bin/ps', `#!/bin/sh\nprintf '%s\\n' "${ps}"\n`, 0o755);
+  // waits that matter only on real devices take no time
+  if (sleepless) write(dir, 'bin/sleep', '#!/bin/sh\n', 0o755);
   if (rotates) {
     write(dir, 'app/ios/App.xcodeproj/project.pbxproj', 'INFOPLIST_FILE = App/Info.plist;\nTARGETED_DEVICE_FAMILY = "1,2";\n');
     write(dir, 'app/ios/App/Info.plist', '<key>UISupportedInterfaceOrientations</key>\n<array>\n<string>UIInterfaceOrientationPortrait</string>\n</array>\n');
     write(dir, 'app/android/app/src/main/AndroidManifest.xml', '<activity android:name=".MainActivity">\n<action android:name="android.intent.action.MAIN" />\n</activity>\n');
   }
   if (build) {
-    write(dir, 'app/android/gradlew', '#!/bin/sh\necho "gradlew $* (sentry upload off: $SENTRY_DISABLE_AUTO_UPLOAD)" >> "$FAKE_STATE.calls"\n', 0o755);
+    write(dir, 'app/android/gradlew', '#!/bin/sh\necho "gradlew $* (sentry upload off: $SENTRY_DISABLE_AUTO_UPLOAD)" >> "$FAKE_STATE.calls"\necho "gradle sdk: $ANDROID_HOME" >> "$FAKE_STATE.calls"\n', 0o755);
     write(dir, 'app/android/app/build/outputs/apk/x/release/app-x-release.apk', '');
     write(dir, 'app/android/app/build.gradle', 'android { defaultConfig { applicationId "com.example.app" } }\n');
   }
@@ -66,7 +68,7 @@ esac
   if (prepare) prepare(path.join(dir, 'app'));
   const r = spawnSync('sh', ['scripts/amk/verify.sh', ...args], {
     cwd: path.join(dir, 'app'), encoding: 'utf8',
-    env: { ...process.env, FAKE_STATE: path.join(dir, 'state'), ANDROID_HOME: path.join(dir, 'sdk'), ANDROID_AVD_HOME: path.join(dir, 'avd'), AMK_LOCK_DIR: path.join(dir, 'locks'), PATH: `${path.join(dir, 'bin')}${path.delimiter}${process.env.PATH}`, AMK_ANDROID_DEVICE: '', AMK_ANDROID_AVD: '', ...env },
+    env: { ...process.env, FAKE_STATE: path.join(dir, 'state'), ANDROID_HOME: path.join(dir, 'sdk'), ANDROID_SDK_ROOT: path.join(dir, 'sdk'), ANDROID_AVD_HOME: path.join(dir, 'avd'), AMK_LOCK_DIR: path.join(dir, 'locks'), PATH: `${path.join(dir, 'bin')}${path.delimiter}${process.env.PATH}`, AMK_ANDROID_DEVICE: '', AMK_ANDROID_AVD: '', ...env },
   });
   const readIf = f => (fs.existsSync(path.join(dir, f)) ? fs.readFileSync(path.join(dir, f), 'utf8') : '');
   const locks = fs.existsSync(path.join(dir, 'locks')) ? fs.readdirSync(path.join(dir, 'locks')) : [];
@@ -112,7 +114,7 @@ test('verify.sh android: runs a flow once more when the emulator went offline, a
 mkdir -p "$debug"
 if [ ! -f "$out/../tried" ]; then touch "$out/../tried"; echo "IOException: Command failed (host:transport:emulator-5556): device offline" >> "$debug/maestro.log"; echo "Launch app... FAILED"; exit 1; fi
 touch "$out/shot.png"`;
-  const r = verifyAndroid({ connected: ['emulator-5556 P35'], build: true, maestro: offlineOnce });
+  const r = verifyAndroid({ connected: ['emulator-5556 P35'], build: true, maestro: offlineOnce, sleepless: true });
   assert.match(r.out, /the device went offline during flow smoke; running it once more/);
   assert.match(r.out, /android: flows 1\/1 passed, 1 screenshots/);
   assert.match(r.calls, /^reconnect offline$/m);
@@ -120,8 +122,19 @@ touch "$out/shot.png"`;
   const missedOnce = `out=$(echo "$@" | sed 's/.*--test-output-dir \\([^ ]*\\).*/\\1/')
 if [ ! -f "$out/../tried" ]; then touch "$out/../tried"; echo "Device emulator-5556 was requested, but it is not connected."; exit 1; fi
 touch "$out/shot.png"`;
-  const missed = verifyAndroid({ connected: ['emulator-5556 P35'], build: true, maestro: missedOnce });
-  assert.match(missed.out, /the device went offline during flow smoke; running it once more\nandroid: flows 1\/1 passed, 1 screenshots/);
+  const missed = verifyAndroid({ connected: ['emulator-5556 P35'], build: true, maestro: missedOnce, sleepless: true });
+  assert.match(missed.out, /the device went offline during flow smoke; running it once more when it answers steadily\nandroid: flows 1\/1 passed, 1 screenshots/);
+  // Maestro's server on the device died (an emulator under load can drop out for a few minutes): run again, twice at most
+  const drops = String.raw`debug=$(echo "$@" | sed 's/.*--debug-output \([^ ]*\).*/\1/'); out=$(echo "$@" | sed 's/.*--test-output-dir \([^ ]*\).*/\1/')
+mkdir -p "$debug"; n=$(( $(cat "$out/../tries" 2> /dev/null || echo 0) + 1 )); echo "$n" > "$out/../tries"
+if [ "$n" -le "$DROPS" ]; then echo "maestro.android.DeviceServerDiedException: Device server died during 'deviceInfo' on emulator-5556" >> "$debug/maestro.log"; echo "Launch app... FAILED"; exit 1; fi
+touch "$out/shot.png"`;
+  const twice = verifyAndroid({ connected: ['emulator-5556 P35'], build: true, maestro: drops, env: { DROPS: '2' }, sleepless: true });
+  assert.strictEqual((twice.out.match(/the device went offline during flow smoke/g) || []).length, 2);
+  assert.match(twice.out, /android: flows 1\/1 passed, 1 screenshots/);
+  const thrice = verifyAndroid({ connected: ['emulator-5556 P35'], build: true, maestro: drops, env: { DROPS: '3' }, sleepless: true });
+  assert.strictEqual((thrice.out.match(/the device went offline during flow smoke/g) || []).length, 2, 'twice at most');
+  assert.match(thrice.out, /android: flows 0\/1 passed/);
   const failing = verifyAndroid({ connected: ['emulator-5556 P35'], build: true, maestro: 'echo "Assert that id: x is visible... FAILED"; exit 1' });
   assert.doesNotMatch(failing.out, /once more/, 'other failures aren\'t run again');
   assert.match(failing.out, /flow smoke failed, see \.amk\/evidence\/run\/android\/smoke\.log and Maestro's own log \.amk\/evidence\/run\/maestro-logs\/android-smoke\/maestro\.log/);
@@ -192,6 +205,9 @@ test('verify.sh build and --no-build: build once, then check each device without
   assert.match(built.out, /^android: release build done$/m);
   assert.match(built.calls, new RegExp(`^gradlew assembleXRelease --no-daemon -q -PreactNativeArchitectures=${process.arch === 'arm64' ? 'arm64-v8a' : 'x86_64'}`, 'm'));
   assert.doesNotMatch(built.calls, /install|devices/, 'no device');
+  // with no ANDROID_HOME (an AI tool started from the Dock doesn't load the shell's profile), Gradle gets the SDK verify.sh found
+  const noHome = verifyAndroid({ connected: [], build: true, env: { ANDROID_HOME: '' }, args: ['build', '--flavor', 'x', '--label', 'run'] });
+  assert.match(noHome.calls, /^gradle sdk: \S+\/sdk$/m, noHome.calls);
   assert.match(built.calls, /^gradlew assembleXRelease .*--init-script \S+\/scripts\/amk\/no-symbol-upload\.gradle \(sentry upload off: true\)$/m, 'a check build sends no symbols to crash reporters');
   // --no-build: the APK that's there, no Gradle
   const checked = verifyAndroid({ connected: ['emulator-5556 P35'], avds: 'P35', build: true, maestro: record, args: ['android', '--flavor', 'x', '--label', 'run', '--no-build'] });
