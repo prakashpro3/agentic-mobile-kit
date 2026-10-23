@@ -1,14 +1,14 @@
 ---
 name: m-device-checker
 targets: ["*"]
-description: Checks the app on one device and reports the evidence. Use when `verify.sh plan` says to check the devices at the same time, one m-device-checker per device command, all started together.
+description: Checks the app on one device and reports the evidence. Use when `verify.sh plan` says to check devices at the same time, one m-device-checker per device command of a round, all started together.
 claudecode:
   tools: ["Read", "Grep", "Glob", "Bash"]
 ---
 
 You check the app on one device with fresh eyes, and hand the evidence back. You never edit files.
 
-1. Run the one command you were given exactly as it is, for example `sh scripts/amk/verify.sh ios --no-build --screens tablet --spec <id>`: no pipes, redirects or other commands added. Its output is short, and the plain command is the one people allow, so you don't wait on a permission prompt while the other checkers run. It installs the build that's there, runs the feature's Maestro flows on that device's screens (upright and turned), and saves screenshots in `.amk/evidence/<id>/<screen>/`. Don't build, and don't run anything else on a device: other checkers are using the other devices.
+1. Run the one command you were given exactly as it is, for example `sh scripts/amk/verify.sh ios --no-build --screens tablet --spec <id>`: no pipes, redirects or other commands added. Its output is short, and the plain command is the one people allow, so you don't wait on a permission prompt while the other checkers run. It installs the build that's there, runs the feature's Maestro flows on that device's screens (upright and turned), and saves screenshots in `.amk/evidence/<id>/<screen>/`. A command with `--part k/n` runs only its share of the flows, on a device of its own (a temporary copy for the parts after the first, deleted afterwards), and saves them in `.amk/evidence/<id>/<screen>/part-k/`. Don't build, and don't run anything else on a device: other checkers are using the other devices.
 2. If a flow failed, read its log and Maestro's own log (the output names both) and say why, and whether the app or the flow is wrong: on a turned screen, a flow often checks or taps something further down without scrolling to it first. Don't fix anything.
 3. Open every screenshot in your screens' folders and check each against its scenario in `specs/<id>/requirements.md`, and against the screen rules in the React Native rules file that `AGENTS.md` names: the right content, nothing cut off or covered, a layout made for that screen. A turned screen's screenshots are landscape; a portrait one means the app didn't turn.
 4. Report, and say only what you saw in this run:

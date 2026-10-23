@@ -21,7 +21,7 @@ This project may also use other AI workflow frameworks (for example Superpowers,
 | Lint, typecheck, test (each skips what the app doesn't have yet) | `sh scripts/amk/pm-run.sh lint`, `sh scripts/amk/pm-run.sh typecheck`, `sh scripts/amk/pm-run.sh test` |
 | Check dependency versions and the app config | `npx expo install --check`, `npx expo-doctor` |
 | Check on devices (release builds, Maestro flows, screenshots) | `sh scripts/amk/verify.sh all --spec <id>`; another iOS scheme: `--scheme <name>`; only some screens: `--screens phone` (or `tablet`, `landscape`, …); on a real iPhone or iPad the user names: `AMK_IOS_DEVICE=<its UDID>` (the flows clear the app's data on it) |
-| Check every device at the same time, on a machine with room for it | `sh scripts/amk/verify.sh plan --spec <id>` says whether, and prints the commands: one per device, each for an `m-device-checker` subagent |
+| Check devices at the same time | `sh scripts/amk/verify.sh plan --spec <id>` says how many this machine's memory fits, and prints the commands: one per device (in rounds when they don't all fit; a device's flows in parts when there's room), each for an `m-device-checker` subagent |
 | Specs: progress, format check, fold a finished feature into the living spec | `node scripts/amk/specs.js status`, `node scripts/amk/specs.js check`, `node scripts/amk/specs.js merge <id>` |
 | Check a release before tagging it (versions, permission texts, debug leftovers) | `node scripts/amk/release-check.js` |
 | Signed release builds (a person runs them: they use the signing keys) | `sh scripts/amk/release-build.sh android`, `sh scripts/amk/release-build.sh ios` |

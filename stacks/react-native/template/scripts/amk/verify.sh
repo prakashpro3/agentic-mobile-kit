@@ -9,7 +9,8 @@
 #   ios|android     release build, install, run flows, screenshots
 #   all             everything (default)
 #   build           the release builds only, iOS and Android at the same time, for --no-build checks after it
-#   plan            whether this machine can check the devices at the same time, and the commands to run
+#   plan            how many devices this machine's memory can check at the same time, and the commands to run:
+#                   one per device, in rounds when they don't all fit, the flows split into parts when there's room
 #   --spec <id>     run .maestro/<id>*.yaml and save evidence in .amk/evidence/<id>/
 #   --label <n>     evidence folder name (default: the spec id, or no-spec)
 #   --flavor <name> Android product flavor to check (default: the first one in build.gradle)
@@ -17,6 +18,9 @@
 #   --screens <l>   only these of the screens the app supports, comma-separated: phone, tablet, portrait,
 #                   landscape, or one such as tablet-landscape
 #   --no-build      check the last build instead of building again (after `build`)
+#   --part <k/n>    only part k of the flows split in n (every n-th, from the k-th), with its evidence in
+#                   <screen>/part-k/: part 1 on the usual device, the others on a temporary copy of it (the same kind of
+#                   simulator, or an emulator with the same settings), deleted afterwards. plan prints these
 #   (no flows found: a smoke check that launches the app and takes a screenshot)
 #   Evidence per screen: ios/ and android/ (phone, portrait), then -landscape/, -tablet/ and -tablet-landscape/, each
 #   with its latest run only (the device's own log only for a flow that failed); the newest 5 evidence folders stay,
@@ -27,7 +31,9 @@
 #      AMK_ANDROID_AVD (the emulator to use, started if it isn't running; other devices are left alone),
 #      AMK_IOS_TABLET (iPad simulator, or a connected iPad: name or UDID), AMK_ANDROID_TABLET_AVD (tablet emulator),
 #      AMK_ANDROID_TABLET (serial), AMK_IOS_TEAM (the Apple team ID that signs builds for real iPhones and iPads;
-#      default: the project's), AMK_PARALLEL (1 or 0: overrides plan's choice), AMK_DEVICE_WAIT (minutes to wait for a
+#      default: the project's), AMK_PARALLEL (1 or 0: overrides plan's choice), AMK_MEMORY_GB (the memory plan
+#      counts on: this machine's; less when other emulators stay open), AMK_DEVICES (how many devices plan checks at
+#      once: one per 6 GB beyond 4), AMK_DEVICE_WAIT (minutes to wait for a
 #      device in use, 30), AMK_LOCK_DIR (where runs on this machine claim devices; /tmp/agentic-mobile-kit-<user id>),
 #      AMK_EVIDENCE_KEEP (how many evidence folders stay, newest first: 5; 0 keeps them all)
 # A device in use by another run (any project on this machine) is skipped for a free one of the same kind, or waited
@@ -47,6 +53,7 @@ flavor=${AMK_ANDROID_FLAVOR:-}
 only=${AMK_SCREENS:-}
 no_build=0
 build_only=0
+part=""
 while [ $# -gt 0 ]; do
   case $1 in
     --spec) spec=$2; shift 2 ;;
@@ -56,9 +63,17 @@ while [ $# -gt 0 ]; do
     --scheme) AMK_IOS_SCHEME=$2; export AMK_IOS_SCHEME; shift 2 ;;
     --screens) only=$2; shift 2 ;;
     --no-build) no_build=1; shift ;;
+    --part) part=$2; shift 2 ;;
     *) echo "verify: unknown option $1"; exit 2 ;;
   esac
 done
+part_k=1 part_n=1
+if [ -n "$part" ]; then
+  part_k=${part%/*} part_n=${part#*/}
+  case $part in */*) ;; *) part_k=x ;; esac
+  case "$part_k$part_n" in '' | *[!0-9]*) echo "verify: --part takes k/n, such as 2/3"; exit 2 ;; esac
+  [ "$part_k" -ge 1 ] && [ "$part_k" -le "$part_n" ] || { echo "verify: --part takes k/n, such as 2/3"; exit 2; }
+fi
 
 root=$(pwd)
 . scripts/amk/maestro-env.sh
@@ -73,17 +88,20 @@ keep=${AMK_EVIDENCE_KEEP:-5}
 if [ "$keep" -gt 0 ] 2> /dev/null; then
   old=$(ls -dt "$root"/.amk/evidence/*/ 2> /dev/null | grep -v -- '-prototype/$' | tail -n +$((keep + 1)))
   if [ -n "$old" ]; then
-    echo "$old" | while IFS= read -r d; do rm -r "${d:?}" || true; done
+    # another run on this machine (a part, a round) may have just removed the same folder
+    echo "$old" | while IFS= read -r d; do rm -r "${d:?}" 2> /dev/null || true; done
     echo "evidence: removed $(echo "$old" | wc -l | tr -d ' ') older folders from .amk/evidence, keeping the newest $keep (AMK_EVIDENCE_KEEP sets how many; 0 keeps them all)"
   fi
 fi
 status=0
 
 flow_files() {
-  if [ -n "$flow" ]; then echo "$root/$flow"
-  elif [ -n "$spec" ]; then find "$root/.maestro" -maxdepth 1 -iname "$spec*.yaml" 2>/dev/null | sort
-  else find "$root/.maestro" -maxdepth 1 -name '*.yaml' 2>/dev/null | sort
-  fi
+  {
+    if [ -n "$flow" ]; then echo "$root/$flow"
+    elif [ -n "$spec" ]; then find "$root/.maestro" -maxdepth 1 -iname "$spec*.yaml" 2>/dev/null | sort
+    else find "$root/.maestro" -maxdepth 1 -name '*.yaml' 2>/dev/null | sort
+    fi
+  } | awk -v k="$part_k" -v n="$part_n" '(NR - 1) % n == k - 1'
 }
 
 # the screens to check on a platform: the ones the app supports, narrowed by --screens
@@ -130,7 +148,8 @@ claim() {
 }
 unclaim() { l=$(lock_path "$1"); rm -f "$l/owner"; rmdir "$l" 2> /dev/null || true; held=$(echo "$held" | sed "s| $l||"); }
 release() { for l in $held; do rm -f "$l/owner"; rmdir "$l" 2> /dev/null || true; done; held=""; }
-trap release EXIT
+temps="" # the temporary devices this run made for a part of the flows (--part), deleted at its end
+trap 'release; drop_temps' EXIT
 trap 'exit 130' INT TERM
 holder() {
   l=$(lock_path "$1")
@@ -202,6 +221,18 @@ run_flow() { # screen device app_id file name orientation
 
 run_flows() { # screen device app_id orientation (PORTRAIT, or LANDSCAPE_LEFT to turn it) [again]
   out="$evidence/$1"
+  # a part of the flows has a folder of its own in the screen's, as the parts run at the same time: part 1 clears what
+  # an earlier run left beside them
+  if [ -n "$part" ]; then
+    if [ "$part_k" = 1 ] && [ -z "${5:-}" ] && [ -d "$out" ]; then
+      for e in "$out"/* "$out"/.[!.]*; do
+        [ -e "$e" ] || continue
+        case ${e##*/} in part-*) [ "${e##*/part-}" -le "$part_n" ] 2> /dev/null && continue ;; esac
+        rm -r "$e"
+      done
+    fi
+    out="$out/part-$part_k"
+  fi
   # the screen's latest run only: an earlier run's screenshots aren't this run's evidence
   [ -n "${5:-}" ] || [ ! -d "$out" ] || rm -r "$out"
   mkdir -p "$out"
@@ -228,7 +259,8 @@ run_flows() { # screen device app_id orientation (PORTRAIT, or LANDSCAPE_LEFT to
       echo "  $1: Maestro stopped before flow $name started; running it once more"
       ok=0
       run_flow "$1" "$2" "$3" "$f" "$name" "$4" || ok=$?
-    elif [ "$ok" != 0 ] && [ "${1%%-*}" = android ] && grep -qs 'device offline' "$debug/maestro.log"; then
+    # (or missed it as it started: another emulator starting or stopping on this machine can drop it for a moment)
+    elif [ "$ok" != 0 ] && [ "${1%%-*}" = android ] && { grep -qs 'device offline' "$debug/maestro.log" || grep -qs 'was requested, but it is not connected' "$out/$name.log"; }; then
       echo "  $1: the device went offline during flow $name; running it once more"
       "$adb" reconnect offline > /dev/null 2>&1 || true
       android_ready "$2" || true
@@ -329,6 +361,7 @@ check_screens() { # platform phone tablet app_id screens…
     run_flows "$where" "$on" "$id" "$turn"
   done
   release # this platform's devices, and Maestro's turn, for other runs
+  drop_temps
 }
 
 quick() {
@@ -459,6 +492,17 @@ simulators() {
 # device's
 take_simulator() {
   taken=""
+  if [ "$part_k" -gt 1 ]; then
+    first=$(simulators "$1" "$2" | head -n 1)
+    if [ -z "$first" ]; then
+      [ -z "$2" ] || { echo "ios: part $part of the flows runs on a copy of the device, which works only for a simulator, not $2"; return 1; }
+      return 0
+    fi
+    temp_simulator "$first" || { echo "ios: couldn't make a simulator for part $part of the flows"; return 1; }
+    claim "ios-$taken" "$taken" || true
+    echo "ios: part $part of the flows runs on a temporary $1 simulator like $first, deleted afterwards"
+    return 0
+  fi
   candidates=$(simulators "$1" "$2")
   if [ -z "$candidates" ] && [ -n "$2" ]; then
     candidates=$(real_ios "$2")
@@ -557,11 +601,54 @@ device_width() {
     /Physical size/ { split($2, s, "x"); w = s[1] + 0 < s[2] + 0 ? s[1] : s[2] } /Physical density/ { d = $2 }
     END { if (d) print int(w * 160 / d) }'
 }
+avd_home=${ANDROID_AVD_HOME:-${ANDROID_USER_HOME:-$HOME/.android}/avd}
+# an AVD's folder: its .ini names it (an AVD can be renamed, and keep its folder), else <name>.avd
+avd_dir() { d=$(sed -n 's/^path=//p' "$avd_home/$1.ini" 2> /dev/null | head -n 1); echo "${d:-$avd_home/$1.avd}"; }
+# a temporary AVD with the settings of AVD $1 (not its data), in $tavd, for a part of the flows after the first
+temp_avd() {
+  tavd="amk_part_${part_k}_$$_$(printf %s "$1" | tr -c 'A-Za-z0-9._-' _)"
+  [ -f "$(avd_dir "$1")/config.ini" ] && mkdir -p "$avd_home/$tavd.avd" || return 1
+  temps="$temps avd:$tavd"
+  grep -v -E '^(avd\.ini\.displayname|AvdId|avd\.id|fastboot\.)' "$(avd_dir "$1")/config.ini" > "$avd_home/$tavd.avd/config.ini"
+  printf 'avd.ini.displayname=%s\nAvdId=%s\n' "$tavd" "$tavd" >> "$avd_home/$tavd.avd/config.ini"
+  printf 'avd.ini.encoding=UTF-8\npath=%s\npath.rel=avd/%s.avd\ntarget=%s\n' "$avd_home/$tavd.avd" "$tavd" \
+    "$(sed -n 's/^target=//p' "$avd_home/$1.ini" 2> /dev/null | head -n 1)" > "$avd_home/$tavd.ini"
+}
+# a temporary simulator of the same type and iOS version as simulator $1, in $taken, for a part after the first
+temp_simulator() {
+  like=$(xcrun simctl list devices available -j | UDID=$1 node -e '
+    for (const [rt, ds] of Object.entries(JSON.parse(require("fs").readFileSync(0, "utf8")).devices))
+      for (const d of ds) if (d.udid === process.env.UDID) console.log(d.deviceTypeIdentifier, rt);')
+  [ -n "$like" ] || return 1
+  taken=$(xcrun simctl create "amk part $part_k of $part_n ($$)" $like) && [ -n "$taken" ] || return 1
+  temps="$temps ios:$taken"
+}
+# waits until adb no longer lists the emulator $1 (up to $2 seconds): it has stopped, or is about to
+gone() { tries=0; while [ -n "$(running_emulator "$1" 2> /dev/null || true)" ] && [ "$tries" -lt "$2" ]; do tries=$((tries + 1)); sleep 1; done; }
+# deletes the temporary devices this run made: their data goes with them
+drop_temps() {
+  for t in $temps; do
+    case $t in
+      ios:*) xcrun simctl shutdown "${t#ios:}" > /dev/null 2>&1 || true; xcrun simctl delete "${t#ios:}" > /dev/null 2>&1 || true ;;
+      avd:*)
+        n=${t#avd:}
+        s=$(running_emulator "$n" 2> /dev/null || true)
+        [ -z "$s" ] || "$adb" -s "$s" emu kill > /dev/null 2>&1 || true
+        gone "$n" 30
+        # an emulator can hold its files for a moment after adb lets it go (on Windows, a file in use can't be deleted)
+        tries=0
+        until rm -rf "${avd_home:?}/$n.avd" "$avd_home/$n.ini" 2> /dev/null && [ ! -e "$avd_home/$n.avd" ] || [ "$tries" -ge 5 ]; do
+          tries=$((tries + 1)); sleep 2
+        done ;;
+    esac
+  done
+  temps=""
+}
 # the same for an emulator that isn't running, from its config.ini
 avd_width() {
   awk -F' *= *' '$1 == "hw.lcd.width" { w = $2 } $1 == "hw.lcd.height" { h = $2 } $1 == "hw.lcd.density" { d = $2 }
     END { if (d) print int((w + 0 < h + 0 ? w : h) * 160 / d) }' \
-    "${ANDROID_AVD_HOME:-${ANDROID_USER_HOME:-$HOME/.android}/avd}/$1.avd/config.ini" 2> /dev/null || true
+    "$(avd_dir "$1")/config.ini" 2> /dev/null || true
 }
 # the emulators of the kind $1 (phone or tablet), best first: the running ones, then the others
 emulators() {
@@ -577,6 +664,29 @@ emulators() {
 # best one, once it's free. Empty when there's none of that kind. An emulator is claimed by its name, however named
 take_android() {
   taken="" pick=""
+  if [ "$part_k" -gt 1 ]; then
+    src=$3
+    if [ -n "$2" ]; then
+      case $2 in
+        emulator-*) src=$("$adb" -s "$2" emu avd name 2> /dev/null | head -n 1 | tr -d '\r') ;;
+        *) echo "android: part $part of the flows runs on a copy of the device, which works only for an emulator, not $2"; return 1 ;;
+      esac
+    fi
+    [ -n "$src" ] || src=$(emulators "$1" | head -n 1)
+    [ -n "$src" ] || return 0
+    temp_avd "$src" || { echo "android: couldn't copy emulator $src for part $part of the flows"; return 1; }
+    taken=$(start_emulator "$tavd") || { echo "android: the copy of emulator $src for part $part of the flows didn't start"; return 1; }
+    # a new emulator's first boot drops its adb connection during flows ("device offline"), however long it's left;
+    # started again, it doesn't (measured: 5 of 6 runs failed on first boots, 6 of 6 passed after a restart). It's
+    # stopped through its console, as adb itself can be offline then, and started again
+    android_ready "$taken" || { echo "android: the copy of emulator $src for part $part of the flows didn't start"; return 1; }
+    "$adb" -s "$taken" emu kill > /dev/null 2>&1 || true
+    gone "$tavd" 60
+    taken=$(start_emulator "$tavd") || { echo "android: the copy of emulator $src for part $part of the flows didn't start again"; return 1; }
+    claim "android-avd-$tavd" "$taken" || true
+    echo "android: part $part of the flows runs on a temporary copy of emulator $src, deleted afterwards"
+    return 0
+  fi
   if [ -n "$2" ]; then
     key=android-$2
     case $2 in emulator-*) key=android-avd-$("$adb" -s "$2" emu avd name 2> /dev/null | head -n 1 | tr -d '\r') ;; esac
@@ -763,35 +873,96 @@ build() {
 plan() {
   set -- $(node -e 'const os = require("os"), fs = require("fs"), s = fs.statfsSync(".");
     console.log(Math.round(os.totalmem() / 2 ** 30), Math.round(s.bavail * s.bsize / 2 ** 30))')
-  have="$1 GB of memory, $2 GB free disk, Maestro $(maestro_version)"
-  checks=""
-  if [ "$(uname -s)" = Darwin ]; then
-    for kind in phone tablet; do screens_for ios | grep -q "^$kind-" && checks="$checks ios:$kind"; done
-  fi
-  for kind in phone tablet; do screens_for android | grep -q "^$kind-" && checks="$checks android:$kind"; done
+  mem=$1
+  case ${AMK_MEMORY_GB:-x} in *[!0-9]*) ;; *) mem=$AMK_MEMORY_GB ;; esac
+  have="$mem GB of memory, $2 GB free disk, Maestro $(maestro_version)"
+  # the devices to check, phones first and the platforms mixed, so a round of two has one of each
+  # (each platform's screens are read first: grep -q stops reading at its first match, and a writer still going then
+  # says "Broken pipe")
+  checks="" ios_screens="" android_screens=$(screens_for android)
+  [ "$(uname -s)" != Darwin ] || ios_screens=$(screens_for ios)
+  for kind in phone tablet; do
+    if echo "$ios_screens" | grep -q "^$kind-"; then checks="$checks ios:$kind"; fi
+    if echo "$android_screens" | grep -q "^$kind-"; then checks="$checks android:$kind"; fi
+  done
   n=$(echo $checks | wc -w | tr -d ' ')
+  # a device under test takes about 6 GB (a simulator or an emulator with Maestro: an iPhone simulator and a phone
+  # emulator at once measured 11 GB), and macOS and the rest about 4 GB: 2 devices at once from 16 GB, 4 from 28 GB
+  slots=$(( (mem - 4) / 6 ))
+  case ${AMK_DEVICES:-x} in *[!0-9]*) ;; *) slots=$AMK_DEVICES ;; esac
   why=""
   case ${AMK_PARALLEL:-} in
     0) why="AMK_PARALLEL=0" ;;
-    1) ;;
+    1) [ "$slots" -ge "$n" ] || slots=$n ;;
     *)
-      [ "$1" -ge 32 ] || why="it needs 32 GB of memory"
+      if [ "$slots" -lt 2 ]; then why=${AMK_DEVICES:+AMK_DEVICES=$AMK_DEVICES}; why=${why:-it needs 16 GB of memory}; fi
       [ "$2" -ge 20 ] || why="${why:+$why and }it needs 20 GB free disk"
       maestro_at_least 2.6.0 || why="${why:+$why and }it needs Maestro 2.6 or later" ;;
   esac
-  [ "$n" -ge 2 ] || why="there's one device to check"
+  # room for more devices than kinds: each kind's flows split into parts, each part on a device of its own
+  # A part's device is one more: about 6 GB for a simulator, 8 GB for an emulator (measured with 4 GB of guest memory),
+  # so parts need room for every kind's devices at once; AMK_DEVICES says how many outright
+  flows=$(flow_files | grep -c . || true)
+  parts=1
+  if [ "$slots" -gt "$n" ] && [ "$flows" -ge 2 ]; then
+    parts=$((slots / n))
+    case ${AMK_DEVICES:-x} in
+      *[!0-9]*)
+        per=0
+        for c in $checks; do case $c in ios:*) per=$((per + 6)) ;; *) per=$((per + 8)) ;; esac; done
+        [ "$parts" -le $(( (mem - 4) / per )) ] || parts=$(( (mem - 4) / per )) ;;
+    esac
+    [ "$parts" -le "$flows" ] || parts=$flows
+    [ "$parts" -ge 1 ] || parts=1
+  fi
+  [ "$n" -ge 2 ] || [ "$parts" -ge 2 ] || why="there's one device to check"
   if [ -n "$why" ]; then
     echo "plan: $have: one device at a time ($why; AMK_PARALLEL=1 overrides)"
     echo "  sh scripts/amk/verify.sh all${args:+ $args}"
     return
   fi
-  echo "plan: $have: check the $n devices at the same time"
+  # one command per device, a kind's parts next to each other. A real iPhone, iPad or phone can't be copied for a
+  # part, so it runs all its flows
+  jobs=""
+  for c in $checks; do
+    p=$parts
+    case $c in
+      ios:phone) [ -z "${AMK_IOS_DEVICE:-}" ] || [ -n "$(simulators iPhone "$AMK_IOS_DEVICE")" ] || p=1 ;;
+      ios:tablet) [ -z "${AMK_IOS_TABLET:-}" ] || [ -n "$(simulators iPad "$AMK_IOS_TABLET")" ] || p=1 ;;
+      android:phone) case ${AMK_ANDROID_DEVICE:-emulator-} in emulator-*) ;; *) p=1 ;; esac ;;
+      android:tablet) case ${AMK_ANDROID_TABLET:-emulator-} in emulator-*) ;; *) p=1 ;; esac ;;
+    esac
+    i=1
+    while [ "$i" -le "$p" ]; do
+      cmd="sh scripts/amk/verify.sh ${c%:*} --no-build --screens ${c#*:}"
+      [ "$p" = 1 ] || cmd="$cmd --part $i/$p"
+      jobs="$jobs$cmd${args:+ $args}
+"
+      i=$((i + 1))
+    done
+  done
+  total=$(printf %s "$jobs" | grep -c .)
+  rounds=$(( (total + slots - 1) / slots ))
+  if [ "$rounds" -gt 1 ]; then echo "plan: $have: $slots devices at a time, in $rounds rounds"
+  elif [ "$parts" -gt 1 ]; then echo "plan: $have: check on $total devices at the same time, each kind's flows in parts"
+  else echo "plan: $have: check the $n devices at the same time"; fi
   echo "  1. sh scripts/amk/verify.sh quick${args:+ $args}"
   echo "  2. sh scripts/amk/verify.sh build${args:+ $args}"
-  echo "  3. at the same time, each in its own subagent (m-device-checker), which checks its screenshots and reports:"
-  for c in $checks; do echo "     sh scripts/amk/verify.sh ${c%:*} --no-build --screens ${c#*:}${args:+ $args}"; done
+  r=1
+  while [ "$r" -le "$rounds" ]; do
+    if [ "$rounds" = 1 ]; then echo "  3. at the same time, each in its own subagent (m-device-checker), which checks its screenshots and reports:"
+    elif [ "$r" = 1 ]; then echo "  3. round 1 of $rounds, at the same time, each in its own subagent (m-device-checker), which checks its screenshots and reports:"
+    else echo "  $((r + 2)). round $r of $rounds, once round $((r - 1)) has reported, the same way:"; fi
+    printf %s "$jobs" | sed -n "$(( (r - 1) * slots + 1 )),$(( r * slots ))p" | sed 's/^/     /'
+    r=$((r + 1))
+  done
   [ "$(uname -s)" = Darwin ] || echo "  iOS isn't checked here: it needs a Mac with Xcode"
 }
+
+# a part beyond the flows (more parts than flows) has nothing to check: no build, and no device made for it
+if [ -n "$part" ] && [ -z "$(flow_files)" ]; then
+  case $mode in ios | android | all) echo "verify: part $part has no flows: there are fewer flows than parts"; exit 0 ;; esac
+fi
 
 case $mode in
   quick) quick ;;

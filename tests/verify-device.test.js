@@ -31,6 +31,7 @@ case "$1" in
       fi
       case "$1 $2 $3" in
         "emu avd name") awk -v s="$s" '$1 == s { print $2; print "OK" }' "$FAKE_STATE" ;;
+        "emu kill ") awk -v s="$s" '$1 != s' "$FAKE_STATE" > "$FAKE_STATE.left" && mv "$FAKE_STATE.left" "$FAKE_STATE" ;;
         "shell getprop sys.boot_completed") echo 1 ;;
         "shell getprop ro.product.cpu.abi") echo arm64-v8a ;;
       esac ;;
@@ -115,6 +116,12 @@ touch "$out/shot.png"`;
   assert.match(r.out, /the device went offline during flow smoke; running it once more/);
   assert.match(r.out, /android: flows 1\/1 passed, 1 screenshots/);
   assert.match(r.calls, /^reconnect offline$/m);
+  // another emulator starting or stopping can drop it for a moment as Maestro starts, which Maestro says in the flow's log
+  const missedOnce = `out=$(echo "$@" | sed 's/.*--test-output-dir \\([^ ]*\\).*/\\1/')
+if [ ! -f "$out/../tried" ]; then touch "$out/../tried"; echo "Device emulator-5556 was requested, but it is not connected."; exit 1; fi
+touch "$out/shot.png"`;
+  const missed = verifyAndroid({ connected: ['emulator-5556 P35'], build: true, maestro: missedOnce });
+  assert.match(missed.out, /the device went offline during flow smoke; running it once more\nandroid: flows 1\/1 passed, 1 screenshots/);
   const failing = verifyAndroid({ connected: ['emulator-5556 P35'], build: true, maestro: 'echo "Assert that id: x is visible... FAILED"; exit 1' });
   assert.doesNotMatch(failing.out, /once more/, 'other failures aren\'t run again');
   assert.match(failing.out, /flow smoke failed, see \.amk\/evidence\/run\/android\/smoke\.log and Maestro's own log \.amk\/evidence\/run\/maestro-logs\/android-smoke\/maestro\.log/);
@@ -194,19 +201,90 @@ test('verify.sh build and --no-build: build once, then check each device without
   assert.match(nothing.out, /android: there's no build to check yet: run sh scripts\/amk\/verify\.sh build first/);
 });
 
-test('verify.sh plan: every device at the same time where the machine has room, else one command', { skip }, () => {
+test('verify.sh plan: as many devices at once as memory allows (about 6 GB each, 4 GB kept), in rounds; else one command', { skip }, () => {
   const mac = process.platform === 'darwin';
   const plan = (env, rotates = true) => verifyAndroid({ connected: [], rotates, env, args: ['plan', '--spec', 'x1'] }).out;
-  const parallel = plan({ AMK_PARALLEL: '1' });
-  assert.match(parallel, new RegExp(`^plan: \\d+ GB of memory, \\d+ GB free disk, Maestro 2\\.11\\.0: check the ${mac ? 4 : 2} devices at the same time$`, 'm'));
-  assert.match(parallel, /^ {2}1\. sh scripts\/amk\/verify\.sh quick --spec x1\n {2}2\. sh scripts\/amk\/verify\.sh build --spec x1\n {2}3\. at the same time, each in its own subagent \(m-device-checker\)/m);
-  const checks = (mac ? ['ios phone', 'ios tablet'] : []).concat(['android phone', 'android tablet'])
-    .map(c => `     sh scripts/amk/verify.sh ${c.replace(' ', ' --no-build --screens ')} --spec x1`).join('\n');
-  assert.ok(parallel.includes(checks), parallel);
-  assert.match(plan({ AMK_PARALLEL: '0' }), /one device at a time \(AMK_PARALLEL=0; AMK_PARALLEL=1 overrides\)\n {2}sh scripts\/amk\/verify\.sh all --spec x1\n/);
-  assert.match(plan({ FAKE_MAESTRO_VERSION: '2.2.0' }), /one device at a time \(.*it needs Maestro 2\.6 or later; AMK_PARALLEL=1 overrides\)/);
+  const cmd = c => `     sh scripts/amk/verify.sh ${c.replace(' ', ' --no-build --screens ')} --spec x1`;
+  // room for every device: one round, the phones first
+  const all = plan({ AMK_MEMORY_GB: '32' });
+  assert.match(all, new RegExp(`^plan: 32 GB of memory, \\d+ GB free disk, Maestro 2\\.11\\.0: check the ${mac ? 4 : 2} devices at the same time$`, 'm'));
+  assert.match(all, /^ {2}1\. sh scripts\/amk\/verify\.sh quick --spec x1\n {2}2\. sh scripts\/amk\/verify\.sh build --spec x1\n {2}3\. at the same time, each in its own subagent \(m-device-checker\)/m);
+  assert.ok(all.includes((mac ? ['ios phone', 'android phone', 'ios tablet', 'android tablet'] : ['android phone', 'android tablet']).map(cmd).join('\n')), all);
+  // 16 GB holds two: an iPhone and a phone emulator first, then the tablets
+  if (mac) {
+    const rounds = plan({ AMK_MEMORY_GB: '16' });
+    assert.match(rounds, /^plan: 16 GB of memory, .*: 2 devices at a time, in 2 rounds$/m);
+    assert.ok(rounds.includes(`  3. round 1 of 2, at the same time, each in its own subagent (m-device-checker), which checks its screenshots and reports:\n${['ios phone', 'android phone'].map(cmd).join('\n')}\n  4. round 2 of 2, once round 1 has reported, the same way:\n${['ios tablet', 'android tablet'].map(cmd).join('\n')}\n`), rounds);
+  }
+  assert.match(plan({ AMK_MEMORY_GB: '12' }), /one device at a time \(it needs 16 GB of memory; AMK_PARALLEL=1 overrides\)\n {2}sh scripts\/amk\/verify\.sh all --spec x1\n/);
+  assert.match(plan({ AMK_MEMORY_GB: '64', AMK_DEVICES: '1' }), /one device at a time \(AMK_DEVICES=1; AMK_PARALLEL=1 overrides\)/);
+  assert.match(plan({ AMK_PARALLEL: '0' }), /one device at a time \(AMK_PARALLEL=0; AMK_PARALLEL=1 overrides\)/);
+  assert.match(plan({ AMK_MEMORY_GB: '12', AMK_PARALLEL: '1' }), new RegExp(`check the ${mac ? 4 : 2} devices at the same time`));
+  assert.match(plan({ AMK_MEMORY_GB: '32', FAKE_MAESTRO_VERSION: '2.2.0' }), /one device at a time \(it needs Maestro 2\.6 or later; AMK_PARALLEL=1 overrides\)/);
   // a phone-only app off a Mac: one device, nothing to share out
   if (!mac) assert.match(plan({ AMK_PARALLEL: '1' }, false), /one device at a time \(there's one device to check/);
+});
+
+const threeFlows = { '.maestro/x1-a.yaml': 'appId: x\n---\n- launchApp\n', '.maestro/x1-b.yaml': 'appId: x\n---\n- launchApp\n', '.maestro/x1-c.yaml': 'appId: x\n---\n- launchApp\n' };
+
+test('verify.sh plan: room for more devices than kinds splits each kind\'s flows into parts, each on its own device; never a real device\'s', { skip }, () => {
+  const mac = process.platform === 'darwin';
+  const plan = env => verifyAndroid({ connected: [], rotates: false, env, files: threeFlows, args: ['plan', '--spec', 'x1'] }).out;
+  // a phone-only app: a part's device counts 6 GB for a simulator and 8 GB for an emulator, so 28 GB doesn't split an
+  // iPhone and a phone emulator (2 × 14 > 24), and 32 GB does; Android alone needs 20 GB for 2 parts
+  if (mac) assert.match(plan({ AMK_MEMORY_GB: '28' }), /check the 2 devices at the same time/);
+  else {
+    assert.match(plan({ AMK_MEMORY_GB: '16' }), /one device at a time \(there's one device to check/);
+    assert.match(plan({ AMK_MEMORY_GB: '20' }), /check on 2 devices at the same time, each kind's flows in parts/);
+  }
+  // AMK_DEVICES says how many outright
+  assert.match(plan({ AMK_MEMORY_GB: '16', AMK_DEVICES: mac ? '4' : '2' }), /each kind's flows in parts/);
+  const out = plan({ AMK_MEMORY_GB: '32' });
+  const kinds = mac ? ['ios', 'android'] : ['android'];
+  const per = mac ? 2 : 3;
+  assert.match(out, new RegExp(`check on ${kinds.length * per} devices at the same time, each kind's flows in parts`));
+  for (const k of kinds) for (let i = 1; i <= per; i++) assert.ok(out.includes(`     sh scripts/amk/verify.sh ${k} --no-build --screens phone --part ${i}/${per} --spec x1\n`), out);
+  // a phone plugged in can't be copied for a part: it runs all its flows
+  const phone = plan({ AMK_MEMORY_GB: '32', AMK_ANDROID_DEVICE: 'ZX1' });
+  assert.ok(phone.includes('     sh scripts/amk/verify.sh android --no-build --screens phone --spec x1\n'), phone);
+  assert.doesNotMatch(phone, /verify\.sh android .*--part/);
+});
+
+test('verify.sh --part k/n: its share of the flows, in <screen>/part-k/; a later part on a temporary copy of the emulator, deleted afterwards', { skip }, () => {
+  // the flows each run records its screen and flow (from Maestro's debug folder) and the device
+  const maestro = String.raw`debug=$(echo "$@" | sed 's/.*--debug-output \([^ ]*\).*/\1/'); out=$(echo "$@" | sed 's/.*--test-output-dir \([^ ]*\).*/\1/'); dev=$(echo "$@" | sed 's/.*--device \([^ ]*\).*/\1/')
+echo "$(basename "$debug") on $dev" >> "$FAKE_STATE.flows"; touch "$out/$(basename "$debug" | sed 's/.*-//').png"`;
+  // the AVD as Android Studio may leave it: renamed, its folder still under the old name
+  const avd = app => {
+    fs.mkdirSync(path.join(app, '../avd/Pixel_9.avd'), { recursive: true });
+    fs.writeFileSync(path.join(app, '../avd/Pixel_9.avd/config.ini'), 'AvdId=P35\navd.ini.displayname=P35\nhw.lcd.density=420\nhw.lcd.height=2424\nhw.lcd.width=1080\nhw.ramSize=4096\n');
+    fs.writeFileSync(path.join(app, '../avd/P35.ini'), `path=${path.join(app, '../avd/Pixel_9.avd')}\ntarget=android-35\n`);
+  };
+  const flowsRan = r => fs.readFileSync(path.join(r.app, '../state.flows'), 'utf8').trim().split('\n');
+  const args = part => ['android', '--flavor', 'x', '--label', 'run', '--spec', 'x1', '--part', part];
+  // part 1 of 2: flows a and c on the usual emulator; what an earlier run left beside the parts goes, part 2's stays
+  const first = verifyAndroid({ connected: ['emulator-5554 P35'], avds: 'P35', build: true, maestro, prepare: avd, args: args('1/2'),
+    files: { ...threeFlows, '.amk/evidence/run/android/old.png': '', '.amk/evidence/run/android/part-3/stale.png': '', '.amk/evidence/run/android/part-2/b.png': '' } });
+  assert.strictEqual(first.status, 0, first.out);
+  assert.deepStrictEqual(flowsRan(first), ['android-x1-a on emulator-5554', 'android-x1-c on emulator-5554']);
+  assert.match(first.out, /^android: flows 2\/2 passed, 2 screenshots in \.amk\/evidence\/run\/android\/part-1$/m);
+  assert.deepStrictEqual(fs.readdirSync(path.join(first.app, '.amk/evidence/run/android')).sort(), ['part-1', 'part-2']);
+  assert.ok(fs.existsSync(path.join(first.app, '.amk/evidence/run/android/part-2/b.png')), 'another part\'s evidence stays');
+  assert.doesNotMatch(first.calls, /reboot|emu kill/, 'the usual emulator isn\'t restarted');
+  // part 2 of 2: flow b, on a copy of the emulator's settings, deleted afterwards
+  const second = verifyAndroid({ connected: ['emulator-5554 P35'], avds: 'P35', build: true, maestro, prepare: avd, args: args('2/2'), files: threeFlows });
+  assert.strictEqual(second.status, 0, second.out);
+  assert.match(second.out, /^android: part 2\/2 of the flows runs on a temporary copy of emulator P35, deleted afterwards$/m);
+  const [ran] = flowsRan(second);
+  assert.match(ran, /^android-x1-b on emulator-56\d\d$/, 'not the emulator part 1 uses');
+  assert.match(second.calls, /^-s emulator-56\d\d emu kill$/m, 'the new copy starts twice: on its first boot it drops its adb connection');
+  assert.match(second.out, /^android: checking on emulator-56\d\d$/m);
+  assert.match(second.out, /^android: flows 1\/1 passed, 1 screenshots in \.amk\/evidence\/run\/android\/part-2$/m);
+  assert.deepStrictEqual(fs.readdirSync(path.join(second.app, '../avd')).sort(), ['P35.ini', 'Pixel_9.avd'], 'the copy is gone');
+  // a part beyond the flows has nothing to run; a phone plugged in isn't copied
+  assert.match(verifyAndroid({ connected: ['emulator-5554 P35'], avds: 'P35', build: true, maestro, args: ['android', '--flavor', 'x', '--spec', 'x1', '--part', '4/4'], files: threeFlows }).out, /^verify: part 4\/4 has no flows: there are fewer flows than parts$/m);
+  assert.match(verifyAndroid({ connected: ['ZX1 - phone'], build: true, maestro, env: { AMK_ANDROID_DEVICE: 'ZX1' }, args: args('2/2'), files: threeFlows }).out, /part 2\/2 of the flows runs on a copy of the device, which works only for an emulator, not ZX1/);
+  assert.match(verifyAndroid({ connected: [], args: ['android', '--part', '3'] }).out, /^verify: --part takes k\/n, such as 2\/3$/m);
 });
 
 test("verify.sh: Maestro 2.7 and later keep takeScreenshot files in the debug output; they join the screen's evidence, an earlier run's don't", { skip }, () => {
@@ -285,6 +363,7 @@ echo "xcrun $*" >> "$FAKE_STATE.calls"
 to() { while [ $# -gt 0 ]; do [ "$1" != --json-output ] || { echo "$2"; return; }; shift; done; }
 case "$1 $2 $3 $4" in
   "simctl list"*) echo '${JSON.stringify(sims)}' ;;
+  "simctl create"*) echo SIM-TEMP-1 ;;
   "devicectl list"*) echo '${JSON.stringify(reals).replace(/'/g, "'\\''")}' > "$(to "$@")" ;;
   "devicectl device process launch") if [ -n "$FAKE_UNTRUSTED" ] || { [ -n "$FAKE_REFUSED_ONCE" ] && [ ! -f "$FAKE_STATE.refused" ] && touch "$FAKE_STATE.refused"; }; then
       echo "ERROR: Unable to launch com.example.app because it has an invalid code signature, inadequate entitlements or its profile has not been explicitly trusted by the user."; exit 1
@@ -405,6 +484,18 @@ test('verify.sh ios: what a real device needs first is said before any flow runs
   assert.match(pods.out, /^Evidence: /m, 'verify.sh carries on to its end');
   assert.notStrictEqual(pods.status, 0);
   assert.doesNotMatch(sim.calls, /devicectl device|-destination id=/);
+});
+
+test('verify.sh ios --part: a later part on a temporary simulator of the same type and iOS version, deleted afterwards', { skip: skipIos }, () => {
+  const r = verifyIos({ env: { AMK_IOS_DEVICE: 'iPhone 17' }, files: threeFlows, args: ['ios', '--label', 'run', '--screens', 'phone-portrait', '--spec', 'x1', '--part', '2/2'] });
+  assert.match(r.out, /^ios: part 2\/2 of the flows runs on a temporary iPhone simulator like SIM-1, deleted afterwards$/m);
+  assert.match(r.calls, /^xcrun simctl create amk part 2 of 2 \(\d+\) com\.apple\.CoreSimulator\.SimDeviceType\.iPhone-17 com\.apple\.CoreSimulator\.SimRuntime\.iOS-26-5$/m);
+  assert.match(r.calls, /^xcrun simctl install SIM-TEMP-1 /m);
+  assert.doesNotMatch(r.calls, /simctl (boot|install) SIM-1/, 'the simulator part 1 uses is left to it');
+  assert.match(r.calls, /^xcrun simctl delete SIM-TEMP-1$/m);
+  // a real iPhone can't be copied for a part
+  assert.match(verifyIos({ env: { AMK_IOS_DEVICE: "Tester's iPhone" }, files: threeFlows, args: ['ios', '--label', 'run', '--spec', 'x1', '--part', '2/2'] }).out,
+    /^ios: part 2\/2 of the flows runs on a copy of the device, which works only for a simulator, not Tester's iPhone$/m);
 });
 
 test("verify.sh: a screen whose screenshots aren't in its orientation runs once more, then fails; the device didn't turn", { skip }, () => {
