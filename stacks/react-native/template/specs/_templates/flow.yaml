@@ -1,6 +1,10 @@
 # Copy to .maestro/<id>.yaml. verify.sh runs it on iOS and Android and keeps the screenshots as evidence.
 # Tap by testID (give every interactive element one); tapping by text can hit a label instead of the control.
 # Test logins: ${MAESTRO_EMAIL}, ${MAESTRO_PASSWORD} and the like, set in .maestro/.env.local, which isn't committed.
+# On a real iPhone (maestro-runner): text with an apostrophe can't be searched for (use a testID), and permission
+# prompts aren't answered for the flow (tapOn: { text: "Allow", optional: true }). setAirplaneMode works only on an
+# iPhone in English (it looks for "Airplane Mode" in Settings) and leaves Settings in front: launchApp: { stopApp: false }
+# brings the app back. verify.sh opens Settings on its main page before such a flow, and turns airplane mode off after.
 appId: ${APP_ID}  # set by verify.sh
 ---
 - launchApp:

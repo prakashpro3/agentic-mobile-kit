@@ -12,6 +12,7 @@
 #   plan            how many devices this machine's memory can check at the same time, and the commands to run:
 #                   one per device, in rounds when they don't all fit, the flows split into parts when there's room
 #   --spec <id>     run .maestro/<id>*.yaml and save evidence in .amk/evidence/<id>/
+#   --flow <file>   run only this flow: a path in the project, or anywhere (an absolute path)
 #   --label <n>     evidence folder name (default: the spec id, or no-spec)
 #   --flavor <name> Android product flavor to check (default: the first one in build.gradle)
 #   --scheme <name> iOS scheme to check (default: the one named like the workspace)
@@ -76,6 +77,10 @@ if [ -n "$part" ]; then
 fi
 
 root=$(pwd)
+# --flow: a path in the project, or an absolute one (C:/… on Windows too); a Windows path's backslashes become slashes
+case $flow in *\\*) flow=$(printf '%s' "$flow" | tr '\\' /) ;; esac
+case $flow in "" | /* | [A-Za-z]:/*) ;; *) flow=$root/$flow ;; esac
+[ -z "$flow" ] || [ -f "$flow" ] || { echo "verify: no flow file $flow"; exit 2; }
 . scripts/amk/maestro-env.sh
 # runs without a spec or a label (verify.sh quick, mostly) share one folder, so they don't push out a feature's
 evidence="$root/.amk/evidence/${label:-${spec:-no-spec}}"
@@ -97,7 +102,7 @@ status=0
 
 flow_files() {
   {
-    if [ -n "$flow" ]; then echo "$root/$flow"
+    if [ -n "$flow" ]; then echo "$flow"
     elif [ -n "$spec" ]; then find "$root/.maestro" -maxdepth 1 -iname "$spec*.yaml" 2>/dev/null | sort
     else find "$root/.maestro" -maxdepth 1 -name '*.yaml' 2>/dev/null | sort
     fi
@@ -182,13 +187,27 @@ run_flow() { # screen device app_id file name orientation
     # pressing the last button of the app's own alerts too, such as a Delete. Maestro never answers an app's alerts.
     # So one that says to leave permissions alone comes first, where it never runs (on Android only)
     on_complete="" turn=""
+    # what's beside the flow, and below it in the project (its subflows): only beside it, for a flow outside the
+    # project, whose folder may hold anything
+    case $4 in "$root"/*) depth="" ;; *) depth="-maxdepth 1" ;; esac
+    # a flow that turns airplane mode on and fails before turning it off leaves the device offline, and an offline
+    # device doesn't open a development-signed app: every later flow would fail as if the team weren't trusted.
+    # maestro-runner runs this one's onFlowComplete, not the flow's own. It looks for the switch on Settings' main page,
+    # but Settings opens on the page it was last left on: restarted, it opens on its main page (for the flow's own
+    # setAirplaneMode too). Optional, so a flow that passed never fails here. A few seconds, so only where flows use it
+    if find "$(dirname "$4")" $depth \( -path "$root/.amk" -o -name node_modules \) -prune -o \( -name '*.yaml' -o -name '*.yml' \) \
+      -exec grep -qs setAirplaneMode {} \; -print | grep -q .; then
+      xcrun devicectl device process launch --device "$2" --terminate-existing com.apple.Preferences > /dev/null 2>&1 || true
+      on_complete='  - setAirplaneMode:\n      value: disabled\n      optional: true\n'
+    fi
     if [ "$6" != PORTRAIT ]; then
       # WebDriverAgent turns the device, then fails the step unless the app in front turned too: here the home
       # screen, which most iPhones never turn. Whether the app turned shows in its screenshots. It knows
       # LANDSCAPE_LEFT only as "landscape"
-      on_complete='onFlowComplete:\n  - setOrientation:\n      orientation: PORTRAIT\n      optional: true\n'
+      on_complete="$on_complete"'  - setOrientation:\n      orientation: PORTRAIT\n      optional: true\n'
       turn='- setOrientation:\n    orientation: landscape\n    optional: true\n'
     fi
+    [ -z "$on_complete" ] || on_complete="onFlowComplete:\n$on_complete"
     printf "appId: %s\n${on_complete}---\n- runFlow:\n    when:\n      platform: Android\n    commands:\n      - launchApp:\n          permissions:\n            all: unset\n${turn}- runFlow: '%s'\n" "$3" "$native" > "$debug/screen.yaml"
     target=$debug/screen.yaml
   elif [ "$6" != PORTRAIT ]; then
@@ -200,7 +219,7 @@ run_flow() { # screen device app_id file name orientation
   if is_real "$2"; then
     # it also saves each named screenshot next to its flow file: the ones it makes there move to its log folder, so
     # the project stays as it was (they're in its report too)
-    pngs() { find "$(dirname "$4")" \( -path "$root/.amk" -o -name node_modules \) -prune -o -name '*.png' -print | sort; }
+    pngs() { find "$(dirname "$4")" $depth \( -path "$root/.amk" -o -name node_modules \) -prune -o -name '*.png' -print | sort; }
     pngs "$@" > "$debug/.pngs"
     # with the app's build: on a real device, clearState installs the app again
     MAESTRO_RUNNER_NO_TELEMETRY=1 DO_NOT_TRACK=1 npx -y "$runner" --platform ios --driver wda --device "$2" \
@@ -568,7 +587,7 @@ launch_check() {
     tries=$((tries + 1))
     case $said in
       *'explicitly trusted'*) [ "$tries" -lt 3 ] || {
-          echo "ios: $1 doesn't open apps from this team yet: on it, Settings > General > VPN & Device Management > Developer App > Trust, then run this again"
+          echo "ios: $1 doesn't open apps from this team: on it, trust the team (Settings > General > VPN & Device Management > Developer App > Trust), and turn airplane mode off (offline, it doesn't open apps signed for development). Then run this again"
           return 1; } ;;
       *) echo "ios: the app didn't open on $1 (is it unlocked?), see ${log#"$root"/}"; return 1 ;;
     esac

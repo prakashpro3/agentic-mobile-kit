@@ -361,6 +361,26 @@ echo "Launch app... COMPLETED"; touch "$out/shot.png"`;
   assert.match(r.out, /android: Maestro stopped before flow smoke started; running it once more\nandroid: flows 1\/1 passed, 1 screenshots/);
 });
 
+test('verify.sh --flow: a path in the project or an absolute one runs that flow; a missing file stops the run', { skip }, () => {
+  const which = String.raw`for last; do :; done; echo "$last" >> "$FAKE_STATE.maestro"; touch "$(echo "$@" | sed 's/.*--test-output-dir \([^ ]*\).*/\1/')/shot.png"`;
+  const run = (flow, files = {}) => verifyAndroid({ connected: ['emulator-5556 P35'], build: true, maestro: which, files, args: ['android', '--flavor', 'x', '--label', 'run', '--screens', 'phone-portrait', '--flow', flow] });
+  const rel = run('.maestro/x1-home.yaml', { '.maestro/x1-home.yaml': 'appId: ${APP_ID}\n---\n- launchApp\n' });
+  assert.strictEqual(fs.realpathSync(rel.maestro.trim()), fs.realpathSync(path.join(rel.app, '.maestro/x1-home.yaml')));
+  assert.match(rel.out, /^android: flows 1\/1 passed/m);
+  // a Windows path's backslashes
+  const back = run('.maestro\\x1-home.yaml', { '.maestro/x1-home.yaml': 'appId: ${APP_ID}\n---\n- launchApp\n' });
+  assert.strictEqual(fs.realpathSync(back.maestro.trim()), fs.realpathSync(path.join(back.app, '.maestro/x1-home.yaml')));
+  const outside = tmpDir('amk-flow-');
+  fs.writeFileSync(path.join(outside, 'probe.yaml'), 'appId: ${APP_ID}\n---\n- launchApp\n');
+  const abs = run(path.join(outside, 'probe.yaml'));
+  assert.strictEqual(abs.maestro, `${path.join(outside, 'probe.yaml')}\n`);
+  assert.match(abs.out, /^android: flows 1\/1 passed/m);
+  const missing = run('.maestro/nope.yaml');
+  assert.match(missing.out, /^verify: no flow file \S+\/\.maestro\/nope\.yaml$/m);
+  assert.strictEqual(missing.status, 2);
+  assert.strictEqual(missing.maestro, '');
+});
+
 // verify.sh ios on a Mac, with stand-ins for Xcode's tools (xcrun simctl and devicectl, xcodebuild) and for maestro-runner
 // (npx). A bare app that runs on iPhone only, upright and turned, signed by the project's team unless `team` says
 // otherwise. One simulator, "iPhone 17", and one connected iPhone, "Tester's iPhone" (00008020-AAAA). xcrun and
@@ -414,6 +434,8 @@ for f in "cmd-003-shot.png $w $h" "nested-000-after.png 10 10"; do
 done
 [ -n "$flow" ] || flow=$last
 cp "$out/assets/flow-000/cmd-003-shot.png" "$(dirname "$flow")/shot.png"
+# a picture something else saves meanwhile
+[ -z "$FAKE_OTHER_PNG" ] || touch "$FAKE_OTHER_PNG"
 [ -z "$FAKE_CRASH" ] || grep -qx App-2026-10-16-120000.ips "$FAKE_STATE.crashes" || echo App-2026-10-16-120000.ips >> "$FAKE_STATE.crashes"
 `, 0o755);
   write(dir, 'bin/maestro', '#!/bin/sh\necho 2.11.0\n', 0o755);
@@ -462,6 +484,29 @@ test('verify.sh ios: a connected iPhone, when named: a build signed for it, open
   for (const screen of ['ios', 'ios-landscape']) assert.match(spec.out, new RegExp(`^${screen}: flows 1/1 passed, 1 screenshots`, 'm'));
   assert.deepStrictEqual(fs.readdirSync(path.join(spec.app, '.maestro'), { recursive: true }).sort(), ['media', 'media/photo.png', 'x1-home.yaml']);
 
+  // flows that use airplane mode (here in a subflow): after each flow it goes off, also when the flow failed, as an
+  // offline iPhone doesn't open the app for the next one. First, before the screen turns back upright; optional, as a
+  // flow that passed doesn't fail there. Settings restarts before each flow, to open on its main page, with the switch
+  const offline = verifyIos({ env: { AMK_IOS_DEVICE: '00008020-AAAA' }, args: ['ios', '--label', 'run', '--spec', 'x1'], files: { '.maestro/x1-sync.yaml': 'appId: ${APP_ID}\n---\n- launchApp\n- runFlow: subflows/offline.yaml\n', '.maestro/subflows/offline.yaml': 'appId: ${APP_ID}\n---\n- setAirplaneMode: enabled\n' } });
+  const wrapper = screen => fs.readFileSync(path.join(offline.app, `.amk/evidence/run/maestro-logs/${screen}-x1-sync/screen.yaml`), 'utf8');
+  const off = 'onFlowComplete:\\n {2}- setAirplaneMode:\\n {6}value: disabled\\n {6}optional: true\\n';
+  assert.match(wrapper('ios'), new RegExp(`^appId: com\\.example\\.app\\n${off}---\\n`));
+  assert.match(wrapper('ios-landscape'), new RegExp(`^appId: com\\.example\\.app\\n${off} {2}- setOrientation:\\n {6}orientation: PORTRAIT\\n {6}optional: true\\n---\\n`));
+  assert.strictEqual((offline.calls.match(/^xcrun devicectl device process launch --device 00008020-AAAA --terminate-existing com\.apple\.Preferences$/gm) || []).length, 2, 'once before each flow');
+  assert.doesNotMatch(r.calls, /com\.apple\.Preferences/, 'not for flows that never use airplane mode');
+  assert.strictEqual(offline.status, 0, offline.out);
+
+  // a flow outside the project: run where it is; the screenshots maestro-runner saves beside it are collected from
+  // its folder only, not the ones below, which may hold anything
+  const outside = tmpDir('amk-flow-');
+  fs.writeFileSync(path.join(outside, 'probe.yaml'), 'appId: ${APP_ID}\n---\n- launchApp\n');
+  fs.mkdirSync(path.join(outside, 'below'));
+  const abs = verifyIos({ env: { AMK_IOS_DEVICE: '00008020-AAAA', FAKE_OTHER_PNG: path.join(outside, 'below/other.png') }, args: ['ios', '--label', 'run', '--screens', 'phone-portrait', '--flow', path.join(outside, 'probe.yaml')] });
+  assert.match(fs.readFileSync(path.join(abs.app, '.amk/evidence/run/maestro-logs/ios-probe/screen.yaml'), 'utf8'), new RegExp(`- runFlow: '${path.join(outside, 'probe.yaml').replace(/[.]/g, '\\.')}'\n$`));
+  assert.match(abs.out, /^ios: flows 1\/1 passed, 1 screenshots/m);
+  assert.deepStrictEqual(fs.readdirSync(outside, { recursive: true }).sort(), ['below', 'below/other.png', 'probe.yaml'], 'its screenshot left the folder, and the other picture stayed');
+  assert.strictEqual(abs.status, 0, abs.out);
+
   // a crash report the app left during the flows joins the evidence and fails the check; an older one doesn't
   const crashed = verifyIos({ env: { AMK_IOS_DEVICE: '00008020-AAAA', FAKE_CRASH: '1' }, crashes: 'App-2026-10-01-090000.ips\nOther-2026-10-16-120000.ips\n' });
   assert.match(crashed.out, /^ios: the app crashed on 00008020-AAAA during the checks: 1 crash reports in \.amk\/evidence\/run\/crashes$/m);
@@ -477,7 +522,8 @@ test('verify.sh ios: what a real device needs first is said before any flow runs
   // AMK_IOS_TEAM signs instead of the project's team
   assert.match(verifyIos({ env: { AMK_IOS_DEVICE: '00008020-AAAA', AMK_IOS_TEAM: 'ZYXWV98765' } }).calls, /DEVELOPMENT_TEAM=ZYXWV98765/);
   const untrusted = verifyIos({ env: { AMK_IOS_DEVICE: '00008020-AAAA', FAKE_UNTRUSTED: '1' } });
-  assert.match(untrusted.out, /^ios: 00008020-AAAA doesn't open apps from this team yet: on it, Settings > General > VPN & Device Management > Developer App > Trust, then run this again$/m);
+  // offline (in airplane mode), an iPhone doesn't open an app signed for development either, with the same error
+  assert.match(untrusted.out, /^ios: 00008020-AAAA doesn't open apps from this team: on it, trust the team \(Settings > General > VPN & Device Management > Developer App > Trust\), and turn airplane mode off \(offline, it doesn't open apps signed for development\)\. Then run this again$/m);
   assert.strictEqual(untrusted.calls.match(/process launch/g).length, 3, 'asked three times, as a device refuses a new install for a moment now and then');
   assert.strictEqual(untrusted.runner, '');
   assert.notStrictEqual(untrusted.status, 0);
