@@ -215,6 +215,66 @@ test('signing keys and passwords in git warn; the standard debug keystore does n
   assert.doesNotMatch(check(app(bumped)).out, /Signing keys|signing password/, 'a clean app has no warning');
 });
 
+test('store review rules: what App Review and Google Play reject, from libraries, manifests, Info.plist and the code', () => {
+  const pkg = { name: 'demo', dependencies: { 'react-native': '0.76.9', '@react-native-google-signin/google-signin': '^15.0.0', 'react-native-appsflyer': '^6.0.0', '@microsoft/react-native-clarity': '^4.0.0', '@stripe/stripe-react-native': '^0.50.0', '@notifee/react-native': '^9.0.0', 'lib-with-perms': '1.0.0' } };
+  const dir = app({
+    'package.json': JSON.stringify(pkg),
+    'ios/Demo/Info.plist': plist({ NSCameraUsageDescription: 'Camera access' }).replace('</dict></plist>', '  <key>UIRequiresFullScreen</key><true/>\n</dict></plist>'),
+    'ios/Demo/PrivacyInfo.xcprivacy': '<plist><dict><key>NSPrivacyTracking</key><true/><key>NSPrivacyCollectedDataTypes</key><array/></dict></plist>',
+    'android/app/src/main/AndroidManifest.xml': `<manifest xmlns:android="http://schemas.android.com/apk/res/android" xmlns:tools="http://schemas.android.com/tools">
+  <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
+  <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+  <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
+  <uses-permission android:name="android.permission.USE_EXACT_ALARM" tools:node="remove" />
+  <application><service android:name=".TrackingService" android:foregroundServiceType="connectedDevice" /><service android:name=".SyncService" /></application>
+</manifest>
+`,
+    'node_modules/lib-with-perms/android/src/main/AndroidManifest.xml': '<manifest><uses-permission android:name="android.permission.QUERY_ALL_PACKAGES" /><uses-permission android:name="android.permission.USE_EXACT_ALARM" /></manifest>',
+    'android/app/src/main/java/com/demo/MainApplication.kt': 'class MainApplication { fun cap(c: Configuration) { c.fontScale = 1.35f } }\n',
+    'src/screens/SignUp.tsx': "export const SignUp = () => navigation.navigate('Register');\n",
+    // words that aren't a sign-up: a comment, and text
+    'src/screens/Intro.tsx': "// register the listener first\nexport const Intro = () => <Text>No account, no sign-up.</Text>;\n",
+  });
+  git(dir, 'add', '-A');
+  const { out, code } = check(dir);
+  for (const re of [
+    /! ios\/Demo\/Info\.plist: NSCameraUsageDescription is short \("Camera access"\)/,
+    /! The app has a sign-up, but no account deletion was found in its code/,
+    /! A social login \(@react-native-google-signin\/google-signin\) without Sign in with Apple/,
+    /! react-native-appsflyer can track people across apps, and the app has no App Tracking Transparency prompt/,
+    /✗ ios\/Demo\/PrivacyInfo\.xcprivacy: NSPrivacyTracking is true but lists no NSPrivacyTrackingDomains/,
+    /! ios\/Demo\/PrivacyInfo\.xcprivacy lists no collected data, and @microsoft\/react-native-clarity, react-native-appsflyer collect some/,
+    /! ios\/Demo\/Info\.plist: UIRequiresFullScreen is deprecated/,
+    /! Native code caps the user's text size: android\/app\/src\/main\/java\/com\/demo\/MainApplication\.kt/,
+    /· React Native 0\.76\.9: apps built with Xcode 27 \(the iOS 27 SDK\) don't launch below 0\.88/,
+    /· @stripe\/stripe-react-native without in-app purchase/,
+    /! Google Play restricts READ_MEDIA_IMAGES \(from android\/app\/src\/main\/AndroidManifest\.xml\)/,
+    /! Google Play restricts QUERY_ALL_PACKAGES \(from lib-with-perms\)/,
+    /! \.SyncService has no android:foregroundServiceType \(android\/app\/src\/main\/AndroidManifest\.xml\)/,
+    /! FOREGROUND_SERVICE_LOCATION is declared, but no service has that type/,
+    /· Foreground service types to declare in Play Console: CONNECTED_DEVICE/,
+    /React Native 0\.76\.9 has no 16 KB page size support \(from 0\.77\)/,
+    /! @notifee\/react-native, but the code never asks for permission to notify/,
+  ]) assert.match(out, re, `${re}\n${out}`);
+  assert.doesNotMatch(out, /USE_EXACT_ALARM/, 'removed with tools:node="remove", even though a library adds it');
+  assert.strictEqual(code, 1, 'tracking without domains fails');
+
+  // the same app done right: nothing to report
+  const fixed = app({
+    'package.json': JSON.stringify({ name: 'demo', dependencies: { 'react-native': '0.88.0', '@react-native-google-signin/google-signin': '^15.0.0', '@invertase/react-native-apple-authentication': '^2.4.0' } }),
+    'ios/Demo/PrivacyInfo.xcprivacy': '<plist><dict><key>NSPrivacyTracking</key><false/></dict></plist>',
+    'src/screens/Account.tsx': "export const SignUp = 1;\nexport async function deleteAccount() {}\n",
+  });
+  git(fixed, 'add', '-A');
+  const good = check(fixed);
+  // only the words: no sign-up, so no account deletion to look for
+  const words = app({ 'src/Intro.tsx': "// re-register an event listener\nexport const Intro = () => <Text>No account, no sign-up.</Text>;\nconst t = { SIGN_UP: 'Error in signup.' };\n" });
+  git(words, 'add', '-A');
+  assert.doesNotMatch(check(words).out, /sign-up/);
+  assert.match(good.out, /✓ Store review rules \(nothing found\)/, good.out);
+  assert.doesNotMatch(good.out, /Xcode 27/);
+});
+
 // ---------- Expo apps without native folders ----------
 // a released Expo app (tagged v1.0.0) whose Expo CLI is a stand-in that prints app.json resolved with `results`,
 // the way `expo config --type introspect` does after the config plugins ran
@@ -276,4 +336,37 @@ test('Expo: a missing or default permission text, EAS build numbers and EAS cred
   assert.match(out, /· Android build number: set at build time \(eas\.json\)/);
   assert.match(out, /! Signing keys are in git: credentials\.json/);
   assert.doesNotMatch(out, /keystorePassword|"x"/);
+});
+
+test('Expo: store review rules read the app config (privacy manifest, blocked permissions, Sign in with Apple)', () => {
+  const appJson = { name: 'Demo', version: '1.0.0', ios: { usesAppleSignIn: true, privacyManifests: { NSPrivacyTracking: true } }, android: { blockedPermissions: ['android.permission.READ_MEDIA_IMAGES'] } };
+  const results = { ios: { infoPlist: { NSCameraUsageDescription: 'Scans receipts so you can file expenses.' } }, android: { manifest: { manifest: {
+    'uses-permission': [perm('CAMERA'), perm('READ_MEDIA_IMAGES'), perm('QUERY_ALL_PACKAGES')], application: [{ $: {} }] } } } };
+  const dir = expoApp(appJson, results, {
+    'package.json': JSON.stringify({ name: 'demo', dependencies: { expo: '~58.0.0', 'expo-camera': '~58.0.0', 'react-native': '0.88.0', '@react-native-google-signin/google-signin': '^15.0.0' } }),
+  });
+  const { out, code } = check(dir);
+  assert.match(out, /✗ app config \(ios\.privacyManifests\): NSPrivacyTracking is true but lists no NSPrivacyTrackingDomains/);
+  assert.match(out, /! Google Play restricts QUERY_ALL_PACKAGES \(from the app config\)[\s\S]*list it in android\.blockedPermissions/);
+  assert.doesNotMatch(out, /READ_MEDIA_IMAGES \(from/, 'blocked in app.json');
+  assert.doesNotMatch(out, /without Sign in with Apple/, 'ios.usesAppleSignIn');
+  assert.strictEqual(code, 1);
+});
+
+test('a release build\'s merged manifest counts when it\'s newer than the manifests it came from; its libraries\' services aren\'t the app\'s', () => {
+  const mergedPath = 'android/app/build/intermediates/merged_manifest/release/processReleaseMainManifest/AndroidManifest.xml';
+  const dir = app({
+    'android/app/src/main/AndroidManifest.xml': manifest(['INTERNET', 'FOREGROUND_SERVICE']),
+    [mergedPath]: '<manifest><uses-permission android:name="android.permission.FOREGROUND_SERVICE" /><uses-permission android:name="android.permission.READ_MEDIA_VIDEO" /><application><service android:name="com.somelib.SyncService" /></application></manifest>',
+  });
+  git(dir, 'add', 'android/app/src');
+  const later = Date.now() / 1000 + 60;
+  fs.utimesSync(path.join(dir, mergedPath), later, later);
+  const fresh = check(dir).out;
+  assert.match(fresh, /! Google Play restricts READ_MEDIA_VIDEO \(from the merged release manifest\)/);
+  assert.doesNotMatch(fresh, /SyncService has no android:foregroundServiceType/, 'a library\'s service declares its own type');
+  // built before the manifest last changed: what it says may be gone, so the manifests themselves count
+  const earlier = Date.now() / 1000 - 3600;
+  fs.utimesSync(path.join(dir, mergedPath), earlier, earlier);
+  assert.doesNotMatch(check(dir).out, /READ_MEDIA_VIDEO/);
 });

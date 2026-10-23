@@ -161,6 +161,8 @@ const NEEDS = {
   'expo-location': ['NSLocationWhenInUseUsageDescription'],
   'expo-contacts': ['NSContactsUsageDescription'],
   'expo-local-authentication': ['NSFaceIDUsageDescription'],
+  'react-native-tracking-transparency': ['NSUserTrackingUsageDescription'],
+  'expo-tracking-transparency': ['NSUserTrackingUsageDescription'],
 };
 // the texts Expo's config plugins write when app.json gives none: too vague for App Review
 const EXPO_DEFAULT = /^Allow \$\(PRODUCT_NAME\) to /;
@@ -189,7 +191,10 @@ for (const plistPath of Object.keys(textsByPlist)) {
   }
   const vague = Object.entries(texts).filter(([, t]) => EXPO_DEFAULT.test(t)).map(([k]) => k);
   if (vague.length) warn(`${plistPath}: Expo's default text for ${vague.join(', ')}`, 'App Review asks why the app needs each permission: set the text in the library\'s plugin options or ios.infoPlist in app.json');
-  if (!problems.length && !vague.length && !Object.values(texts).some(t => PLACEHOLDER.test(t))) ok(`${plistPath}: permission texts`, `${Object.keys(texts).length} present`);
+  // too short to say what the app does with the data and why ("Camera access")
+  const short = Object.entries(texts).filter(([, t]) => t.trim() && t.trim().length < 25 && !PLACEHOLDER.test(t) && !EXPO_DEFAULT.test(t));
+  for (const [key, text] of short) warn(`${plistPath}: ${key} is short ("${text.trim()}")`, 'say what the app does with it and why, for each use; App Review rejects vague texts (5.1.1)');
+  if (!problems.length && !vague.length && !short.length && !Object.values(texts).some(t => PLACEHOLDER.test(t))) ok(`${plistPath}: permission texts`, `${Object.keys(texts).length} present`);
   const arbitrary = expo ? (expoPlist.NSAppTransportSecurity || {}).NSAllowsArbitraryLoads === true
     : /<key>NSAllowsArbitraryLoads<\/key>\s*<true\s*\/>/.test(readNow(plistPath) || '');
   if (arbitrary) {
@@ -199,7 +204,9 @@ for (const plistPath of Object.keys(textsByPlist)) {
 
 // ---------- 4. Android permissions ----------
 const SENSITIVE = /\.(ACCESS_(FINE|COARSE|BACKGROUND)_LOCATION|CAMERA|RECORD_AUDIO|READ_CONTACTS|WRITE_CONTACTS|READ_EXTERNAL_STORAGE|WRITE_EXTERNAL_STORAGE|READ_MEDIA_\w+|BLUETOOTH_SCAN|BLUETOOTH_CONNECT|POST_NOTIFICATIONS|READ_PHONE_STATE|BODY_SENSORS|READ_CALENDAR|WRITE_CALENDAR|ACCESS_MEDIA_LOCATION)$/;
-const perms = t => all(/<uses-permission[^>]*android:name="([^"]+)"/g, t);
+// what the manifest asks for: not the ones it removes (tools:node="remove", for a permission a library adds)
+const perms = t => uniq([...(t || '').matchAll(/<uses-permission\b[^>]*>/g)].map(m => m[0]).filter(p => !/tools:node="remove"/.test(p))
+  .map(p => (/android:name="([^"]+)"/.exec(p) || [])[1]).filter(Boolean));
 // Expo: the manifest prebuild would write, as JSON
 const expoManifest = ((expoResults.android || {}).manifest || {}).manifest;
 const permsNow = expo ? uniq(((expoManifest || {})['uses-permission'] || []).map(p => p.$['android:name'])) : perms(readNow(manifestPath));
@@ -273,6 +280,146 @@ for (const f of noteFiles) {
   else ok(`${f}`, `${len}/${LIMITS[kind]} characters`);
 }
 if (!noteFiles.length) info('No store release notes yet', 'run the m-release skill to write them from the changelog');
+
+// ---------- 8. store review rules ----------
+// what App Store review and Google Play policy reject that the project shows. Most need a person to judge (an
+// exception, an approved Play declaration), so they warn
+const found = names => names.filter(n => deps[n]);
+const sourceFiles = (git('ls-files', '--', '*.js', '*.jsx', '*.ts', '*.tsx') || '').split('\n')
+  .filter(f => f && !/(^|\/)(node_modules|scripts\/amk|__tests__|__mocks__|e2e|ios|android)\//.test(f) && !/\.(test|spec)\.\w+$/.test(f));
+const source = sourceFiles.map(f => readNow(f) || '').join('\n');
+// a sign-up in code (a call, a screen, an API path), not the words in a comment or in text ("No account, no sign-up")
+const SIGN_UP = /\b(signUp|signup|createAccount|createUserWithEmailAndPassword|registerUser|registerAccount)\s*\(|\b(name|screen)\s*[:=]\s*\{?\s*['"](SignUp|Signup|Register|Registration|CreateAccount)['"]|navigate\(\s*['"](SignUp|Signup|Register|Registration|CreateAccount)['"]|['"`][^'"`\s]*\/(sign-?up|register|registration|create-?account)\b/i;
+const rnVersion = (() => { try { return require(path.resolve('node_modules/react-native/package.json')).version; } catch { return (deps['react-native'] || '').replace(/^[^\d]*/, ''); } })();
+const [rnMajor, rnMinor] = rnVersion.split('.').map(Number);
+const rnBelow = minor => rnMajor === 0 && rnMinor < minor;
+let storeFindings = 0;
+const storeWarn = (label, fix) => { storeFindings++; warn(label, fix); };
+
+// Apple
+if (SIGN_UP.test(stripComments(source))
+  && !/delete[ _-]?(my[ _-]?)?account|account[ _-]?deletion|deleteUser|close[ _-]?account|remove[ _-]?account/i.test(source)) {
+  storeWarn('The app has a sign-up, but no account deletion was found in its code', 'people who can create an account must be able to start deleting it in the app (Apple 5.1.1(v)); Google Play also needs a web link to it in the Data safety form');
+}
+const social = [...found(['@react-native-google-signin/google-signin', 'react-native-fbsdk-next']),
+  ...(/expo-auth-session\/providers\/(google|facebook)/.test(source) ? ['expo-auth-session'] : [])];
+const entitlements = fs.existsSync('ios') ? fs.readdirSync('ios', { withFileTypes: true }).filter(e => e.isDirectory())
+  .flatMap(e => fs.readdirSync(`ios/${e.name}`).filter(f => f.endsWith('.entitlements')).map(f => readNow(`ios/${e.name}/${f}`) || '')) : [];
+const appleSignIn = found(['expo-apple-authentication', '@invertase/react-native-apple-authentication']).length
+  || entitlements.some(e => e.includes('com.apple.developer.applesignin')) || ((expo || {}).ios || {}).usesAppleSignIn;
+if (social.length && !appleSignIn) {
+  storeWarn(`A social login (${social.join(', ')}) without Sign in with Apple`, 'App Review needs an equivalent private login next to it, usually Sign in with Apple (4.8); fine if the app signs in only with the company\'s own accounts');
+}
+const trackers = found(['react-native-fbsdk-next', 'react-native-appsflyer', 'react-native-adjust', 'react-native-google-mobile-ads']);
+const allTexts = Object.values(textsByPlist).flatMap(Object.keys);
+if (trackers.length && !found(['react-native-tracking-transparency', 'expo-tracking-transparency']).length && !allTexts.includes('NSUserTrackingUsageDescription')) {
+  storeWarn(`${trackers.join(', ')} can track people across apps, and the app has no App Tracking Transparency prompt`, 'ask with the ATT prompt first (react-native-tracking-transparency or expo-tracking-transparency) and set NSUserTrackingUsageDescription (5.1.2)');
+}
+const privacy = expo ? [['app config (ios.privacyManifests)', (expo.ios || {}).privacyManifests || {}]]
+  : (fs.existsSync('ios') ? fs.readdirSync('ios', { withFileTypes: true }) : []).filter(e => e.isDirectory() && fs.existsSync(`ios/${e.name}/PrivacyInfo.xcprivacy`))
+    .map(e => [`ios/${e.name}/PrivacyInfo.xcprivacy`, readNow(`ios/${e.name}/PrivacyInfo.xcprivacy`) || '']);
+const collectors = found(['@react-native-firebase/analytics', '@react-native-firebase/crashlytics', '@sentry/react-native', '@amplitude/analytics-react-native',
+  '@segment/analytics-react-native', 'posthog-react-native', 'mixpanel-react-native', '@microsoft/react-native-clarity', '@datadog/mobile-react-native',
+  '@bugsnag/react-native', '@intercom/intercom-react-native', 'react-native-appsflyer', 'react-native-fbsdk-next']);
+for (const [where, m] of privacy) {
+  const xml = typeof m === 'string';
+  const tracking = xml ? /<key>NSPrivacyTracking<\/key>\s*<true\s*\/>/.test(m) : m.NSPrivacyTracking === true;
+  const domains = xml ? /<key>NSPrivacyTrackingDomains<\/key>\s*<array>\s*<string>/.test(m) : (m.NSPrivacyTrackingDomains || []).length > 0;
+  const collected = xml ? /<key>NSPrivacyCollectedDataTypes<\/key>\s*<array>\s*<dict>/.test(m) : (m.NSPrivacyCollectedDataTypes || []).length > 0;
+  if (tracking && !domains) fail(`${where}: NSPrivacyTracking is true but lists no NSPrivacyTrackingDomains`, 'list the domains the app tracks with; Apple needs them when tracking is on');
+  if (!collected && collectors.length) storeWarn(`${where} lists no collected data, and ${collectors.join(', ')} collect some`, 'make sure App Store Connect\'s privacy details (and this manifest, where the SDK\'s own doesn\'t) list it: names, emails, usage data, crash data, recordings');
+}
+const plistFlags = expo ? [['app config (ios.infoPlist)', expoPlist]] : plists.map(p => [p, readNow(p) || '']);
+for (const [where, p] of plistFlags) {
+  const on = key => (typeof p === 'string' ? new RegExp(`<key>${key}</key>\\s*<true\\s*/>`).test(p) : p[key] === true);
+  if (on('UIDesignRequiresCompatibility')) storeWarn(`${where}: UIDesignRequiresCompatibility opts out of iOS 26's design`, 'builds with the iOS 27 SDK ignore it: make the app work with the current design');
+  if (on('UIRequiresFullScreen')) storeWarn(`${where}: UIRequiresFullScreen is deprecated (iPadOS 26)`, 'iPad windows resize anyway: make every screen adapt to the window');
+}
+const nativeCaps = [...(git('grep', '-l', '-E', 'override +var +preferredContentSizeCategory|\\(UIContentSizeCategory\\) *preferredContentSizeCategory', '--', 'ios/*.swift', 'ios/*.m', 'ios/*.mm') || '').split('\n'),
+  ...(git('grep', '-l', '-E', 'fontScale *= *[^= ]', '--', 'android/*.kt', 'android/*.java') || '').split('\n')].filter(f => f && !f.includes('/Pods/'));
+if (nativeCaps.length) storeWarn(`Native code caps the user's text size: ${nativeCaps.join(', ')}`, 'people who pick a large text size get a smaller one; let text scale, and make layouts wrap');
+if (rnVersion && rnBelow(88)) info(`React Native ${rnVersion}: apps built with Xcode 27 (the iOS 27 SDK) don't launch below 0.88`, 'App Store uploads move to each new Xcode from a date Apple announces: upgrade React Native before then');
+const payments = found(['@stripe/stripe-react-native', 'react-native-razorpay', 'react-native-paypal', 'react-native-braintree-dropin-ui']);
+if (payments.length && !found(['react-native-iap', 'react-native-purchases', 'expo-iap', 'expo-in-app-purchases']).length) {
+  info(`${payments.join(', ')} without in-app purchase`, 'fine for physical goods and services; digital content and subscriptions need in-app purchase (3.1.1)');
+}
+
+// Google: every permission the release build gets: the app's manifests and its libraries' (Gradle merges them), less
+// what the app removes. A release build's merged manifest already is that, when it's newer than what it was built from
+function walk(dir, keep, depth = 0) {
+  if (depth > 6 || !fs.existsSync(dir)) return [];
+  return fs.readdirSync(dir, { withFileTypes: true }).flatMap(e => (e.isDirectory() ? walk(`${dir}/${e.name}`, keep, depth + 1) : keep(`${dir}/${e.name}`) ? [`${dir}/${e.name}`] : []));
+}
+const tags = (t, name) => [...(t || '').matchAll(new RegExp(`<${name}\\b[^>]*>`, 'g'))].map(m => m[0]);
+const attr = (tag, a) => (new RegExp(`${a}="([^"]+)"`).exec(tag) || [])[1];
+const mtime = f => { try { return fs.statSync(f).mtimeMs; } catch { return 0; } };
+const ownManifests = expo ? [] : (fs.existsSync('android/app/src') ? fs.readdirSync('android/app/src') : [])
+  .map(d => `android/app/src/${d}/AndroidManifest.xml`).filter(f => fs.existsSync(f));
+const intermediates = 'android/app/build/intermediates';
+const built = expo || !fs.existsSync(intermediates) ? [] : fs.readdirSync(intermediates).filter(d => /^merged_manifests?$/.test(d))
+  .flatMap(d => walk(`${intermediates}/${d}`, f => /release/i.test(f) && f.endsWith('AndroidManifest.xml')));
+const sourcesTime = Math.max(...[...ownManifests, 'package.json', gradlePath].filter(Boolean).map(mtime));
+const merged = built.filter(f => mtime(f) >= sourcesTime);
+const appManifests = merged.length ? merged : ownManifests;
+const libManifests = merged.length ? [] : Object.keys(deps).map(d => [d, readNow(`node_modules/${d}/android/src/main/AndroidManifest.xml`)]).filter(([, t]) => t);
+const removed = new Set([...ownManifests.flatMap(f => tags(readNow(f), 'uses-permission').filter(p => /tools:node="remove"/.test(p)).map(p => attr(p, 'android:name'))),
+  ...(expo ? ((expoManifest || {})['uses-permission'] || []).filter(p => p.$['tools:node'] === 'remove').map(p => p.$['android:name']) : []),
+  ...(((expo || {}).android || {}).blockedPermissions || [])]);
+const granted = new Map();
+const grant = (name, from) => { if (name && !removed.has(name)) granted.set(name, [...new Set([...(granted.get(name) || []), from])]); };
+if (expo) for (const p of (expoManifest || {})['uses-permission'] || []) { if (p.$['tools:node'] !== 'remove') grant(p.$['android:name'], 'the app config'); }
+for (const f of appManifests) for (const p of tags(readNow(f), 'uses-permission').filter(x => !/tools:node="remove"/.test(x))) grant(attr(p, 'android:name'), merged.length ? 'the merged release manifest' : f);
+for (const [lib, t] of libManifests) for (const p of tags(t, 'uses-permission')) grant(attr(p, 'android:name'), lib);
+const permName = n => n.replace(/^android\.permission\./, '');
+const RESTRICTED = {
+  READ_MEDIA_IMAGES: 'only for apps built around broad access to photos; others use the Android photo picker, which needs no permission',
+  READ_MEDIA_VIDEO: 'only for apps built around broad access to videos; others use the Android photo picker, which needs no permission',
+  QUERY_ALL_PACKAGES: 'list the apps it needs to see in <queries> instead',
+  MANAGE_EXTERNAL_STORAGE: 'picking files or media isn\'t an allowed use: use the system pickers',
+  READ_SMS: 'only for the default SMS app: one-time codes use the SMS Retriever API', RECEIVE_SMS: 'only for the default SMS app: one-time codes use the SMS Retriever API',
+  SEND_SMS: 'only for the default SMS app', RECEIVE_MMS: 'only for the default SMS app', RECEIVE_WAP_PUSH: 'only for the default SMS app', WRITE_SMS: 'only for the default SMS app',
+  READ_CALL_LOG: 'only for the default phone app', WRITE_CALL_LOG: 'only for the default phone app', PROCESS_OUTGOING_CALLS: 'only for the default phone app',
+  USE_EXACT_ALARM: 'only for alarm, timer and calendar apps: others use SCHEDULE_EXACT_ALARM, and check canScheduleExactAlarms',
+  ACCESS_BACKGROUND_LOCATION: 'needs a Play Console declaration for one feature, a short video, and a prominent disclosure in the app before asking',
+  REQUEST_INSTALL_PACKAGES: 'needs a Play Console declaration', USE_FULL_SCREEN_INTENT: 'only for calls and alarms',
+};
+const remove = expo ? 'list it in android.blockedPermissions' : 'remove it (tools:node="remove" for one a library adds)';
+for (const [name, from] of granted) {
+  const why = RESTRICTED[permName(name)];
+  if (why) storeWarn(`Google Play restricts ${permName(name)} (from ${from.join(', ')})`, `${why}; keep it only with an approved Play Console declaration, otherwise ${remove}`);
+}
+// foreground services: each declares its type, and each FOREGROUND_SERVICE_<TYPE> permission has a service of that type
+// the app's own services (a merged manifest also has every library's, which declare their own types)
+const services = [...ownManifests.flatMap(f => tags(readNow(f), 'service').map(s => [s, f])),
+  ...(expo ? ((((expoManifest || {}).application || [])[0] || {}).service || []).map(s => [`<service ${Object.entries(s.$ || {}).map(([k, v]) => `${k}="${v}"`).join(' ')}>`, 'the app config']) : [])];
+const typeName = v => v.replace(/([a-z])([A-Z])/g, '$1_$2').toUpperCase();
+const allServices = [...services, ...merged.flatMap(f => tags(readNow(f), 'service').map(s => [s, f])), ...libManifests.flatMap(([lib, t]) => tags(t, 'service').map(s => [s, lib]))];
+const types = new Set(allServices.flatMap(([s]) => (attr(s, 'android:foregroundServiceType') || '').split('|').filter(Boolean).map(typeName)));
+if ([...granted.keys()].some(n => permName(n).startsWith('FOREGROUND_SERVICE'))) {
+  // once per service, wherever it's declared (the main manifest and a flavor's, say)
+  const untyped = new Map();
+  for (const [s, from] of services.filter(([s]) => !attr(s, 'android:foregroundServiceType'))) {
+    const name = attr(s, 'android:name') || 'a service';
+    untyped.set(name, [...(untyped.get(name) || []), from]);
+  }
+  for (const [name, from] of untyped) {
+    storeWarn(`${name} has no android:foregroundServiceType (${from.join(', ')})`, 'if it runs in the foreground, declare its type and the matching FOREGROUND_SERVICE_<TYPE> permission: from Android 14, starting it without one crashes');
+  }
+  for (const n of [...granted.keys()].map(permName).filter(n => /^FOREGROUND_SERVICE_./.test(n))) {
+    if (!types.has(n.replace('FOREGROUND_SERVICE_', ''))) storeWarn(`${n} is declared, but no service has that type`, 'give the service that does this work the matching android:foregroundServiceType, or remove the permission');
+  }
+  if (types.size) info(`Foreground service types to declare in Play Console: ${[...types].join(', ')}`);
+}
+if (rnVersion && rnBelow(77)) {
+  const due = Date.now() >= Date.parse('2027-02-01');
+  (due ? fail : warn)(`React Native ${rnVersion} has no 16 KB page size support (from 0.77)`, 'from 1 February 2027 Google Play takes updates to apps targeting Android 15 or later only with it: upgrade React Native');
+  if (!due) storeFindings++;
+}
+const notifiers = found(['@react-native-firebase/messaging', '@notifee/react-native', 'react-native-push-notification', 'expo-notifications', 'react-native-onesignal', 'react-native-notifications']);
+if (notifiers.length && !/requestPermission|requestPermissionsAsync|requestNotifications|POST_NOTIFICATIONS|requestUserPermission/.test(source)) {
+  storeWarn(`${notifiers.join(', ')}, but the code never asks for permission to notify`, 'Android 13 and later show notifications only once the user allows them: ask after an action they serve');
+}
+if (!storeFindings) ok('Store review rules', 'nothing found');
 
 // ---------- report ----------
 const icon = { ok: '✓', info: '·', warn: '!', fail: '✗' };

@@ -109,7 +109,11 @@ function okSince(file, n, date) {
 }
 const importsFrom = (code, from) => [...code.matchAll(new RegExp(`import\\s+[^;'"]*?\\{([^}]*)\\}\\s*from\\s*['"]${from}['"]`, 'g'))];
 const timers = /\bset(Timeout|Interval)\s*\(/;
+// a permission prompt (not App Tracking Transparency's, which apps show early on purpose)
+const ASK = /\b(PermissionsAndroid\.request(?:Multiple)?|request\(\s*PERMISSIONS\.|requestMultiple|request(?:Foreground|Background)?PermissionsAsync|requestNotifications|requestPermission|Geolocation\.requestAuthorization)\s*\(?/;
+const TOUCHABLE = /^(Pressable|TouchableOpacity|TouchableHighlight|TouchableWithoutFeedback|TouchableNativeFeedback)$/;
 const listeners = /\.(addEventListener|addListener|subscribe)\s*\(/;
+const reduceMotion = /isReduceMotionEnabled|reduceMotionChanged|useReducedMotion|ReduceMotion\b/;
 
 function check(file, text) {
   const code = stripComments(text);
@@ -173,7 +177,7 @@ function check(file, text) {
     if (missing.length) add('!', m.index, end, `<${m[1]}> without ${missing.join(' and ')}: screen readers can't tell what it does`);
   });
   each(/\bDimensions\s*\.\s*get\s*\(/g, m => add('!', m.index, null, "Dimensions.get doesn't update on rotation or resizing: use useWindowDimensions()"));
-  each(/\ballowFontScaling\s*=\s*\{\s*false\s*\}/g, m => add('!', m.index, null, 'allowFontScaling={false} ignores the user\'s text size: make the layout wrap instead'));
+  each(/\ballowFontScaling\s*(=\s*\{\s*false\s*\}|:\s*false\b)/g, m => add('!', m.index, null, 'allowFontScaling false ignores the user\'s text size: make the layout wrap instead'));
   each(/\bkey\s*=\s*\{\s*(index|idx|i)\s*\}/g, m => add('!', m.index, null, 'a list key from the index mixes up rows when items change: use the item\'s ID'));
   each(/\bkeyExtractor\s*=\s*\{\s*\(\s*[^,()]*,\s*(\w+)\s*(?::\s*number\s*)?\)\s*=>\s*(String\(\s*\1\s*\)|\1\s*\.\s*toString\(\s*\)|`\$\{\s*\1\s*\}`|\1)\s*\}/g, m => add('!', m.index, null, 'a list key from the index mixes up rows when items change: use the item\'s ID'));
   each(/\bcatch\s*(\([^)]*\))?\s*\{|\.catch\(\s*(\(\s*\w*\s*\)|\w+)\s*=>\s*\{/g, m => {
@@ -187,12 +191,40 @@ function check(file, text) {
     const body = code.slice(open, close);
     const t = timers.exec(body);
     if (t && !/\bclear(Timeout|Interval)\s*\(/.test(body)) add('!', m.index, close, `a set${t[1]} in an effect with nothing clearing it: clear it in the effect's cleanup`, lineAt(code, open + t.index));
+    const p = ASK.exec(body);
+    if (p) add('!', m.index, close, `${p[1]} in an effect asks when the screen opens: ask when the user starts the feature that needs it`, lineAt(code, open + p.index));
     const l = listeners.exec(body);
     if (l && !/\breturn\b/.test(body)) add('!', m.index, close, `${l[1]} in an effect that returns no cleanup: return a function that removes it`, lineAt(code, open + l.index));
   });
   each(/\bconsole\s*\.\s*log\s*\(/g, m => add('!', m.index, null, 'console.log left in: remove it, or use the app\'s logger'));
   each(/\bmask(AllTextInputs|AllText|AllInputs|TextInputs)\s*:\s*false\b/g, m => add('!', m.index, null, 'session replay that records what users type: mask text inputs'));
   each(/\bAccessibilityInfo\s*\.\s*setAccessibilityFocus\s*\(/g, m => add('!', m.index, null, 'AccessibilityInfo.setAccessibilityFocus is deprecated: use sendAccessibilityEvent'));
+  // platform guidelines: text, back, screen readers, tap areas, permissions, motion
+  each(/\bfontSize\s*:\s*(\d+(?:\.\d+)?)(?![\w.])/g, m => { if (Number(m[1]) >= 1 && Number(m[1]) < 11) add('!', m.index, null, `fontSize ${m[1]} is under 11, the smallest size Apple's guidelines allow for reading`); });
+  each(/\bmaxFontSizeMultiplier\s*[=:]\s*\{?\s*(\d+(?:\.\d+)?)/g, m => { if (Number(m[1]) >= 1 && Number(m[1]) < 2) add('!', m.index, null, `maxFontSizeMultiplier ${m[1]} caps the user's text size: allow at least 2`); });
+  each(/\bgestureEnabled\s*[:=]\s*\{?\s*false\b/g, m => add('!', m.index, null, 'gestureEnabled false turns off swipe back: keep it, and ask before leaving unsaved changes with usePreventRemove'));
+  each(/['"]hardwareBackPress['"]\s*,\s*\(\s*\)\s*=>\s*true\b/g, m => add('!', m.index, null, 'a back handler that always returns true traps Android\'s back button: return true only while it closes something'));
+  each(/\bBackHandler\s*\.\s*exitApp\s*\(/g, m => add('!', m.index, null, 'BackHandler.exitApp: Android apps don\'t quit themselves; leave back to the system'));
+  each(/\bVibration\s*\.\s*vibrate\s*\(/g, m => add('!', m.index, null, 'Vibration.vibrate buzzes: use the app\'s haptics library, for success, error or a selection only'));
+  each(/\bReduceMotion\s*\.\s*Never\b/g, m => add('!', m.index, null, 'ReduceMotion.Never ignores the user\'s Reduce Motion setting: let decoration stop'));
+  each(/\baccessibilityLabel\s*=\s*\{?\s*["']([^"'\n]*)["']/g, m => { if (/\b(button|icon|image|tap|click)\b/i.test(m[1])) add('!', m.index, null, `the label "${m[1]}" names the role or the gesture: screen readers say the role; name the action`); });
+  each(/<\s*([A-Z][\w.]*)\b/g, m => {
+    const end = endOf(code, m.index);
+    const tag = code.slice(m.index, end + 1);
+    const at = re => m.index + Math.max(tag.search(re), 0);
+    const role = /\b(?:accessibilityRole|role)\s*=\s*\{?\s*["'](switch|checkbox|radio|tab|togglebutton)["']/.exec(tag);
+    if (role && !/\b(accessibilityState|aria-checked|aria-selected)\b/.test(tag)) add('!', at(/\b(accessibilityRole|role)\s*=/), null, `a ${role[1]} without accessibilityState: screen readers can't tell whether it's on`);
+    if (m[1] === 'Modal' && !/\bonRequestClose\b/.test(tag)) add('!', m.index, null, 'a Modal without onRequestClose: Android\'s back button can\'t close it');
+    if (/\bonLongPress\s*=/.test(tag) && !/\baccessibilityActions\b/.test(tag)) add('!', at(/\bonLongPress\s*=/), null, 'a long-press action screen readers can\'t reach: add it to accessibilityActions, and show it another way too');
+    if ((m[1] === 'LottieView' || m[1] === 'Lottie') && /\sloop\b(?!\s*=\s*\{\s*false\s*\})/.test(tag) && !reduceMotion.test(code)) add('!', m.index, null, 'a looping animation that ignores Reduce Motion: read AccessibilityInfo.isReduceMotionEnabled() and stop it');
+    const style = TOUCHABLE.test(m[1]) && !/\b(hitSlop|minWidth|minHeight)\b/.test(tag) && /\bstyle\s*=\s*\{\{([^{}]*)\}\}/.exec(tag);
+    const sizes = style ? [...style[1].matchAll(/\b(?:width|height)\s*:\s*(\d+(?:\.\d+)?)(?![\w.%])/g)].map(s => Number(s[1])) : [];
+    if (sizes.some(n => n < 44)) add('!', m.index, null, `a <${m[1]}> ${Math.min(...sizes)} points wide or high: tap areas are at least 44×44 (48×48 dp on Android); pad it, or add hitSlop`);
+  });
+  if (!reduceMotion.test(code)) each(/\bAnimated\s*\.\s*loop\s*\(/g, m => add('!', m.index, null, 'a looping animation that ignores Reduce Motion: read AccessibilityInfo.isReduceMotionEnabled() and stop it'));
+  // a file that asks for a permission but never handles one the system won't ask for again
+  const ask = ASK.exec(code);
+  if (ask && !/canAskAgain|never_ask_again|NEVER_ASK_AGAIN|BLOCKED|\bblocked\b|openSettings/.test(code)) add('!', ask.index, null, 'a permission request with nothing for when it\'s blocked: then the button explains it and offers Linking.openSettings()');
   if (major('react') >= 19) {
     each(/\bforwardRef\s*[<(]/g, m => add('!', m.index, null, 'forwardRef isn\'t needed in React 19: take ref as a prop'));
     each(/<\s*[\w.]+\.Provider\b/g, m => add('!', m.index, null, 'React 19 renders a context directly: <SomeContext value={…}> instead of .Provider'));

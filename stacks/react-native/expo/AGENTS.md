@@ -24,7 +24,7 @@ This project may also use other AI workflow frameworks (for example Superpowers,
 | Check devices at the same time | `sh scripts/amk/verify.sh plan --spec <id>` says how many this machine's memory fits, and prints the commands: one per device (in rounds when they don't all fit; a device's flows in parts when there's room), each for an `m-device-checker` subagent |
 | React Native mistakes in this branch's changed lines (`verify.sh quick` runs it) | `node scripts/amk/rn-check.js` |
 | Specs: progress, format check, fold a finished feature into the living spec | `node scripts/amk/specs.js status`, `node scripts/amk/specs.js check`, `node scripts/amk/specs.js merge <id>` |
-| Check a release before tagging it (versions, permission texts, debug leftovers) | `node scripts/amk/release-check.js` |
+| Check a release before tagging it (versions, permission texts, store review rules, debug leftovers) | `node scripts/amk/release-check.js` |
 | Signed release builds (a person runs them: they use the signing keys) | `sh scripts/amk/release-build.sh android`, `sh scripts/amk/release-build.sh ios` |
 
 ## Definition of done

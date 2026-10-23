@@ -72,6 +72,36 @@ These changed after most AI training data was written: check them instead of wri
 - Images go in asset files, never in code as base64 strings: they bloat the bundle, and all of it loads with the JavaScript.
 - Component tests use React Native Testing Library (`@testing-library/react-native`) and find elements as users and screen readers do, by role, label or text (`getByRole('button', { name: 'Save' })`), rather than relying on snapshots.
 
+## Platform guidelines and accessibility
+
+From Apple's Human Interface Guidelines, Android's design and app quality guidelines, and WCAG 2.2.
+
+- Touch targets: every button, link and control is at least 44×44 points on iOS and 48×48 dp on Android (`minWidth`/`minHeight: 48` covers both): pad a small icon instead of sizing the button to it. `hitSlop` doesn't reach past the parent's bounds, so use it only where the layout can't grow.
+- Text: no `fontSize` under 11, and don't cap scaling below 2× (`maxFontSizeMultiplier`, or `Text.defaultProps`).
+- Contrast, in both light and dark: text 4.5:1 against its background (3:1 from 18 points, or 14 bold), and input borders, focus rings and icons that carry meaning 3:1. Colors come from the theme, whose pairs are checked once; a grey like `#999` on white is only 2.8:1.
+- Screen readers: controls show their state in `accessibilityState` (`checked`, `selected`, `expanded`, `disabled`), and screen and section titles have `accessibilityRole="header"`. A label names the action ("Delete photo"), without the role ("button") the reader already says. Put `accessible` on a row that reads as one item, never on one that holds its own buttons. Meaningful images get a label; decorative ones need nothing.
+- Every swipe, drag or long-press action also has a visible button or menu item, and is in `accessibilityActions`. Color is never the only signal: an error shows text, and a state adds an icon or a word.
+- Back: keep swipe back on iOS and the system back on Android. To ask before leaving unsaved changes, use `usePreventRemove` (from `expo-router/react-navigation`), not `gestureEnabled: false`. A `hardwareBackPress` listener returns `true` only while it closes something on screen; apps don't quit themselves (`BackHandler.exitApp`). Every `Modal` has `onRequestClose`, which Android's back button calls; forms open as sheets (a route with `presentation: 'formSheet'`, or `presentationStyle="pageSheet"`).
+- Permissions: ask when the user starts the feature that needs it, never at launch or when a screen opens; first say in the app why. When it's denied, say what's unavailable and keep the rest working. When the system won't ask again (`canAskAgain` is false), the feature's button explains that and offers `Linking.openSettings()`. Ask for notifications after an action they serve, not on launch; on Android 13 and later, `expo-notifications` shows the prompt only once a notification channel exists, so create it first.
+- Use the native controls (`@react-native-community/datetimepicker`, `Alert.alert` with verb buttons and `style: 'destructive'` and `'cancel'`, `Switch`); a custom one gets the same role, state and size.
+- Dark mode: `userInterfaceStyle: "automatic"` in `app.json` (Android also needs `expo-system-ui`), and colors from the theme's light and dark values (`useColorScheme()`), not hex values in components; don't lock the app to light.
+- Data screens have loading, empty (why, and what to do next), error (what failed, with Retry) and content states. A message the user has to read doesn't vanish on a timer, and screen readers announce it.
+- Reduce Motion: with it on, nothing loops or moves for decoration. Don't pass `ReduceMotion.Never` to Reanimated for decoration; with `Animated` or Lottie, read `AccessibilityInfo.isReduceMotionEnabled()` and the `reduceMotionChanged` event, and fade or stop instead.
+- iOS 26: use native headers and tab bars (Expo Router's `Stack` and native tabs), which iOS draws in its current style; don't draw imitation glass behind content, or opt out with `UIDesignRequiresCompatibility` (builds with the iOS 27 SDK ignore it). Nothing the user needs sits under a floating tab bar, button or footer: scroll content gets bottom padding for it.
+- Haptics only for success, error or a selection, never as the only feedback, with `expo-haptics`; not `Vibration.vibrate`.
+
+## Store review
+
+What App Store review and Google Play reject. `node scripts/amk/release-check.js` checks the app config for some of it.
+
+- Apps where people can create an account let them start deleting it in the app: a full deletion, not deactivation; a direct link to a web page that finishes it is fine (Apple 5.1.1(v)). Google Play also needs that web link in the Data safety form.
+- A third-party or social login (Google, Facebook) as the main sign-in also needs an equivalent private one, usually Sign in with Apple (`expo-apple-authentication`, 4.8); an app that signs in only with the company's own accounts doesn't.
+- Digital content and subscriptions are sold with in-app purchase (3.1.1); physical goods and services aren't. Links to buy elsewhere follow the storefront's current rules.
+- Permission texts (in each library's plugin options, or `ios.infoPlist`) say what the app does with the data and why, for each use; ask only for what the app uses.
+- The privacy manifest (`ios.privacyManifests` in `app.json`) and App Store Connect's privacy details list the data the app and its SDKs collect (analytics, crash reporting, session replay). Tracking needs the App Tracking Transparency prompt first (`expo-tracking-transparency`).
+- Google Play restricts these permissions to apps whose core feature needs them, with a declaration in Play Console: photos and videos (`READ_MEDIA_IMAGES`, `READ_MEDIA_VIDEO`: others use the Android photo picker), `QUERY_ALL_PACKAGES`, `MANAGE_EXTERNAL_STORAGE`, SMS and call log, `USE_EXACT_ALARM`, and background location (also a video and an in-app disclosure first). A library can add one: list it in `android.blockedPermissions` when the app doesn't need it.
+- Android foreground services declare their type and its `FOREGROUND_SERVICE_<TYPE>` permission (the library's config plugin usually does), and each type is declared in Play Console.
+
 ## TypeScript
 
 - Keep the checks `tsconfig.json` has. Don't loosen them, or get past one with `any`, `@ts-ignore` or a non-null `!`.

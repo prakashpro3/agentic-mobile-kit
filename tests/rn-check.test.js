@@ -147,6 +147,65 @@ await AsyncStorage.setItem('refresh-token', t);
   assert.match(e.out, /✗ app\/index\.tsx:3 {2}a token or password saved to AsyncStorage, which isn't encrypted: use expo-secure-store/);
 });
 
+test('rn-check: platform guidelines (text, back, screen readers, tap areas, permissions, motion) warn, and the right way stays quiet', () => {
+  const dir = app();
+  write(dir, 'src/settings.tsx', `export function Settings({ on, setOn }: Props) {
+  useEffect(() => {
+    Notifications.requestPermissionsAsync();
+  }, []);
+  BackHandler.addEventListener('hardwareBackPress', () => true);
+  BackHandler.exitApp();
+  Vibration.vibrate(50);
+  Text.defaultProps = { allowFontScaling: false };
+  const pulse = Animated.loop(Animated.timing(v, { toValue: 1, useNativeDriver: true }));
+  return (
+    <View>
+      <Text style={{ fontSize: 9 }} maxFontSizeMultiplier={1.3}>Fine print</Text>
+      <Text style={{ fontSize: 0.1 }}>hidden title</Text>
+      <Pressable onPress={close} accessibilityRole="button" accessibilityLabel="Close button" style={{ width: 24, height: 24 }} />
+      <Pressable onPress={close} accessibilityRole="button" accessibilityLabel="Close" style={{ width: 24, height: 24 }} hitSlop={12} />
+      <Pressable onPress={toggle} accessibilityRole="switch" accessibilityLabel="Dark mode" />
+      <Pressable onPress={toggle} accessibilityRole="switch" accessibilityLabel="Sync" accessibilityState={{ checked: on }} />
+      <RoleBadge role="admin" />
+      <Row onLongPress={remove} />
+      <Row onLongPress={remove} accessibilityActions={[{ name: 'delete' }]} />
+      <Modal visible={open}><Text>Hi</Text></Modal>
+      <Modal visible={open} onRequestClose={hide}><Text>Hi</Text></Modal>
+      <Stack.Screen options={{ gestureEnabled: false }} />
+    </View>
+  );
+}
+`);
+  // asked from a button, with a way to Settings once blocked, and Reduce Motion read: nothing to say
+  write(dir, 'src/camera.tsx', `export async function openCamera() {
+  const r = await PermissionsAndroid.request(PermissionsAndroid.PERMISSIONS.CAMERA);
+  if (r === 'never_ask_again') Linking.openSettings();
+}
+export const still = AccessibilityInfo.isReduceMotionEnabled();
+const spin = Animated.loop(x);
+`);
+  const r = check(dir);
+  assert.strictEqual(r.status, 0, 'warnings only');
+  const at = (line, re) => assert.match(r.out, new RegExp(`^ {2}! src/settings\\.tsx:${line} {2}${re.source}`, 'm'), `line ${line}\n${r.out}`);
+  at(3, /requestPermissionsAsync in an effect asks when the screen opens/);
+  at(3, /a permission request with nothing for when it's blocked/);
+  at(5, /a back handler that always returns true traps Android's back button/);
+  at(6, /BackHandler\.exitApp: Android apps don't quit themselves/);
+  at(7, /Vibration\.vibrate buzzes/);
+  at(8, /allowFontScaling false ignores the user's text size/);
+  at(9, /a looping animation that ignores Reduce Motion/);
+  at(12, /fontSize 9 is under 11/);
+  at(12, /maxFontSizeMultiplier 1\.3 caps the user's text size/);
+  at(14, /the label "Close button" names the role or the gesture/);
+  at(14, /a <Pressable> 24 points wide or high: tap areas are at least 44×44/);
+  at(16, /a switch without accessibilityState/);
+  at(19, /a long-press action screen readers can't reach/);
+  at(21, /a Modal without onRequestClose/);
+  at(23, /gestureEnabled false turns off swipe back/);
+  assert.doesNotMatch(r.out, /settings\.tsx:(13|15|17|18|20|22) /, 'the hidden title, hitSlop, a switch with state, a role prop, an action, a modal that closes');
+  assert.doesNotMatch(r.out, /camera\.tsx/, 'asked in context, blocked handled, Reduce Motion read');
+});
+
 test('rn-check: a line kept over two weeks ago comes back when its file changes again, for the user to decide again', () => {
   const dir = app({ dependencies: { react: '19.2.3', 'react-native': '0.87.1' } }, {
     'src/settings.tsx': `import { SafeAreaView } from 'react-native'; // amk-ok ${day(30)}: a screen only iOS shows
