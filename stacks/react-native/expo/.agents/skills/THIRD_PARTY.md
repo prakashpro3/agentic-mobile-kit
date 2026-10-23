@@ -6,6 +6,6 @@
 | expo-upgrade | same | same | MIT | Image files left out |
 | expo-module | same | same | MIT | Image files left out |
 | react-native-best-practices | https://github.com/callstackincubator/agent-skills | 61e6e7dfdf3a8ee862254c200d751fcb1fb863dc | MIT (`LICENSE-callstack`) | Image files left out |
-| react-navigation | same | same | MIT | Image files left out |
+| react-navigation | same | same | MIT | Image files left out; not in apps on Expo Router |
 
 Updated with `scripts/vendor-skills.sh` in the agentic-mobile-kit repo.

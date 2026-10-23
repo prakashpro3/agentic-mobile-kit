@@ -416,6 +416,11 @@ quick() {
     cat "$evidence/lint.log" "$evidence/typecheck.log" "$evidence/test.log" 2> /dev/null | sed -n -E '/^(lint|typecheck|test): /,/^[^ ]/p' | head -n 20
     status=1
   fi
+  # React Native mistakes in the lines this branch changed (the app's rules list them): its problems fail quick, its
+  # warnings don't
+  node scripts/amk/rn-check.js > "$evidence/rn-check.log" 2>&1 || status=1
+  head -n 40 "$evidence/rn-check.log"
+  [ "$(wc -l < "$evidence/rn-check.log")" -le 40 ] || echo "  … all of it in ${evidence#"$root"/}/rn-check.log"
 }
 
 ios() {

@@ -12,7 +12,7 @@ If your tool has subagents, hand the review to the `m-reviewer` subagent, so it 
 
 ## Reviewing
 
-1. Get the changes since the base branch the kit's checks use: `node scripts/amk/baseline.js base` prints it, then `git diff <base>...HEAD` and `git log <base>..HEAD --oneline`. If there's a spec, read its `requirements.md`.
+1. Get the changes since the base branch the kit's checks use: `node scripts/amk/baseline.js base` prints it, then `git diff <base>...HEAD` and `git log <base>..HEAD --oneline`. If there's a spec, read its `requirements.md`. Run `node scripts/amk/rn-check.js`: what it reports in the changed lines is a finding, and each `// amk-ok: <reason>` it lists needs a reason that holds.
 2. Check, in order:
    - **Against the spec**, when there is one:
      - *Complete:* every task is ticked, every requirement is implemented, and every scenario has evidence (a test or a screenshot).
@@ -25,10 +25,12 @@ If your tool has subagents, hand the review to the `m-reviewer` subagent, so it 
    - **Screens:** with the keyboard open, do the field and its button stay visible? Does anything sit under the status bar, home indicator or gesture bar? Do lists that grow with the user's data scroll? Does text wrap at the largest text size?
    - **Tablets and landscape** (the screens `AGENTS.md` lists): does each layout adapt to the window width (`useWindowDimensions`), rather than stretching or centering the phone layout? Do turned screens scroll, with the left and right insets handled? Are sizes done the app's existing way?
    - **Accessibility:** does every new button or other touchable have an `accessibilityLabel` and an `accessibilityRole`? Are messages that appear after an action, such as form errors, announced to screen readers?
-   - **Errors and states:** offline, server errors, empty and loading states.
-   - **Security:** secrets, tokens, `.env` contents, logging of personal data.
+   - **Current APIs:** nothing React Native removed or deprecated, no `react-native/Libraries/…` imports, and React 19's ways (`ref` as a prop, `<Context value>`), as the React Native rules list them.
+   - **Errors and states:** offline, server errors, empty and loading states; an error boundary around the app; no empty `catch`; an action that fails shows it and can be retried.
+   - **Effects:** timers, listeners and subscriptions are cleaned up, and async work that ends after the screen closes doesn't update it.
+   - **Security:** secrets, tokens in plain storage instead of the Keychain/Keystore (or `expo-secure-store`), secret keys in the JavaScript bundle, `.env` contents, logging of personal data, session replay that records typed text.
    - **Native:** `project.pbxproj`, `Podfile`, Gradle or manifest changes, and whether pods and builds were re-run.
-   - **Performance:** heavy work in render, list keys, needless re-renders.
+   - **Performance:** heavy work in render, list keys (from IDs, not the index), needless re-renders, base64 images in code.
 3. For each finding, check it in the code before reporting it. Report: severity (**blocker**, **should fix**), file and line, the problem, and a suggested fix. Leave out style nits; lint handles those.
 4. End with: "Ready for PR" or "Not ready: N blockers".
 

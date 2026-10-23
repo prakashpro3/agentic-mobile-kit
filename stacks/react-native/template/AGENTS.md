@@ -22,6 +22,7 @@ This project may also use other AI workflow frameworks (for example Superpowers,
 | Android build | `cd android && ./gradlew assembleDebug` |
 | Check on devices (release builds, Maestro flows, screenshots) | `sh scripts/amk/verify.sh all --spec <id>`; with product flavors it checks the first unless `--flavor <name>`; another iOS scheme: `--scheme <name>`; only some screens: `--screens phone` (or `tablet`, `landscape`, …); on a real iPhone or iPad the user names: `AMK_IOS_DEVICE=<its UDID>` (the flows clear the app's data on it) |
 | Check devices at the same time | `sh scripts/amk/verify.sh plan --spec <id>` says how many this machine's memory fits, and prints the commands: one per device (in rounds when they don't all fit; a device's flows in parts when there's room), each for an `m-device-checker` subagent |
+| React Native mistakes in this branch's changed lines (`verify.sh quick` runs it) | `node scripts/amk/rn-check.js` |
 | Specs: progress, format check, fold a finished feature into the living spec | `node scripts/amk/specs.js status`, `node scripts/amk/specs.js check`, `node scripts/amk/specs.js merge <id>` |
 | Check a release before tagging it (versions, permission texts, debug leftovers) | `node scripts/amk/release-check.js` |
 | Signed release builds (a person runs them: they use the signing keys) | `sh scripts/amk/release-build.sh android [flavor]`, `sh scripts/amk/release-build.sh ios [scheme]` |
@@ -43,6 +44,7 @@ Never say a check passed unless you ran it in this session.
 - Don't hand-edit `ios/*.xcodeproj/project.pbxproj`. If a native file must be added to the Xcode project, stop and ask.
 - Never read, print or commit `.env` files, keystores, signing files or the files `.amk-secrets` lists. Secrets don't belong in this repo.
 - Never use `git commit --no-verify`, `git push --force`, `git reset --hard` or `rm -rf`.
+- When `rn-check` (in `verify.sh quick`) reports a problem (✗), show it to the user and let them choose, for each one: fix it, or keep the line with `// amk-ok <today's date>: <their reason>`. Never add an `amk-ok` on your own. One kept over two weeks ago comes back when its file changes again: ask again. Fix the warnings (!) in code the task changed, or tell the user why one stays.
 - After 2 failed attempts at the same fix, stop and report what you found.
 - Chat is not memory: write decisions into the spec or `docs/amk/decisions.md` straight away.
 - Follow `docs/amk/react-native.md`. Before fixing a build error, check `docs/amk/known-issues.md`.

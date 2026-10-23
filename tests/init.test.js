@@ -604,10 +604,11 @@ test('Expo app without native folders: Expo instructions, rules, skills and perm
   assert.match(agents, /Never edit `ios\/` or `android\/`/);
   assert.doesNotMatch(agents, /\{\{/);
   assert.ok(fs.existsSync(path.join(dir, 'docs/amk/expo.md')) && !fs.existsSync(path.join(dir, 'docs/amk/react-native.md')));
-  for (const s of ['expo-router', 'expo-upgrade', 'expo-module', 'react-native-best-practices', 'react-navigation', 'm-feature']) {
+  for (const s of ['expo-router', 'expo-upgrade', 'expo-module', 'react-native-best-practices', 'm-feature']) {
     assert.ok(fs.existsSync(path.join(dir, `.agents/skills/${s}/SKILL.md`)), s);
   }
   assert.ok(!fs.existsSync(path.join(dir, '.agents/skills/upgrading-react-native')), 'Expo upgrades with expo-upgrade');
+  assert.ok(!fs.existsSync(path.join(dir, '.agents/skills/react-navigation')), "expo-router's skill teaches its own navigation imports");
   assert.match(read(dir, '.rulesync/permissions.jsonc'), /"ios\/\*\*": "deny"/);
   assert.match(read(dir, '.gitignore'), /^\/ios$/m);
   assert.match(read(dir, '.gitignore'), /^\/android$/m);
@@ -619,6 +620,24 @@ test('Expo app without native folders: Expo instructions, rules, skills and perm
   uninstall(dir, { skipGenerate: true });
   assert.strictEqual(read(dir, 'AGENTS.md'), 'This is an Expo/React Native mobile application.\n\n## Rules\n\n- Never edit ios/ or android/ by hand.\n');
   assert.ok(!fs.existsSync(path.join(dir, 'docs/amk/expo.md')) && !fs.existsSync(path.join(dir, '.agents/skills/expo-router')));
+});
+
+test('Expo: an app on React Navigation itself gets the react-navigation skill; sync takes it out of one on Expo Router', () => {
+  const plain = fakeApp({ pkg: { dependencies: { expo: '~57.0.27', '@react-navigation/native': '^7.1.0', 'react-native': '0.86.3', react: '19.2.3' } } });
+  for (const d of ['ios', 'android']) fs.rmSync(path.join(plain, d), { recursive: true });
+  commitAll(plain);
+  init(plain, { skipGenerate: true });
+  assert.ok(fs.existsSync(path.join(plain, '.agents/skills/react-navigation/SKILL.md')));
+  assert.match(read(plain, 'AGENTS.md'), /in an app on React Navigation without Expo Router, `react-navigation`/);
+
+  // an Expo Router app with the skill from an earlier version
+  const router = expoApp();
+  init(router, { skipGenerate: true });
+  fs.cpSync(path.join(TEMPLATE, '.agents/skills/react-navigation'), path.join(router, '.agents/skills/react-navigation'), { recursive: true });
+  commitAll(router);
+  const { report } = sync(router, { fromDir: TEMPLATE, skipGenerate: true });
+  assert.ok(report.removed.includes('.agents/skills/react-navigation/SKILL.md'), JSON.stringify(report));
+  assert.ok(!fs.existsSync(path.join(router, '.agents/skills/react-navigation')), 'its folders too');
 });
 
 test('an Expo app that keeps ios/ and android/ in git is set up like a bare app', () => {
@@ -714,7 +733,7 @@ test('uninstall still removes an install from before 0.7.0', () => {
 // ---------- init --new: create the app in an empty folder ----------
 // what the React Native CLI and create-expo-app leave: the app in a new folder, committed in a new repository
 // `template`: the files the tools' templates have that init --new changes; `installFails`: adding a package fails
-function fakeCreator(calls, { fail = false, lock = true, podsFail = false, template = false, installFails = false } = {}) {
+function fakeCreator(calls, { fail = false, lock = true, podsFail = false, template = false, installFails = false, layout = 'src/app/_layout.tsx' } = {}) {
   return (cmd, args, opts) => {
     calls.push([cmd, ...args].join(' '));
     if (cmd === 'sh') { // pod install
@@ -740,11 +759,14 @@ function fakeCreator(calls, { fail = false, lock = true, podsFail = false, templ
       fs.writeFileSync(path.join(app, 'app.json'), JSON.stringify({ expo: { name: 'app', orientation: 'portrait', ios: { icon: './icon.png' } } }, null, 2));
       fs.writeFileSync(path.join(app, 'tsconfig.json'), JSON.stringify({ extends: 'expo/tsconfig.base', compilerOptions: { strict: true, paths: { '@/*': ['./src/*'] } } }, null, 2));
       fs.writeFileSync(path.join(app, '.gitignore'), '.DS_Store\nexpo-env.d.ts\n');
+      fs.mkdirSync(path.dirname(path.join(app, layout)), { recursive: true });
+      fs.writeFileSync(path.join(app, layout), "import {\n  DarkTheme,\n  ThemeProvider,\n} from 'expo-router/react-navigation';\nimport { Stack } from 'expo-router';\n\nexport default function RootLayout() {\n  return <Stack />;\n}\n");
     } else if (template) {
       fs.mkdirSync(path.join(app, 'ios/NewApp'));
       fs.writeFileSync(path.join(app, 'ios/NewApp/Info.plist'), '<dict>\n\t<key>UISupportedInterfaceOrientations</key>\n\t<array>\n\t\t<string>UIInterfaceOrientationPortrait</string>\n\t</array>\n</dict>\n');
       fs.writeFileSync(path.join(app, 'babel.config.js'), "module.exports = {\n  presets: ['module:@react-native/babel-preset'],\n};\n");
       fs.writeFileSync(path.join(app, 'tsconfig.json'), JSON.stringify({ extends: '@react-native/typescript-config', include: ['**/*.ts', '**/*.tsx'] }, null, 2));
+      fs.writeFileSync(path.join(app, 'index.js'), "/**\n * @format\n */\n\nimport { AppRegistry } from 'react-native';\nimport App from './App';\nimport { name as appName } from './app.json';\n\nAppRegistry.registerComponent(appName, () => App);\n");
     }
     git(app, 'init', '-q');
     commitAll(app);
@@ -795,7 +817,7 @@ test('init --new: the tool creates the app in a subfolder, and it moves up, comm
   assert.deepStrictEqual(leftovers(dir), []);
 });
 
-test('init --new: iPad and every orientation, stricter TypeScript and "@/" imports, in a commit of their own', () => {
+test('init --new: iPad and every orientation, stricter TypeScript and "@/" imports, and an error boundary, in a commit of their own', () => {
   Object.assign(process.env, { GIT_AUTHOR_NAME: 't', GIT_AUTHOR_EMAIL: 't@example.invalid', GIT_COMMITTER_NAME: 't', GIT_COMMITTER_EMAIL: 't@example.invalid' });
   const { createApp } = require('../lib/init');
   const quiet = { log: () => {} };
@@ -805,13 +827,18 @@ test('init --new: iPad and every orientation, stricter TypeScript and "@/" impor
   let calls = [];
   createApp(dir, 'bare', { run: fakeCreator(calls, { template: true }), pods: false, ...quiet });
   assert.strictEqual(calls[1], 'npm install --save-dev babel-plugin-module-resolver@5');
-  assert.strictEqual(git(dir, 'log', '--format=%s'), 'Support tablets and landscape; stricter TypeScript with @/ imports\nkit');
+  assert.strictEqual(git(dir, 'log', '--format=%s'), 'Support tablets and landscape; stricter TypeScript with @/ imports; an error boundary\nkit');
   assert.strictEqual(fs.readFileSync(path.join(dir, 'ios/NewApp/Info.plist'), 'utf8'),
     '<dict>\n\t<key>UISupportedInterfaceOrientations</key>\n\t<array>\n\t\t<string>UIInterfaceOrientationPortrait</string>\n\t\t<string>UIInterfaceOrientationLandscapeLeft</string>\n\t\t<string>UIInterfaceOrientationLandscapeRight</string>\n\t</array>\n</dict>\n');
   assert.strictEqual(fs.readFileSync(path.join(dir, 'babel.config.js'), 'utf8'),
     "module.exports = {\n  presets: ['module:@react-native/babel-preset'],\n  plugins: [['module-resolver', { alias: { '^@/(.+)': './src/\\\\1' } }]],\n};\n");
   assert.deepStrictEqual(JSON.parse(fs.readFileSync(path.join(dir, 'tsconfig.json'), 'utf8')).compilerOptions, { ...stricter, paths: { '@/*': ['./src/*'] } });
   assert.match(fs.readFileSync(path.join(dir, 'tsconfig.json'), 'utf8'), /^\{\n  "extends": "@react-native\/typescript-config",\n  "compilerOptions": \{[\s\S]*"@\/\*": \["\.\/src\/\*"\][\s\S]*"include": \["\*\*\/\*\.ts", "\*\*\/\*\.tsx"\]\n\}\n$/);
+  // an error boundary around the app index.js registers
+  const kitFile = f => fs.readFileSync(path.join(TEMPLATE, '../new-app', f), 'utf8');
+  assert.strictEqual(fs.readFileSync(path.join(dir, 'src/components/ErrorBoundary.tsx'), 'utf8'), kitFile('ErrorBoundary.tsx'));
+  assert.strictEqual(fs.readFileSync(path.join(dir, 'index.js'), 'utf8'),
+    "/**\n * @format\n */\n\nimport { AppRegistry } from 'react-native';\nimport App from './App';\nimport { withErrorBoundary } from './src/components/ErrorBoundary';\nimport { name as appName } from './app.json';\n\nAppRegistry.registerComponent(appName, () => withErrorBoundary(App));\n");
 
   // the plugin didn't install: no "@/" imports, the rest as before
   dir = tmpDir('amk-new-');
@@ -831,7 +858,17 @@ test('init --new: iPad and every orientation, stricter TypeScript and "@/" impor
   assert.deepStrictEqual([expo.orientation, expo.ios], ['default', { icon: './icon.png', supportsTablet: true }]);
   assert.deepStrictEqual(JSON.parse(fs.readFileSync(path.join(dir, 'tsconfig.json'), 'utf8')).compilerOptions, { strict: true, paths: { '@/*': ['./src/*'] }, ...stricter });
   assert.match(fs.readFileSync(path.join(dir, 'expo-types.d.ts'), 'utf8'), /^\/\/\/ <reference types="expo\/types" \/>$/m, 'type checks pass without expo start');
-  assert.strictEqual(git(dir, 'log', '--format=%s'), 'Support tablets and landscape; stricter TypeScript with @/ imports\nkit');
+  // the root layout exports the error boundary, which sits with the app's other components
+  assert.strictEqual(fs.readFileSync(path.join(dir, 'src/components/error-boundary.tsx'), 'utf8'), kitFile('error-boundary.tsx'));
+  assert.strictEqual(fs.readFileSync(path.join(dir, 'src/app/_layout.tsx'), 'utf8'),
+    "import {\n  DarkTheme,\n  ThemeProvider,\n} from 'expo-router/react-navigation';\nimport { Stack } from 'expo-router';\nexport { ErrorBoundary } from '../components/error-boundary';\n\nexport default function RootLayout() {\n  return <Stack />;\n}\n");
+  // routes in app/ at the root, with no src/
+  dir = tmpDir('amk-new-');
+  createApp(dir, 'expo', { run: fakeCreator([], { template: true, layout: 'app/_layout.tsx' }), ...quiet });
+  assert.ok(fs.existsSync(path.join(dir, 'components/error-boundary.tsx')));
+  assert.match(fs.readFileSync(path.join(dir, 'app/_layout.tsx'), 'utf8'), /^import \{ Stack \} from 'expo-router';\nexport \{ ErrorBoundary \} from '\.\.\/components\/error-boundary';$/m);
+  assert.strictEqual(git(dir, 'status', '--porcelain'), '');
+  assert.strictEqual(git(dir, 'log', '--format=%s'), 'Support tablets and landscape; stricter TypeScript with @/ imports; an error boundary\nkit');
 });
 
 test('init --new refuses a folder with files, a folder inside a repository and an unknown type; a failed tool leaves the folder as it was', () => {
