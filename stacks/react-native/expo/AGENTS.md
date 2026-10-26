@@ -40,6 +40,7 @@ Never say a check passed unless you ran it in this session.
 ## Rules
 
 - Stay inside the task. Ask before touching unrelated files.
+- Before designing a feature's screens, ask the user which UI/UX level they want: Simple (the default), Mixed or Premium (`specs/_templates/design.md` describes each). Build them to it.
 - Ask before adding or upgrading dependencies, and before editing `package.json`, lockfiles, `app.json`, `app.config.*`, `eas.json` or `.github/workflows/`.
 - Never edit `ios/` or `android/`: the next prebuild overwrites them. Native settings go in `app.json` or `app.config.*`, through config plugins; native code goes in an Expo module (`expo-module` skill). Ask before adding a config plugin.
 - Never run `eas build`, `eas submit` or `eas update`: they build, ship or publish with the team's accounts, so a person runs them.

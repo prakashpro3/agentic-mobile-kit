@@ -40,6 +40,7 @@ Never say a check passed unless you ran it in this session.
 ## Rules
 
 - Stay inside the task. Ask before touching unrelated files.
+- Before designing a feature's screens, ask the user which UI/UX level they want: Simple (the default), Mixed or Premium (`specs/_templates/design.md` describes each). Build them to it.
 - Ask before adding or upgrading dependencies, and before editing `package.json`, lockfiles, `Podfile`, `build.gradle`, `Info.plist`, `AndroidManifest.xml` or `.github/workflows/`.
 - Don't hand-edit `ios/*.xcodeproj/project.pbxproj`. If a native file must be added to the Xcode project, stop and ask.
 - Never read, print or commit `.env` files, keystores, signing files or the files `.amk-secrets` lists. Secrets don't belong in this repo.

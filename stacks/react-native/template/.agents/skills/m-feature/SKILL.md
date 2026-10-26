@@ -35,17 +35,18 @@ If the input describes a bug rather than new behavior, suggest `m-bugfix` and st
 
 ## 3. Design and tasks (then stop for approval)
 
-1. **Search the codebase before designing.** List the components, hooks, API clients and helpers you'll reuse in `design.md` under "Existing code to reuse". Read `docs/amk/structure.md` and `docs/amk/conventions.md`.
-2. Fill `design.md`: approach, files to change, risks (native changes, pod install, migrations).
-3. Fill `tasks.md`: small tasks (about an hour, under ~300 changed lines each). Each task names the requirement it serves and how it's checked, and its tests are written in the same task, not left for the end. The last task writes `.maestro/<id>.yaml` (from `specs/_templates/flow.yaml`): a Maestro flow with a `# Scenario <n>: <name>` comment above each scenario's steps, an assertion for its THEN and a screenshot, tapping elements by `testID` and scrolling to the ones further down a screen first (`scrollUntilVisible`): turned screens are short.
-4. Show design and tasks and **stop until the user approves them**. Ask them to check that every task serves an approved requirement and nothing goes beyond the agreed scope.
+1. **Ask for the UI/UX level first, when the feature has screens.** As one question, ask which level its screens should have: Simple (clean, minimal and functional), Mixed (simple, with modern touches) or Premium (polished, following current design trends; it takes longer). `specs/_templates/design.md` describes each. Offer as the default the level a prototype settled (under `## Decisions` in `requirements.md`), otherwise the one the app's other screens have (an earlier spec's `design.md`), otherwise Simple. Don't design until the user has answered. Write the answer and the date under "UI/UX level" in `design.md` (n/a for a feature without screens).
+2. **Search the codebase before designing.** List the components, hooks, API clients and helpers you'll reuse in `design.md` under "Existing code to reuse". Read `docs/amk/structure.md` and `docs/amk/conventions.md`.
+3. Fill `design.md`: approach, files to change, risks (native changes, pod install, migrations).
+4. Fill `tasks.md`: small tasks (about an hour, under ~300 changed lines each). Each task names the requirement it serves and how it's checked, and its tests are written in the same task, not left for the end. The last task writes `.maestro/<id>.yaml` (from `specs/_templates/flow.yaml`): a Maestro flow with a `# Scenario <n>: <name>` comment above each scenario's steps, an assertion for its THEN and a screenshot, tapping elements by `testID` and scrolling to the ones further down a screen first (`scrollUntilVisible`): turned screens are short.
+5. Show design and tasks and **stop until the user approves them**. Ask them to check that every task serves an approved requirement and nothing goes beyond the agreed scope.
 
 From here the plan lives in files, so the building can also run in a fresh session or another tool with `m-continue <id>`.
 
 ## 4. Build, one task at a time
 
 For each task:
-1. Implement only that task. Write tests first for logic (state, data, utils); UI can be tested after. Build screens to the screen rules in the React Native rules file `AGENTS.md` names (keyboard, system bars, scrolling, large text, announced messages), for every phone, tablet and orientation `AGENTS.md` lists: they're the bugs device checks and reviews find most.
+1. Implement only that task. Write tests first for logic (state, data, utils); UI can be tested after. Build screens to the UI/UX level in `design.md`, and to the screen rules in the React Native rules file `AGENTS.md` names (keyboard, system bars, scrolling, large text, announced messages), for every phone, tablet and orientation `AGENTS.md` lists: they're the bugs device checks and reviews find most.
 2. Run `lint`, `typecheck` and `test` (see AGENTS.md). Paste the real output. If something fails, fix it; after 2 failed attempts, stop and report.
 3. Commit with a clear message ending in `Spec: specs/<id>`.
 4. Tick the task in `tasks.md` and update the handoff block and log in `progress.md`.
