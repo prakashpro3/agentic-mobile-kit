@@ -32,6 +32,20 @@ done
 for c in 'rm -r build' 'rm -f build.log' 'git rm --cached -q file' 'rm -r build && ls -f' 'npm run lint -- --fix' 'git push origin main'; do
   t 0 "{\"tool_input\":{\"command\":\"$c\"}}" "allowed: $c"
 done
+# throwing away uncommitted work, stashes or unmerged commits; not one file's edit, a switch of branch or an unstage
+for c in 'git checkout .' 'git checkout -- .' 'git checkout HEAD -- .' 'git checkout ./' 'git checkout :/' 'git checkout -f main' \
+  'git checkout --force main' 'git restore .' 'git restore --worktree .' 'git restore -SW .' 'git restore --source=HEAD :/' \
+  'git switch -f main' 'git switch --discard-changes main' 'git stash drop' 'git stash drop stash@{1}' 'git stash clear' \
+  'git branch -D old' 'git branch -df old' 'git branch --delete --force old' 'git add -A && git checkout .'; do
+  t 2 "{\"tool_input\":{\"command\":\"$c\"}}" "blocked: $c"
+done
+for c in 'git checkout main' 'git checkout -b feature/x' 'git checkout -- src/App.tsx' 'git restore src/App.tsx' \
+  'git restore --staged .' 'git restore -S .' 'git switch main' 'git stash' 'git stash pop' 'git stash list' \
+  'git branch -d old' 'git branch -f main origin/main' 'git branch -m old new' 'git status .' 'git checkout main && ls .'; do
+  t 0 "{\"tool_input\":{\"command\":\"$c\"}}" "allowed: $c"
+done
+r=$(printf '%s' '{"tool_input":{"command":"git checkout ."}}' | node scripts/amk/guard.js 2>&1)
+case $r in *"Ask the user first, or keep the work: git stash, or a commit"*) echo "ok   says what to do instead" ;; *) echo "FAIL discard message: $r"; fails=$((fails + 1)) ;; esac
 # a commit message that mentions one is blocked, and says how to commit it
 r=$(printf '%s' '{"tool_input":{"command":"git commit -m \"guard: blocks rm -rf\""}}' | node scripts/amk/guard.js 2>&1)
 case $r in *'git commit -F <file>'*) echo "ok   says how to commit a message that mentions one" ;; *) echo "FAIL commit message hint: $r"; fails=$((fails + 1)) ;; esac

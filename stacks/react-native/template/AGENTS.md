@@ -44,7 +44,7 @@ Never say a check passed unless you ran it in this session.
 - Ask before adding or upgrading dependencies, and before editing `package.json`, lockfiles, `Podfile`, `build.gradle`, `Info.plist`, `AndroidManifest.xml` or `.github/workflows/`.
 - Don't hand-edit `ios/*.xcodeproj/project.pbxproj`. If a native file must be added to the Xcode project, stop and ask.
 - Never read, print or commit `.env` files, keystores, signing files or the files `.amk-secrets` lists. Secrets don't belong in this repo.
-- Never use `git commit --no-verify`, `git push --force`, `git reset --hard` or `rm -rf`.
+- Never use `git commit --no-verify`, `git push --force`, `git reset --hard` or `rm -rf`, and never throw away work that can't be brought back (uncommitted changes with `git checkout .` or `git restore .`, stashes with `git stash drop` or `clear`, unmerged commits with `git branch -D`): ask first. To undo your own edit to a file, `git checkout -- <that file>`.
 - When `rn-check` (in `verify.sh quick`) reports a problem (✗), show it to the user and let them choose, for each one: fix it, or keep the line with `// amk-ok <today's date>: <their reason>`. Never add an `amk-ok` on your own. One kept over two weeks ago comes back when its file changes again: ask again. Fix the warnings (!) in code the task changed, or tell the user why one stays.
 - After 2 failed attempts at the same fix, stop and report what you found.
 - Chat is not memory: write decisions into the spec or `docs/amk/decisions.md` straight away.

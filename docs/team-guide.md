@@ -82,7 +82,7 @@ If an agent says "done" without these, it isn't done. Open the screenshots yours
 | `pre-push` hook | Typecheck and tests |
 | CI on every PR | Lint, typecheck, tests, secret scan, config drift, PR size ≤ 600 lines (`large-pr` label to override), Android build, and the iOS build when native files change |
 | Nightly, or the `e2e` label | Android emulator with the Maestro flows; the screenshots are attached to the run |
-| Inside AI tools | A guard hook blocks `rm -rf` (and `-Rf`, `--recursive --force`), force pushes (`--force`, `-f`, `+branch`), `git reset --hard`, `--no-verify` and reading secret files: `.env` files, keystores, and the paths listed in `.amk-secrets`. Permission rules ask before dependency and native config changes. A stop hook reminds the agent to update the handoff. |
+| Inside AI tools | A guard hook blocks `rm -rf` (and `-Rf`, `--recursive --force`), force pushes (`--force`, `-f`, `+branch`), `git reset --hard`, commands that throw away uncommitted work, stashes or unmerged commits (`git checkout .`, `git restore .`, `git stash drop` and `clear`, `git branch -D`; undoing one file's edit stays allowed), `--no-verify` and reading secret files: `.env` files, keystores, and the paths listed in `.amk-secrets`. Permission rules ask before dependency and native config changes. A stop hook reminds the agent to update the handoff. |
 | Releases | `scripts/amk/release-check.js` before tagging, and again on Codemagic before every signed build (with `--ci codemagic`) |
 
 Never bypass a hook with `--no-verify`. If a hook is wrong, fix the hook in a PR.
