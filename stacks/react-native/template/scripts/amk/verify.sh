@@ -39,7 +39,8 @@
 #      of each flow, .maestro/.amk-<screen>-<flow>.yaml, where ${MAESTRO_FILENAME} is the copy's name),
 #      AMK_DEVICES (how many devices plan checks at once: one per 6 GB beyond 4), AMK_DEVICE_WAIT (minutes to wait for a
 #      device in use, 30), AMK_LOCK_DIR (where runs on this machine claim devices; /tmp/agentic-mobile-kit-<user id>),
-#      AMK_EVIDENCE_KEEP (how many evidence folders stay, newest first: 5; 0 keeps them all)
+#      AMK_EVIDENCE_KEEP (how many evidence folders stay, newest first: 5; 0 keeps them all; a prototype's and those of a
+#      spec in progress always stay)
 # A device in use by another run (any project on this machine) is skipped for a free one of the same kind, or waited
 # for when it was named or none is free.
 # Real iPhones and iPads (iOS 17 or later): Maestro doesn't run on them, so their flows run through maestro-runner, with
@@ -91,16 +92,26 @@ case $flow in "" | /* | [A-Za-z]:/*) ;; *) flow=$root/$flow ;; esac
 evidence="$root/.amk/evidence/${label:-${spec:-no-spec}}"
 mkdir -p "$evidence"
 # Evidence stays on this machine (.amk/ is out of git): the newest AMK_EVIDENCE_KEEP folders stay, this one among
-# them, and older ones go (5; 0 keeps them all). A prototype's folder (<id>-prototype, material for a demo) always
-# stays and isn't counted
+# them, and older ones go (5; 0 keeps them all). A prototype's folder (<id>-prototype, material for a demo) and those
+# of a spec in progress (its progress.md isn't done: its evidence table points there) always stay and aren't counted.
+# Kits before 0.7.12 gave each run without a spec a folder named after its time: those go first
 touch "$evidence"
 keep=${AMK_EVIDENCE_KEEP:-5}
 if [ "$keep" -gt 0 ] 2> /dev/null; then
-  old=$(ls -dt "$root"/.amk/evidence/*/ 2> /dev/null | grep -v -- '-prototype/$' | tail -n +$((keep + 1)))
+  open=$(for p in "$root"/specs/*/progress.md; do
+    case $p in (*/specs/_templates/* | */specs/current/*) continue ;; esac
+    if [ -f "$p" ] && ! grep -qi -E '^Status:[[:space:]]*done' "$p"; then basename "$(dirname "$p")"; fi
+  done)
+  all=$(ls -dt "$root"/.amk/evidence/*/ 2> /dev/null | grep -v -- '-prototype/$' | while IFS= read -r d; do
+    for s in $open; do case $(basename "$d") in ("$s" | "$s"-*) continue 2 ;; esac; done
+    echo "$d"
+  done)
+  timed='/[0-9]{8}-[0-9]{6}/$'
+  old=$({ echo "$all" | grep -v -E "$timed" || true; echo "$all" | grep -E "$timed" || true; } | grep . | tail -n +$((keep + 1)))
   if [ -n "$old" ]; then
     # another run on this machine (a part, a round) may have just removed the same folder
     echo "$old" | while IFS= read -r d; do rm -r "${d:?}" 2> /dev/null || true; done
-    echo "evidence: removed $(echo "$old" | wc -l | tr -d ' ') older folders from .amk/evidence, keeping the newest $keep (AMK_EVIDENCE_KEEP sets how many; 0 keeps them all)"
+    echo "evidence: removed $(echo "$old" | awk -F/ 'NR <= 5 { s = s (NR > 1 ? ", " : "") $(NF - 1) } END { print s (NR > 5 ? " and " NR - 5 " more" : "") }') from .amk/evidence, keeping the newest $keep and those of specs in progress (AMK_EVIDENCE_KEEP sets how many; 0 keeps them all)"
   fi
 fi
 status=0

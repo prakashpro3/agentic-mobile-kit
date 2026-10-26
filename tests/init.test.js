@@ -4,7 +4,7 @@ const assert = require('node:assert');
 const fs = require('fs');
 const path = require('path');
 const { execFileSync } = require('child_process');
-const { init, sync, uninstall, InitError, KIT_VERSION } = require('../lib/init');
+const { init, sync, uninstall, printSync, InitError, KIT_VERSION } = require('../lib/init');
 const tmpDir = require('./tmp');
 
 const TEMPLATE = path.join(__dirname, '../stacks/react-native/template');
@@ -189,6 +189,8 @@ function oldKit() {
 
 test('sync: updates untouched kit files, merges the team\'s changes, flags conflicts, leaves filled-in docs alone', () => {
   const old = oldKit();
+  const rn = path.join(old, 'docs/amk/react-native.md');
+  fs.writeFileSync(rn, fs.readFileSync(rn, 'utf8').replace('# React Native rules (bare)', '# Old title'));
   const dir = fakeApp({ files: { 'AGENTS.md': '# Team notes\n' } });
   init(dir, { template: old, ci: ['github'], skipGenerate: true });
   commitAll(dir);
@@ -197,9 +199,11 @@ test('sync: updates untouched kit files, merges the team\'s changes, flags confl
   fs.writeFileSync(path.join(dir, 'cliff.toml'), read(dir, 'cliff.toml').replace('header = "# Old\\n"', 'header = "# Team\\n"'));
   fs.writeFileSync(path.join(dir, 'docs/amk/product.md'), 'This app books meeting rooms.\n');
   fs.appendFileSync(path.join(dir, '.gitleaks.toml'), '# team addition\n');
+  fs.writeFileSync(path.join(dir, 'docs/amk/react-native.md'), read(dir, 'docs/amk/react-native.md').replace('# Old title', '# Team title'));
   commitAll(dir);
 
-  const { report } = sync(dir, { fromDir: old, skipGenerate: true });
+  const result = sync(dir, { fromDir: old, skipGenerate: true });
+  const { report } = result;
   const kit = f => fs.readFileSync(path.join(TEMPLATE, f), 'utf8');
 
   assert.strictEqual(read(dir, 'scripts/amk/pm-run.sh'), kit('scripts/amk/pm-run.sh'));
@@ -208,8 +212,18 @@ test('sync: updates untouched kit files, merges the team\'s changes, flags confl
   assert.match(ci, /^name: ci$/m, 'kit change applied');
   assert.match(ci, /echo team step/, 'team change kept');
   assert.ok(report.merged.includes('.github/workflows/ci.yml'));
-  assert.match(read(dir, 'cliff.toml'), new RegExp(`<<<<<<< your version[\\s\\S]*# Team[\\s\\S]*>>>>>>> kit ${KIT_VERSION.replace(/\./g, '\\.')}`));
-  assert.ok(report.conflicts.includes('cliff.toml'));
+  // a conflict in a file that markers would break (a config here; a script, a hook or a workflow too): the kit's version
+  // goes in, so it works, and the team's beside it, to bring its changes back by hand (issue #12)
+  assert.strictEqual(read(dir, 'cliff.toml'), kit('cliff.toml'));
+  assert.match(read(dir, 'cliff.toml.mine'), /^header = "# Team\\n"$/m);
+  assert.ok(report.byHand.includes('cliff.toml'));
+  // Markdown shows the conflict in place
+  assert.match(read(dir, 'docs/amk/react-native.md'), new RegExp(`^<<<<<<< your version\\n# Team title\\n=======\\n# React Native rules \\(bare\\)\\n>>>>>>> kit ${KIT_VERSION.replace(/\./g, '\\.')}$`, 'm'));
+  assert.ok(report.conflicts.includes('docs/amk/react-native.md'));
+  // and sync isn't finished until they're resolved: said last, and the command fails
+  const said = [];
+  assert.strictEqual(printSync(result, l => said.push(l)), 2);
+  assert.match(said.join('\n'), /\nsync isn't finished: 2 conflicts to resolve \(above\)\. Then run the checks, and commit\.$/);
   assert.ok(fs.existsSync(path.join(dir, 'scripts/amk/set-version.sh')), 'new file added');
   if (process.platform !== 'win32') assert.ok(fs.statSync(path.join(dir, 'scripts/amk/set-version.sh')).mode & 0o111, 'and executable');
   assert.ok(report.added.includes('scripts/amk/set-version.sh'));
@@ -221,6 +235,50 @@ test('sync: updates untouched kit files, merges the team\'s changes, flags confl
   assert.match(agents, /^## Rules$/m);
   assert.doesNotMatch(agents, /Old rules/);
   assert.match(agents, new RegExp(`KIT:START agentic-mobile-kit ${KIT_VERSION.replace(/\./g, '\\.')} `));
+});
+
+test('sync: a script whose merge no longer parses gets the kit\'s version, and the team\'s beside it', () => {
+  const old = oldKit();
+  fs.appendFileSync(path.join(old, 'scripts/amk/report.js'), '// old line\n');
+  const dir = fakeApp();
+  init(dir, { template: old, skipGenerate: true });
+  commitAll(dir);
+  // the team's edit at the top merges cleanly with the kit's at the end, into a script that doesn't parse
+  fs.writeFileSync(path.join(dir, 'scripts/amk/report.js'), read(dir, 'scripts/amk/report.js').replace("'use strict';\n", "'use strict';\nif (process.env.TEAM) {\n"));
+  commitAll(dir);
+  const { report } = sync(dir, { fromDir: old, skipGenerate: true });
+  assert.strictEqual(read(dir, 'scripts/amk/report.js'), fs.readFileSync(path.join(TEMPLATE, 'scripts/amk/report.js'), 'utf8'));
+  assert.match(read(dir, 'scripts/amk/report.js.mine'), /if \(process\.env\.TEAM\) \{/);
+  assert.deepStrictEqual(report.byHand, ['scripts/amk/report.js']);
+});
+
+test('sync keeps the team\'s edits inside AGENTS.md\'s kit section, marks those the kit changed too; a new version isn\'t an edit', () => {
+  const old = oldKit(); // its AGENTS.md says "## Old rules"
+  const dir = fakeApp({ files: { 'AGENTS.md': '# Team notes\n' } });
+  init(dir, { template: old, skipGenerate: true });
+  commitAll(dir);
+  // the team builds for Android phones only (the value the kit fills in, a team's decision), allows three attempts,
+  // and renamed a heading the kit renames too; React Native was upgraded since
+  const edit = (from, to) => fs.writeFileSync(path.join(dir, 'AGENTS.md'), read(dir, 'AGENTS.md').replace(from, to));
+  edit(/^(- Screens: )[^.]*/m, (m, start) => `${start}Android phones only`);
+  edit('After 2 failed attempts', 'After 3 failed attempts');
+  edit('## Old rules', '## Team rules');
+  // and the marker line says the version that installed it, as in an app
+  edit(/(KIT:START agentic-mobile-kit )[\d.]+/, (m, start) => `${start}0.7.10`);
+  const pkg = JSON.parse(read(dir, 'package.json'));
+  pkg.dependencies['react-native'] = '0.88.0';
+  fs.writeFileSync(path.join(dir, 'package.json'), JSON.stringify(pkg, null, 2));
+  commitAll(dir);
+  const { report } = sync(dir, { fromDir: old, skipGenerate: true });
+  const agents = read(dir, 'AGENTS.md');
+  assert.match(agents, /^- Screens: Android phones only\. Build every screen/m, 'the team\'s edits stay');
+  assert.match(agents, /^- After 3 failed attempts/m);
+  assert.match(agents, /^<<<<<<< your version\n## Team rules\n=======\n## Rules\n>>>>>>> kit /m, 'where the kit changed the line too, both, marked');
+  assert.match(agents, /^- Bare React Native 0\.88\.0 /m, 'a new version isn\'t taken for an edit');
+  assert.match(agents, new RegExp(`^<!-- KIT:START agentic-mobile-kit ${KIT_VERSION.replace(/\./g, '\\.')} `, 'm'), 'the marker lines are the kit\'s');
+  assert.match(agents, /^# Team notes\n/);
+  assert.deepStrictEqual(report.conflicts, ['AGENTS.md (your edits inside the kit\'s section)']);
+  assert.ok(!report.updated.includes('AGENTS.md'));
 });
 
 test('sync right after init changes nothing', () => {
@@ -262,7 +320,7 @@ test('uninstall: removes the kit and its sections, keeps changed files and the t
   assert.match(read(dir, '.gitignore'), /^\.env$/m, '.gitignore left alone');
 });
 
-test('sync with --from (no recorded version): a file matching neither kit version gets conflict markers, not a silent merge', () => {
+test('sync with --from (no recorded version): a file matching neither kit version isn\'t merged silently', () => {
   const old = oldKit();
   const dir = fakeApp();
   init(dir, { template: old, ci: ['github'], skipGenerate: true });
@@ -270,8 +328,11 @@ test('sync with --from (no recorded version): a file matching neither kit versio
   fs.writeFileSync(path.join(dir, '.github/workflows/ci.yml'), read(dir, '.github/workflows/ci.yml').replace('name: old ci\n', 'name: older ci\n'));
   commitAll(dir);
   const { report } = sync(dir, { fromDir: old, from: '0.2.0', skipGenerate: true });
-  assert.match(read(dir, '.github/workflows/ci.yml'), /<<<<<<< your version\nname: older ci\n=======\nname: ci\n>>>>>>> kit /);
-  assert.ok(report.conflicts.includes('.github/workflows/ci.yml'));
+  // a workflow with markers wouldn't run: the kit's version, and the team's beside it
+  assert.match(read(dir, '.github/workflows/ci.yml'), /^name: ci$/m);
+  assert.doesNotMatch(read(dir, '.github/workflows/ci.yml'), /<<<<<<<|older ci/);
+  assert.match(read(dir, '.github/workflows/ci.yml.mine'), /^name: older ci$/m);
+  assert.ok(report.byHand.includes('.github/workflows/ci.yml'));
   assert.ok(report.updated.includes('scripts/amk/pm-run.sh'), 'files matching the old kit still update');
 });
 

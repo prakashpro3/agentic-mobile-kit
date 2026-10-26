@@ -50,7 +50,7 @@ function main([cmd, ...rest]) {
       printSummary(init(process.cwd(), { tools: list('tools'), ci: list('ci'), pm: flag('pm') }));
     });
   } else if (cmd === 'sync') {
-    run('sync', () => printSync(sync(process.cwd(), { from: flag('from'), ci: list('ci'), pm: flag('pm') })));
+    run('sync', () => { if (printSync(sync(process.cwd(), { from: flag('from'), ci: list('ci'), pm: flag('pm') }))) process.exitCode = 1; });
   } else if (cmd === 'uninstall') {
     run('uninstall', () => printUninstall(uninstall(process.cwd(), { from: flag('from'), pm: flag('pm') })));
   } else if (cmd === 'doctor') {

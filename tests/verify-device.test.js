@@ -675,7 +675,7 @@ mkdir -p "$debug/smoke/logs"; echo log > "$debug/smoke/logs/device-logcat.txt"; 
 touch "$out/shot.png"; [ -z "$FAIL" ] || exit 1`;
   const r = verifyAndroid({ connected: ['emulator-5556 P35'], avds: 'P35', build: true, maestro: logs, prepare: old,
     files: { '.amk/evidence/run/android/screenshots/from-an-earlier-run.png': '', '.amk/evidence/run/maestro-logs/android-smoke/smoke-2/logs/device-logcat.txt': 'old' } });
-  assert.match(r.out, /^evidence: removed 3 older folders from \.amk\/evidence, keeping the newest 5 \(AMK_EVIDENCE_KEEP sets how many; 0 keeps them all\)$/m);
+  assert.match(r.out, /^evidence: removed old5, old6, old7 from \.amk\/evidence, keeping the newest 5 and those of specs in progress \(AMK_EVIDENCE_KEEP sets how many; 0 keeps them all\)$/m);
   assert.deepStrictEqual(fs.readdirSync(path.join(r.app, '.amk/evidence')).sort(), ['20260101-onboarding-prototype', 'old1', 'old2', 'old3', 'old4', 'run'],
     'this check\'s, the four newest, and a prototype\'s, however old');
   assert.match(r.out, /^android: flows 1\/1 passed, 1 screenshots in \.amk\/evidence\/run\/android$/m, 'not the earlier run\'s screenshot');
@@ -692,4 +692,28 @@ touch "$out/shot.png"; [ -z "$FAIL" ] || exit 1`;
   assert.match(plain.out, /^android: flows 1\/1 passed, 1 screenshots in \.amk\/evidence\/no-spec\/android$/m);
   assert.deepStrictEqual(fs.readdirSync(path.join(plain.app, '.amk/evidence')).sort(), ['20260101-onboarding-prototype', 'no-spec', 'old1', 'old2', 'old3', 'old4']);
   assert.ok(fs.existsSync(path.join(plain.app, '.amk/evidence/no-spec/lint.log')), 'the quick run\'s logs stay');
+  // the first run after an update from a kit before 0.7.12, which gave each run without a spec a folder named after its
+  // time: eight of those, newer than three specs' evidence (issue #12). The timestamped ones go first, a done spec's
+  // competes as before, and a spec in progress keeps its own, however many there are
+  const updated = app => {
+    const at = (name, days) => {
+      const d = path.join(app, `.amk/evidence/${name}`);
+      fs.mkdirSync(d, { recursive: true });
+      fs.utimesSync(d, new Date(Date.now() - days * 86400e3), new Date(Date.now() - days * 86400e3));
+    };
+    for (let i = 1; i <= 8; i++) at(`20261020-1${i}0000`, i / 10);
+    at('20261001-vehicle-setup', 10);
+    at('20261001-vehicle-setup-android', 11);
+    at('20261005-sign-in', 12);
+    at('20260901-onboarding', 13);
+  };
+  const specs = {
+    'specs/20261001-vehicle-setup/progress.md': '# Progress\nStatus:        in progress — task 2 of 5\n',
+    'specs/20261005-sign-in/progress.md': '# Progress\nStatus:        in progress — task 1 of 3\n',
+    'specs/20260901-onboarding/progress.md': '# Progress\nStatus:        done\n',
+  };
+  const after = verifyAndroid({ connected: ['emulator-5556 P35'], avds: 'P35', build: true, maestro: logs, prepare: updated, files: specs });
+  assert.match(after.out, /^evidence: removed 20261020-140000, 20261020-150000, 20261020-160000, 20261020-170000, 20261020-180000 from \.amk\/evidence, keeping/m);
+  assert.deepStrictEqual(fs.readdirSync(path.join(after.app, '.amk/evidence')).sort(), ['20260901-onboarding', '20261001-vehicle-setup',
+    '20261001-vehicle-setup-android', '20261005-sign-in', '20261020-110000', '20261020-120000', '20261020-130000', 'run']);
 });
