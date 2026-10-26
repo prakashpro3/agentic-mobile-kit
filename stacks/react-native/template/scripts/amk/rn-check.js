@@ -211,6 +211,15 @@ function check(file, text) {
     if (l && !/\breturn\b/.test(body)) add('!', m.index, close, `${l[1]} in an effect that returns no cleanup: return a function that removes it`, lineAt(code, open + l.index));
   });
   each(/\bconsole\s*\.\s*log\s*\(/g, m => add('!', m.index, null, 'console.log left in: remove it, or use the app\'s logger'));
+  // the generated look: marketing filler for copy, placeholder text and names, emoji in place of the app's icons
+  each(/\b(seamless(?:ly)?|effortless(?:ly)?|supercharge[ds]?|revolutioni[sz](?:e|es|ed|ing)|revolutionary|cutting-edge|next-level|game-?chang(?:er|ing)|unleash(?:es|ed)?|elevate your|empower your|unlock your (?:full )?potential)\b/gi,
+    m => add('!', m.index, null, `"${m[0]}" reads as generated copy: say what it does, in the app's words (docs/amk/glossary.md)`));
+  each(/\b(lorem ipsum|(?:john|jane) doe|acme)\b/gi, m => add('!', m.index, null, `"${m[0]}" is filler: the real text, or a placeholder the PR lists`));
+  // not in translation files: an emoji there is part of a message ("Welcome 👋"), not an icon
+  if (!/(^|\/)(i18n?|locales?|translations?|lang)\//i.test(file)) {
+    each(/\p{Emoji_Presentation}|\p{Extended_Pictographic}\uFE0F/gu,
+      m => add('!', m.index, null, 'an emoji in the app: an icon from its icon set (docs/amk/design-system.md), unless it\'s content'));
+  }
   each(/\bmask(AllTextInputs|AllText|AllInputs|TextInputs)\s*:\s*false\b/g, m => add('!', m.index, null, 'session replay that records what users type: mask text inputs'));
   each(/\bAccessibilityInfo\s*\.\s*setAccessibilityFocus\s*\(/g, m => add('!', m.index, null, 'AccessibilityInfo.setAccessibilityFocus is deprecated: use sendAccessibilityEvent'));
   // platform guidelines: text, back, screen readers, tap areas, permissions, motion

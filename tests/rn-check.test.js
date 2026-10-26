@@ -209,6 +209,41 @@ const spin = Animated.loop(x);
   assert.doesNotMatch(r.out, /camera\.tsx/, 'asked in context, blocked handled, Reduce Motion read');
 });
 
+test('rn-check: the generated look (marketing copy, filler, emoji for icons) warns; the app\'s own words and names stay quiet', () => {
+  const dir = app();
+  write(dir, 'src/home.tsx', `export function Home() {
+  const seamlessScroll = useScroll(); // seamless in a comment is nobody's copy
+  return (
+    <View>
+      <Text>Seamlessly track every fill-up</Text>
+      <Text>{'Unlock your full potential'}</Text>
+      <Text>Unlock your account</Text>
+      <Button title="🚀 Get started" onPress={start} />
+      <Text>Jane Doe</Text>
+      <Text>Lorem ipsum dolor sit amet</Text>
+      <Text>© 2026 Fuel Co.</Text>
+      <Text>👍🏽🎉 Done</Text>
+    </View>
+  );
+}
+`);
+  // a translation file's emoji is part of a message, but its copy is still checked
+  write(dir, 'src/i18n/en.js', `export default {\n  welcome: 'Welcome, {{name}} 👋',\n  tagline: 'Effortlessly log every trip',\n};\n`);
+  const r = check(dir);
+  assert.strictEqual(r.status, 0, 'warnings only');
+  const at = (line, re) => assert.match(r.out, new RegExp(`^ {2}! src/home\\.tsx:${line} {2}${re.source}`, 'm'), `line ${line}\n${r.out}`);
+  at(5, /"Seamlessly" reads as generated copy: say what it does, in the app's words/);
+  at(6, /"Unlock your full potential" reads as generated copy/);
+  at(8, /an emoji in the app: an icon from its icon set/);
+  at(9, /"Jane Doe" is filler: the real text, or a placeholder the PR lists/);
+  at(10, /"Lorem ipsum" is filler/);
+  at(12, /an emoji in the app/);
+  assert.strictEqual((r.out.match(/home\.tsx:12 {2}an emoji/g) || []).length, 1, 'a run of emoji is one finding');
+  assert.doesNotMatch(r.out, /home\.tsx:(2|7|11) /, 'a name in code, a comment, an account to unlock, the copyright sign');
+  assert.doesNotMatch(r.out, /i18n\/en\.js:2 /, 'an emoji in a translation');
+  assert.match(r.out, /^ {2}! src\/i18n\/en\.js:3 {2}"Effortlessly" reads as generated copy/m, 'but its copy is checked');
+});
+
 test('rn-check: a line kept over two weeks ago comes back when its file changes again, for the user to decide again', () => {
   const dir = app({ dependencies: { react: '19.2.3', 'react-native': '0.87.1' } }, {
     'src/settings.tsx': `import { SafeAreaView } from 'react-native'; // amk-ok ${day(30)}: a screen only iOS shows
