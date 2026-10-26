@@ -1,6 +1,8 @@
 #!/usr/bin/env node
 // Checks the lines this branch adds or changes for React Native mistakes that the app's rules (docs/amk/react-native.md
-// or expo.md) list. Problems (✗) fail it, and so verify.sh quick; warnings (!) don't. Only changed lines: code already
+// or expo.md) list, and its Maestro flows (.maestro/): Maestro's own syntax check, files they run that aren't there,
+// taps by text, and each scenario of a spec the branch touched with its steps, an assertion and a screenshot.
+// Problems (✗) fail it, and so verify.sh quick; warnings (!) don't. Only changed lines: code already
 // on the base branch is never reported. A line that's right as it is carries `// amk-ok <date>: <reason>`, on it or on
 // the line above, with the user's reason and the day they gave it; it's listed as kept, for review. When a branch changes
 // a file again, a kept line in it that's over two weeks old is reported again, for the user to decide again (the date
@@ -32,18 +34,21 @@ const since = baseRef || 'the last commit';
 const source = f => /\.(js|jsx|ts|tsx|mjs|cjs)$/.test(f) && !f.endsWith('.d.ts')
   && !/(^|\/)(node_modules|scripts\/amk|__tests__|__mocks__|e2e)\//.test(f)
   && !/\.(test|spec)\.\w+$|(^|\/)(jest[.-]setup|setup-?tests)[^/]*$/i.test(f);
+// Maestro flows: the ones verify.sh runs (.maestro/*.yaml) and the subflows they run (in folders below)
+// (not the copies with view-tree steps verify.sh runs for a moment on Android: .amk-<screen>-<flow>.yaml)
+const flowFile = f => /^\.maestro\/.+\.ya?ml$/.test(f) && !/(^|\/)\.amk-/.test(f);
 const changed = new Map(); // file -> Set of line numbers, or 'all'
 if (sha) {
   let file = null;
   for (const line of (git('diff', '-U0', '--no-color', '--no-ext-diff', '--relative', '-M', '--diff-filter=ACMR', sha) || '').split('\n')) {
     if (line.startsWith('+++ ')) { file = line === '+++ /dev/null' ? null : line.slice(6); continue; }
     const h = /^@@ -\S+ \+(\d+)(?:,(\d+))? @@/.exec(line);
-    if (!h || !file || !source(file)) continue;
+    if (!h || !file || !(source(file) || flowFile(file))) continue;
     if (!changed.has(file)) changed.set(file, new Set());
     for (let n = Number(h[1]), end = n + Number(h[2] ?? 1); n < end; n++) changed.get(file).add(n);
   }
 }
-for (const f of (git('ls-files', '--others', '--exclude-standard') || '').split('\n')) if (f && source(f)) changed.set(f, 'all');
+for (const f of (git('ls-files', '--others', '--exclude-standard') || '').split('\n')) if (f && (source(f) || flowFile(f))) changed.set(f, 'all');
 
 // ---------- what the app uses ----------
 let pkg = {};
@@ -107,6 +112,13 @@ function okSince(file, n, date) {
   const t = /^committer-time (\d+)$/m.exec(git('blame', '--porcelain', '-L', `${n},${n}`, '--', file) || '');
   return t ? localDay(Number(t[1]) * 1000) : today;
 }
+const BASE64 = new Set([...'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/='].map(c => c.charCodeAt(0)));
+const SECRETS = [
+  [/\bgh[pousr]_[A-Za-z0-9]{36,}/g, 'a GitHub token'], [/\bgithub_pat_[A-Za-z0-9_]{40,}/g, 'a GitHub token'],
+  [/\b[sr]k_live_[A-Za-z0-9]{20,}/g, 'a Stripe secret key'], [/\bAKIA[0-9A-Z]{16}\b/g, 'an AWS access key'],
+  [/-----BEGIN [A-Z ]*PRIVATE KEY-----/g, 'a private key'], [/\bxox[baprs]-[A-Za-z0-9-]{10,}/g, 'a Slack token'],
+  [/\bsk-(proj-|ant-)?[A-Za-z0-9_-]{32,}/g, 'an AI service API key'],
+];
 const importsFrom = (code, from) => [...code.matchAll(new RegExp(`import\\s+[^;'"]*?\\{([^}]*)\\}\\s*from\\s*['"]${from}['"]`, 'g'))];
 const timers = /\bset(Timeout|Interval)\s*\(/;
 // a permission prompt (not App Tracking Transparency's, which apps show early on purpose)
@@ -155,15 +167,17 @@ function check(file, text) {
     }
   });
   // secrets are reported without their value; comments too, as they ship in the repository
-  const secrets = [
-    [/\bgh[pousr]_[A-Za-z0-9]{36,}/g, 'a GitHub token'], [/\bgithub_pat_[A-Za-z0-9_]{40,}/g, 'a GitHub token'],
-    [/\b[sr]k_live_[A-Za-z0-9]{20,}/g, 'a Stripe secret key'], [/\bAKIA[0-9A-Z]{16}\b/g, 'an AWS access key'],
-    [/-----BEGIN [A-Z ]*PRIVATE KEY-----/g, 'a private key'], [/\bxox[baprs]-[A-Za-z0-9-]{10,}/g, 'a Slack token'],
-    [/\bsk-(proj-|ant-)?[A-Za-z0-9_-]{32,}/g, 'an AI service API key'],
-  ];
-  for (const [re, what] of secrets) each(re, m => add('✗', m.index, null, `${what} in code: anyone with the repository or the app can read it. Revoke it and keep it on a server`), text);
+  for (const [re, what] of SECRETS) each(re, m => add('✗', m.index, null, `${what} in code: anyone with the repository or the app can read it. Revoke it and keep it on a server`), text);
   each(/\bAIza[0-9A-Za-z_-]{35}\b/g, m => add('!', m.index, null, 'a Google API key in code: ship it only if it is restricted to this app (Google Cloud console)'), text);
-  each(/data:image\/[a-z+]+;base64,[A-Za-z0-9+/=]{8000,}/g, m => add('✗', m.index, m.index + m[0].length, `a ${Math.round(m[0].length * 0.75 / 1024)} KB base64 image in code: put it in an asset file`), text);
+  // measured without a regular expression, whose repetition overflows the stack on an image of a few MB
+  for (let i = text.indexOf('data:image/'); i !== -1; i = text.indexOf('data:image/', i + 1)) {
+    const head = /^data:image\/[a-z+]+;base64,/.exec(text.slice(i, i + 40));
+    if (!head) continue;
+    let j = i + head[0].length;
+    while (j < text.length && BASE64.has(text.charCodeAt(j))) j++;
+    if (j - i >= 8000) add('✗', i, j, `a ${Math.round((j - i) * 0.75 / 1024)} KB base64 image in code: put it in an asset file`);
+    i = j;
+  }
   if (expoSdk >= 56 && deps['expo-router']) {
     each(/(['"])@react-navigation\/[^'"\n]+\1/g, m => add('✗', m.index, null, `${m[0]} doesn't work alongside Expo Router from SDK 56: import from expo-router (see the expo-router skill)`));
   }
@@ -246,6 +260,81 @@ function lineAt(code, i) {
   return n;
 }
 
+// ---------- Maestro flows ----------
+// a flow without its comments (each comment character a space, so positions stay): # outside quotes starts one
+function stripYamlComments(text) {
+  return text.split('\n').map(l => {
+    let quote = null;
+    for (let i = 0; i < l.length; i++) {
+      const c = l[i];
+      if (quote) { if (c === quote) quote = null; } else if (c === '"' || c === "'") quote = c;
+      else if (c === '#' && (i === 0 || /\s/.test(l[i - 1]))) return l.slice(0, i) + ' '.repeat(l.length - i);
+    }
+    return l;
+  }).join('\n');
+}
+const TAPS = /^(tapOn|doubleTapOn|longPressOn)$/;
+const SELECTS = /^(tapOn|doubleTapOn|longPressOn|assertVisible|assertNotVisible|scrollUntilVisible|extendedWaitUntil|copyTextFrom)$/;
+const ASSERTS = /^(assertVisible|assertNotVisible|assertTrue|assertWithAI|assertNoDefectsWithAI)$/;
+// buttons of system dialogs (permission prompts, alerts), which have no testID
+const SYSTEM_BUTTON = /^(allow|allow while using (the )?app|allow once|only this time|while using the app|ok|cancel|continue|don.t allow|not now|deny|close)$/i;
+const unquote = v => { v = v.trim(); return /^'.*'$/.test(v) ? v.slice(1, -1).replace(/''/g, "'") : /^".*"$/.test(v) ? v.slice(1, -1) : v; };
+let noMaestro = false;
+function checkFlow(file, text) {
+  const out = [];
+  const add = (level, at, message, always) => out.push({ level, at, end: at, message, always });
+  const dir = path.dirname(file);
+  let offset = 0;
+  let cmd = null;
+  let optional = false;
+  let target = '';
+  let asserts = 0;
+  const done = () => { if (cmd === 'extendedWaitUntil' && !optional) asserts++; };
+  for (const l of stripYamlComments(text).split('\n')) {
+    const at = offset;
+    offset += l.length + 1;
+    const item = /^\s*-\s*([A-Za-z]+)\s*:?\s*(.*)$/.exec(l);
+    if (item) { done(); cmd = item[1]; optional = false; if (ASSERTS.test(cmd)) asserts++; }
+    if (/^\s*optional\s*:\s*true\b/.test(l)) optional = true;
+    const app = /^appId\s*:\s*(.+)$/.exec(l);
+    if (app && !/\$\{APP_ID\}/.test(app[1])) add('!', at, `appId ${app[1].trim()}: verify.sh sets APP_ID for the build it checks, which a flavor or scheme changes: use appId: \${APP_ID}`);
+    // what this line selects: the command's own value (tapOn: Save), keys of an inline map, or a key below the command
+    const sel = [];
+    if (item && SELECTS.test(cmd) && item[2].trim() && !/^[{[|>]/.test(item[2].trim())) sel.push(['text', unquote(item[2])]);
+    for (const m of (item && /^\{/.test(item[2].trim()) ? item[2] : !item ? l : '').matchAll(/\b(text|id|visible|notVisible)\s*:\s*("[^"]*"|'(?:[^']|'')*'|[^,}\n]+)/g)) {
+      if (SELECTS.test(cmd || '') && unquote(m[2])) sel.push([m[1] === 'id' ? 'id' : 'text', unquote(m[2])]);
+    }
+    for (const [kind, value] of sel) {
+      if (TAPS.test(cmd)) target = value;
+      if (kind === 'text' && TAPS.test(cmd) && !SYSTEM_BUTTON.test(value) && !value.includes('${')) {
+        add('!', at, `${cmd} "${value}" taps by text: on iOS a label and its control both match, and on a real iPhone a hidden one can; tap by testID (id:)`);
+      }
+      if (kind === 'text' && /['’]/.test(value)) add('!', at, `"${value}" has an apostrophe, which a real iPhone can't search for (maestro-runner): match a testID, or text without it`);
+    }
+    if (item && cmd === 'inputText' && item[2].trim() && !item[2].includes('${') && /pass(word|code)?\b|\bpin\b|otp|secret/i.test(target)) {
+      add('!', at, `a password typed into the flow: use \${MAESTRO_PASSWORD} (or another MAESTRO_ variable) from .maestro/.env.local, which isn't committed`);
+    }
+    // a subflow or script it runs: there, or the flow fails when it gets to it
+    const runs = (item && /^(runFlow|runScript)$/.test(cmd) && !/^[{[|>]/.test(item[2].trim()) && item[2].trim()) || (!item && /^(runFlow|runScript)$/.test(cmd || '') && (/^\s*file\s*:\s*(.+)$/.exec(l) || [])[1]);
+    if (runs && !runs.includes('${') && /\.(ya?ml|js)$/.test(unquote(runs)) && !fs.existsSync(path.join(root, dir, unquote(runs)))) {
+      add('✗', at, `${cmd} ${unquote(runs)}: no such file next to this flow (${dir}/)`, true);
+    }
+  }
+  done();
+  for (const [re, what] of SECRETS) for (const m of text.matchAll(re)) add('✗', m.index, `${what} in a flow: anyone with the repository can read it. Revoke it, and use a MAESTRO_ variable from .maestro/.env.local`);
+  // a flow verify.sh runs (not a subflow) that never checks anything passes whatever the app shows
+  if (/^\.maestro\/[^/]+$/.test(file) && !asserts) add('!', 0, 'this flow checks nothing: add an assertVisible for what each scenario\'s THEN expects', true);
+  // Maestro's own syntax check (seconds, no device): AMK_MAESTRO names another maestro
+  const r = noMaestro ? null : spawnSync(process.env.AMK_MAESTRO || 'maestro', ['check-syntax', file], { cwd: root, encoding: 'utf8' });
+  if (r && r.error) noMaestro = true;
+  else if (r && r.status !== 0) {
+    const said = `${r.stdout || ''}\n${r.stderr || ''}`.split('\n').map(s => s.trim()).find(s => s && s !== 'OK') || 'invalid flow';
+    const n = Number((/:(\d+):\d+/.exec(said) || [])[1]) || 1;
+    add('✗', text.split('\n').slice(0, n - 1).reduce((a, s) => a + s.length + 1, 0), `maestro check-syntax: ${said.replace(/\s+at \/syntax-checker:\d+:\d+/, '')}`, true);
+  }
+  return out;
+}
+
 for (const [file, lines] of changed) {
   let text;
   try { text = fs.readFileSync(path.join(root, file), 'utf8'); } catch { continue; }
@@ -253,13 +342,13 @@ for (const [file, lines] of changed) {
   const starts = [0];
   for (let i = text.indexOf('\n'); i !== -1; i = text.indexOf('\n', i + 1)) starts.push(i + 1);
   const line = i => { let lo = 0, hi = starts.length - 1; while (lo < hi) { const mid = (lo + hi + 1) >> 1; if (starts[mid] <= i) lo = mid; else hi = mid - 1; } return lo + 1; };
-  for (const f of check(file, text)) {
+  for (const f of flowFile(file) ? checkFlow(file, text) : check(file, text)) {
     const from = line(f.at);
     const to = line(f.end);
     const touched = lines === 'all' || [...Array(to - from + 1).keys()].some(k => lines.has(from + k));
     const at = f.line || from;
     // on the line, or in a comment on the line above
-    const above = /^\s*(\/\/|\/\*|\{\s*\/\*)/.test(rows[at - 2] || '') ? at - 1 : 0;
+    const above = /^\s*(\/\/|\/\*|\{\s*\/\*|#)/.test(rows[at - 2] || '') ? at - 1 : 0;
     const okAt = [at, above].find(n => n && /amk-ok\b/.test(rows[n - 1]));
     const ok = okAt && /amk-ok(?:\s+(\d{4}-\d{2}-\d{2}))?\s*:\s*(\S.*?)\s*(\*\/\s*\}?)?\s*$/.exec(rows[okAt - 1]);
     let message = f.message;
@@ -268,14 +357,14 @@ for (const [file, lines] of changed) {
       // kept: listed when its own lines changed; over two weeks old, asked again whenever its file changes
       if (Date.parse(today) - Date.parse(since) <= 14 * DAY) { if (touched) kept.push(`${file}:${at}: ${ok[2]} (${since})`); continue; }
       message = `kept with amk-ok since ${since}, over two weeks, and its file changed again: ${f.message}. The user's reason then: ${ok[2]}`;
-    } else if (!touched) continue;
+    } else if (!touched && !f.always) continue;
     if (!findings.some(x => x.where === `${file}:${at}` && x.message === message)) findings.push({ ...f, message, where: `${file}:${at}` });
   }
 }
 
 // ---------- once for the app: an error boundary somewhere ----------
 let boundary = true;
-if (changed.size) {
+if ([...changed.keys()].some(source)) {
   boundary = false;
   const files = [...(git('ls-files') || '').split('\n'), ...changed.keys()].filter(f => f && source(f));
   for (const f of new Set(files)) {
@@ -285,6 +374,45 @@ if (changed.size) {
   }
 }
 
+// ---------- each scenario of a spec the branch touched has its steps in the spec's flows ----------
+// specs/<id>/requirements.md lists them ("#### Scenario: <name>"); the flows are .maestro/<id>*.yaml, with a
+// "# Scenario <n>: <name>" comment above each one's steps, as specs/_templates/flow.yaml shows
+const touchedPaths = [...(sha ? (git('diff', '--name-only', '--relative', sha) || '').split('\n') : []),
+  ...(git('ls-files', '--others', '--exclude-standard') || '').split('\n')].filter(Boolean);
+const norm = s => s.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+const specIds = fs.existsSync(path.join(root, 'specs')) ? fs.readdirSync(path.join(root, 'specs'), { withFileTypes: true })
+  .filter(e => e.isDirectory() && !/^(_|current$)/.test(e.name)).map(e => e.name) : [];
+const flowsDir = fs.existsSync(path.join(root, '.maestro')) ? fs.readdirSync(path.join(root, '.maestro')).filter(f => /\.ya?ml$/.test(f)) : [];
+for (const id of specIds) {
+  const req = `specs/${id}/requirements.md`;
+  let reqText;
+  try { reqText = fs.readFileSync(path.join(root, req), 'utf8'); } catch { continue; }
+  const flows = flowsDir.filter(f => f.toLowerCase().startsWith(id.toLowerCase())).map(f => `.maestro/${f}`);
+  if (!flows.length || !touchedPaths.some(p => p.startsWith(`specs/${id}/`) || flows.includes(p))) continue;
+  const blocks = flows.flatMap(f => {
+    const text = fs.readFileSync(path.join(root, f), 'utf8');
+    const code = stripYamlComments(text).split('\n');
+    const out = [];
+    text.split('\n').forEach((l, i) => {
+      const m = /^\s*#\s*Scenario\b\s*(\d+)?\s*[:.)-]?\s*(.*)$/i.exec(l);
+      if (m) out.push({ n: Number(m[1]) || 0, name: norm(m[2]), at: i });
+      else if (out.length) out[out.length - 1].code = `${out[out.length - 1].code || ''}${code[i]}\n`;
+    });
+    return out.map(b => ({ ...b, flow: f }));
+  });
+  [...reqText.matchAll(/^#### Scenario:\s*(.*)$/gm)].forEach((m, i) => {
+    const name = norm(m[1]);
+    const where = `${req}:${reqText.slice(0, m.index).split('\n').length}`;
+    const b = blocks.find(x => x.n === i + 1) || blocks.find(x => name && x.name && (x.name.includes(name) || name.includes(x.name)));
+    const say = message => findings.push({ level: '!', message, where });
+    if (!b) say(`scenario ${i + 1} "${m[1].trim()}" has no block in ${flows.join(', ')}: add "# Scenario ${i + 1}: ${m[1].trim()}" above its steps, with an assertion for its THEN and a screenshot`);
+    else {
+      if (!/-\s*(assertVisible|assertNotVisible|assertTrue|assertWithAI|extendedWaitUntil)\b/.test(b.code || '')) say(`scenario ${i + 1} "${m[1].trim()}" has no assertion in ${b.flow}: check what its THEN expects`);
+      if (!/-\s*takeScreenshot\b/.test(b.code || '')) say(`scenario ${i + 1} "${m[1].trim()}" has no screenshot in ${b.flow}, so it has no evidence`);
+    }
+  });
+}
+
 // ---------- report ----------
 // by file, then line
 const order = w => { const [, file, n] = /^(.*):(\d+)$/.exec(w); return [file, Number(n)]; };
@@ -292,14 +420,15 @@ findings.sort((a, b) => { const [fa, na] = order(a.where); const [fb, nb] = orde
 const problems = findings.filter(f => f.level === '✗');
 const warnings = findings.filter(f => f.level === '!');
 const plural = (n, w) => `${n} ${w}${n === 1 ? '' : 's'}`;
-if (!changed.size) console.log(`rn-check: no changed source files since ${since}`);
+if (!changed.size && !findings.length) console.log(`rn-check: no changed code or flows since ${since}`);
 else if (!findings.length) console.log(`rn-check: nothing to report in the lines changed since ${since}`);
 else console.log(`rn-check: ${plural(problems.length, 'problem')}, ${plural(warnings.length, 'warning')} in the lines changed since ${since}`);
 for (const f of [...problems, ...warnings]) console.log(`  ${f.level} ${f.where}  ${f.message}`);
+if (noMaestro && [...changed.keys()].some(flowFile)) console.log('  flows not syntax-checked: Maestro isn\'t installed here');
 if (!boundary) console.log(`  ! the app has no error boundary: a render error shows a blank screen or closes the app. Wrap the app in one`);
 if (kept.length) console.log(`  kept with amk-ok: ${[...new Set(kept)].join('; ')}`);
 if (problems.length) {
-  console.log(`  Each ✗ fails verify.sh quick. Ask the user, for each one: fix it, or keep the line with \`// amk-ok ${today}: <their reason>\` on it.`);
+  console.log(`  Each ✗ fails verify.sh quick. Ask the user, for each one: fix it, or keep the line with \`// amk-ok ${today}: <their reason>\` on it (# in a flow).`);
   console.log('  Never add an amk-ok without the user\'s reason. One kept over two weeks ago comes back when its file changes: ask again, and to keep it, write today\'s date.');
 }
 if (warnings.length || !boundary) console.log('  Fix each ! in the code this task changed, or tell the user why it stays.');

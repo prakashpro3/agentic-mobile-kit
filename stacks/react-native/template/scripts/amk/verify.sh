@@ -13,6 +13,7 @@
 #                   one per device, in rounds when they don't all fit, the flows split into parts when there's room
 #   --spec <id>     run .maestro/<id>*.yaml and save evidence in .amk/evidence/<id>/
 #   --flow <file>   run only this flow: a path in the project, or anywhere (an absolute path)
+#   --tags <list>   only the flows with one of these tags in their header (tags: [smoke]), comma-separated
 #   --label <n>     evidence folder name (default: the spec id, or no-spec)
 #   --flavor <name> Android product flavor to check (default: the first one in build.gradle)
 #   --scheme <name> iOS scheme to check (default: the one named like the workspace)
@@ -33,8 +34,10 @@
 #      AMK_IOS_TABLET (iPad simulator, or a connected iPad: name or UDID), AMK_ANDROID_TABLET_AVD (tablet emulator),
 #      AMK_ANDROID_TABLET (serial), AMK_IOS_TEAM (the Apple team ID that signs builds for real iPhones and iPads;
 #      default: the project's), AMK_PARALLEL (1 or 0: overrides plan's choice), AMK_MEMORY_GB (the memory plan
-#      counts on: this machine's; less when other emulators stay open), AMK_DEVICES (how many devices plan checks at
-#      once: one per 6 GB beyond 4), AMK_DEVICE_WAIT (minutes to wait for a
+#      counts on: this machine's; less when other emulators stay open), AMK_DISK_GB (the free disk it counts on: this
+#      folder's), AMK_A11Y (0: no view-tree steps on Android, so no accessibility warnings. The steps go in a copy
+#      of each flow, .maestro/.amk-<screen>-<flow>.yaml, where ${MAESTRO_FILENAME} is the copy's name),
+#      AMK_DEVICES (how many devices plan checks at once: one per 6 GB beyond 4), AMK_DEVICE_WAIT (minutes to wait for a
 #      device in use, 30), AMK_LOCK_DIR (where runs on this machine claim devices; /tmp/agentic-mobile-kit-<user id>),
 #      AMK_EVIDENCE_KEEP (how many evidence folders stay, newest first: 5; 0 keeps them all)
 # A device in use by another run (any project on this machine) is skipped for a free one of the same kind, or waited
@@ -49,6 +52,7 @@ mode=${1:-all}
 args=$* # for the commands plan prints
 spec=""
 flow=""
+tags=""
 label=""
 flavor=${AMK_ANDROID_FLAVOR:-}
 only=${AMK_SCREENS:-}
@@ -59,6 +63,7 @@ while [ $# -gt 0 ]; do
   case $1 in
     --spec) spec=$2; shift 2 ;;
     --flow) flow=$2; shift 2 ;;
+    --tags) tags=$2; shift 2 ;;
     --label) label=$2; shift 2 ;;
     --flavor) flavor=$2; shift 2 ;;
     --scheme) AMK_IOS_SCHEME=$2; export AMK_IOS_SCHEME; shift 2 ;;
@@ -103,10 +108,27 @@ status=0
 flow_files() {
   {
     if [ -n "$flow" ]; then echo "$flow"
-    elif [ -n "$spec" ]; then find "$root/.maestro" -maxdepth 1 -iname "$spec*.yaml" 2>/dev/null | sort
-    else find "$root/.maestro" -maxdepth 1 -name '*.yaml' 2>/dev/null | sort
+    elif [ -n "$spec" ]; then find "$root/.maestro" -maxdepth 1 -iname "$spec*.yaml" ! -name '.amk-*' 2>/dev/null | sort
+    else find "$root/.maestro" -maxdepth 1 -name '*.yaml' ! -name '.amk-*' 2>/dev/null | sort
     fi
-  } | awk -v k="$part_k" -v n="$part_n" '(NR - 1) % n == k - 1'
+  } | with_tags | awk -v k="$part_k" -v n="$part_n" '(NR - 1) % n == k - 1'
+}
+# the flows (a path a line) with one of --tags in their header: tags: [smoke, login], or one tag a line below tags:
+with_tags() {
+  if [ -z "$tags" ]; then cat; return; fi
+  TAGS=$tags node -e '
+    const fs = require("fs");
+    const want = process.env.TAGS.split(",").map(s => s.trim()).filter(Boolean);
+    for (const f of fs.readFileSync(0, "utf8").split("\n").filter(Boolean)) {
+      const head = fs.readFileSync(f, "utf8").split(/^---\s*$/m)[0].split("\n");
+      const at = head.findIndex(l => /^tags\s*:/.test(l));
+      if (at < 0) continue;
+      const inline = head[at].replace(/^tags\s*:/, "").trim();
+      const below = [];
+      for (let i = at + 1; i < head.length && /^\s+-\s*\S/.test(head[i]); i++) below.push(head[i].replace(/^\s+-\s*/, ""));
+      const tags = (inline ? inline.replace(/^\[|\]$/g, "").split(",") : below).map(s => s.trim().replace(/^["\x27]|["\x27]$/g, ""));
+      if (tags.some(s => want.includes(s))) console.log(f);
+    }'
 }
 
 # the screens to check on a platform: the ones the app supports, narrowed by --screens
@@ -154,7 +176,8 @@ claim() {
 unclaim() { l=$(lock_path "$1"); rm -f "$l/owner"; rmdir "$l" 2> /dev/null || true; held=$(echo "$held" | sed "s| $l||"); }
 release() { for l in $held; do rm -f "$l/owner"; rmdir "$l" 2> /dev/null || true; done; held=""; }
 temps="" # the temporary devices this run made for a part of the flows (--part), deleted at its end
-trap 'release; drop_temps' EXIT
+tree_flow="" # the copy of a flow with view-tree steps (Android), next to it while it runs
+trap 'release; drop_temps; [ -z "$tree_flow" ] || rm -f "$tree_flow"' EXIT
 trap 'exit 130' INT TERM
 holder() {
   l=$(lock_path "$1")
@@ -179,8 +202,17 @@ run_flow() { # screen device app_id file name orientation
   [ ! -d "$debug" ] || rm -r "$debug"
   mkdir -p "$debug" "$out/screenshots"
   target=$4
+  # Android: after each screenshot, Maestro saves the screen's view tree (an optional step that can't pass, half a
+  # second), from which a11y.js lists tappable elements without a label or under 48 dp. Maestro runs a copy of the flow
+  # with those steps, next to it so its subflows' paths still work, deleted after. AMK_A11Y=0 turns it off
+  tree_flow=""
+  if [ "${1%%-*}" = android ] && [ "${AMK_A11Y:-1}" != 0 ]; then
+    tree_flow=$(dirname "$4")/.amk-$1-$5.yaml
+    with_trees "$4" > "$tree_flow"
+    target=$tree_flow
+  fi
   # Maestro reads the path in the flows below itself, so it's a native path (a Windows path in Git Bash)
-  native=$(cd "$(dirname "$4")" && { pwd -W 2> /dev/null || pwd; })/$(basename "$4")
+  native=$(cd "$(dirname "$target")" && { pwd -W 2> /dev/null || pwd; })/$(basename "$target")
   if is_real "$2"; then
     # on a real device every flow runs inside one, first: the first launchApp maestro-runner finds in a flow decides
     # whether it answers alerts itself, and for most it does (for permission prompts, which it can't allow ahead),
@@ -235,6 +267,13 @@ run_flow() { # screen device app_id file name orientation
   (cd "$out" && maestro --device "$2" test --test-output-dir "$out" --debug-output "$debug" --flatten-debug-output \
     -e APP_ID="$3" "$target" > "$out/$5.log" 2>&1) || rc=$?
   find "$debug" -path '*/takeScreenshot/*.png' -exec cp {} "$out/screenshots/" \;
+  if [ -n "$tree_flow" ]; then
+    rm -f "$tree_flow"
+    tree_flow=""
+    # Maestro named the flow's folder after the copy, a hidden name: the flow's own, as on iOS
+    [ ! -d "$debug/.amk-$1-$5" ] || [ -e "$debug/$5" ] || mv "$debug/.amk-$1-$5" "$debug/$5"
+    node scripts/amk/a11y.js "$debug" "$density" "$5" >> "$out/.a11y" 2> /dev/null || true
+  fi
   return $rc
 }
 
@@ -252,6 +291,39 @@ steady() {
     if [ "$("$adb" -s "$1" shell getprop sys.boot_completed 2> /dev/null | tr -d '\r')" = 1 ]; then in_row=$((in_row + 1)); else in_row=0; "$adb" reconnect offline > /dev/null 2>&1 || true; fi
     [ "$in_row" -ge 3 ] || sleep 10
   done
+}
+# why flow $2 failed on the device $1, in a line: the step and what Maestro said (on a real device, maestro-runner's report)
+why_failed() {
+  if is_real "$1"; then
+    node -e 'try { const e = ((JSON.parse(require("fs").readFileSync(process.argv[1], "utf8")).flows || [])[0] || {}).error;
+      if (e) console.log(`with: ${e.split("\n")[0]}`); } catch {}' "$debug/report.json"
+  else
+    # the first step that failed is the innermost; Maestro's message comes after the subflows that failed around it
+    # (Run <subflow>... FAILED) and the steps onFlowComplete ran
+    awk '/\.\.\. FAILED[[:space:]]*$/ { step = $0; sub(/\.\.\. FAILED[[:space:]]*$/, "", step); sub(/^[[:space:]]+/, "", step)
+      said = ""
+      while ((getline line) > 0) if (line ~ /[^[:space:]]/ && line !~ /\.\.\. [A-Z]+[[:space:]]*$/) { said = line; break }
+      sub(/^[[:space:]]+/, "", said)
+      printf "at \"%s\"%s\n", step, (said == "" ? "" : ": " said); exit }' "$out/$2.log"
+  fi
+}
+# the screen when a flow failed on the device $1: the last screenshot of a failing step (Maestro's, or maestro-runner's),
+# not one of the view-tree steps', which Maestro takes too
+failure_shot() {
+  if is_real "$1"; then find "$debug" -name '*-after.png' | sort | tail -n 1
+  else find "$debug" -path '*/screenshots/*.png' ! -name '*amk-view-tree*' | sort | tail -n 1; fi
+}
+# flow $1 with a step after each screenshot (takeScreenshot: <name>) that makes Maestro save the screen's view tree,
+# named after the screenshot: it waits 1 ms for an element that isn't there, and doesn't fail the flow
+with_trees() {
+  awk '{ print }
+    /^[[:space:]]*-[[:space:]]*takeScreenshot:[[:space:]]*[^[:space:]#]/ {
+      match($0, /^[[:space:]]*/); ind = substr($0, 1, RLENGTH)
+      name = $0; sub(/^[[:space:]]*-[[:space:]]*takeScreenshot:[[:space:]]*/, "", name); sub(/[[:space:]]+#.*$/, "", name)
+      sub(/[[:space:]]+$/, "", name) # and a Windows line end
+      gsub(/["\047]/, "", name); gsub(/[^A-Za-z0-9_-]/, "-", name)
+      printf "%s- extendedWaitUntil:\n%s    visible:\n%s      id: \"amk-view-tree-%s\"\n%s    timeout: 1\n%s    optional: true\n", ind, ind, ind, name, ind, ind
+    }' "$1"
 }
 run_flows() { # screen device app_id orientation (PORTRAIT, or LANDSCAPE_LEFT to turn it) [again]
   out="$evidence/$1"
@@ -272,9 +344,14 @@ run_flows() { # screen device app_id orientation (PORTRAIT, or LANDSCAPE_LEFT to
   mkdir -p "$out"
   # this run's screenshots are the ones newer than this; the status before it, for running the screen again
   : > "$out/.started"
+  # each flow's result, and what the view trees showed (Android), for the report
+  : > "$out/.flows"
+  : > "$out/.a11y"
+  [ "${1%%-*}" != android ] || density=$(device_density "$2")
   [ -n "${5:-}" ] || before=$status
   files=$(flow_files)
   if [ -z "$files" ]; then
+    [ -z "$tags" ] || echo "  $1: no flow has the tag $tags, so this is a check that the app opens"
     # launchApp returns before the app has drawn, and a splash screen stays up until the JavaScript has loaded:
     # a fixed wait (for text that never appears), then for the screen to settle, so the screenshot shows the app
     printf 'appId: %s\n---\n- launchApp\n- extendedWaitUntil:\n    visible: "agentic-mobile-kit: waiting for the app to draw"\n    timeout: 5000\n    optional: true\n- waitForAnimationToEnd\n- takeScreenshot: smoke-launch\n' "$3" > "$out/smoke.yaml"
@@ -285,7 +362,8 @@ run_flows() { # screen device app_id orientation (PORTRAIT, or LANDSCAPE_LEFT to
   for f in $files; do
     total=$((total + 1))
     name=$(basename "$f" .yaml)
-    ok=0
+    ok=0 why="" shot=""
+    : > "$out/.flow-started"
     run_flow "$1" "$2" "$3" "$f" "$name" "$4" || ok=$?
     # Maestro now and then stops before a flow starts (it printed nothing), and an emulator sometimes drops its adb
     # connection for a moment: run the flow once more (after reconnecting)
@@ -322,6 +400,19 @@ run_flows() { # screen device app_id orientation (PORTRAIT, or LANDSCAPE_LEFT to
       echo "  $1: flow $name failed, see ${out#"$root"/}/$name.log and Maestro's own log ${debug#"$root"/}/maestro.log"
       status=1
     fi
+    if [ "$ok" != 0 ]; then
+      why=$(why_failed "$2" "$name" | tr '\t' ' ')
+      # a step the device dropped out of has no FAILED line: say so, or it reads as the flow's own failure
+      [ -n "$why" ] || [ "${1%%-*}" != android ] || ! lost_device "$out/$name.log" ||
+        why="when the device went offline, on each try (an emulator under load drops out: check again with fewer devices open)"
+      shot=$(failure_shot "$2")
+      [ -z "$why" ] || echo "    failed $why"
+      [ -z "$shot" ] || echo "    the screen when it failed: ${shot#"$root"/}"
+    fi
+    # for the report: the flow, its result, why it failed, the screenshots it took, and the screen when it failed
+    printf '%s\t%s\t%s\t%s\t%s\n' "$name" "$([ "$ok" = 0 ] && echo passed || echo failed)" "$why" \
+      "$(find "$out" -name '*.png' -newer "$out/.flow-started" | sed "s|^$evidence/||" | sort | tr '\n' ',' | sed 's/,$//')" \
+      "${shot#"$evidence"/}" >> "$out/.flows"
   done
   # iOS saves a turned screen's screenshots at the device's upright size, with a tag that tells viewers to turn them,
   # and some viewers ignore it: save them turned (through BMP, which keeps no tag), so every viewer shows the screen
@@ -351,6 +442,8 @@ run_flows() { # screen device app_id orientation (PORTRAIT, or LANDSCAPE_LEFT to
   fi
   shots=$(find "$out" -name '*.png' | wc -l | tr -d ' ')
   echo "$1: flows $passed/$total passed, $shots screenshots in ${out#"$root"/}"
+  a11y=$(grep -c . "$out/.a11y" 2> /dev/null || true)
+  [ "${a11y:-0}" = 0 ] || echo "  $1: $a11y accessibility warning$([ "$a11y" = 1 ] || echo s) on the flows' screens (controls without a label, tap areas under 48 dp): see the report"
   if [ "$shots" = 0 ]; then
     echo "  $1: no screenshots were saved, so there's no evidence; treating this as a failure"
     status=1
@@ -644,6 +737,10 @@ device_width() {
     /Physical size/ { split($2, s, "x"); w = s[1] + 0 < s[2] + 0 ? s[1] : s[2] } /Physical density/ { d = $2 }
     END { if (d) print int(w * 160 / d) }'
 }
+# the screen density (dpi) of the Android device $1: the one set for it, else its own
+device_density() {
+  "$adb" -s "$1" shell 'wm size; wm density' 2> /dev/null | tr -d '\r' | awk -F': ' '/Override density/ { o = $2 } /Physical density/ { p = $2 } END { print o ? o : p }'
+}
 avd_home=${ANDROID_AVD_HOME:-${ANDROID_USER_HOME:-$HOME/.android}/avd}
 # an AVD's folder: its .ini names it (an AVD can be renamed, and keep its folder), else <name>.avd
 avd_dir() { d=$(sed -n 's/^path=//p' "$avd_home/$1.ini" 2> /dev/null | head -n 1); echo "${d:-$avd_home/$1.avd}"; }
@@ -920,6 +1017,7 @@ plan() {
     console.log(Math.round(os.totalmem() / 2 ** 30), Math.round(s.bavail * s.bsize / 2 ** 30))')
   mem=$1
   case ${AMK_MEMORY_GB:-x} in *[!0-9]*) ;; *) mem=$AMK_MEMORY_GB ;; esac
+  case ${AMK_DISK_GB:-x} in *[!0-9]*) ;; *) set -- "$1" "$AMK_DISK_GB" ;; esac
   have="$mem GB of memory, $2 GB free disk, Maestro $(maestro_version)"
   # the devices to check, phones first and the platforms mixed, so a round of two has one of each
   # (each platform's screens are read first: grep -q stops reading at its first match, and a writer still going then
@@ -1019,5 +1117,11 @@ case $mode in
   *) echo "verify: unknown mode $mode (quick, ios, android, all, build or plan)"; exit 2 ;;
 esac
 
+# the run's report, from every screen checked so far: other devices, parts and rounds add theirs
+case $mode in
+  ios | android | all) if [ -n "$(find "$evidence" -name .flows 2> /dev/null | head -n 1)" ] && node scripts/amk/report.js "$evidence" > /dev/null 2>&1; then
+      echo "Report: ${evidence#"$root"/}/report.md (each flow's result, why one failed, and its screenshots)"
+    fi ;;
+esac
 echo "Evidence: ${evidence#"$root"/}/ (open the screenshots: a tool saying 'passed' isn't proof)"
 exit $status

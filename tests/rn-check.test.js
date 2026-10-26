@@ -93,7 +93,7 @@ export function Login({ items }: { items: Item[] }) {
   assert.ok(!r.out.includes(TOKEN), 'the secret itself is never printed');
   assert.match(r.out, /^ {2}kept with amk-ok: src\/screens\/login\.tsx:19: read once for the splash, which never turns \(\d{4}-\d{2}-\d{2}\)$/m);
   assert.match(r.out, /^ {2}! the app has no error boundary/m);
-  assert.match(r.out, /Ask the user, for each one: fix it, or keep the line with `\/\/ amk-ok \d{4}-\d{2}-\d{2}: <their reason>` on it\.\n {2}Never add an amk-ok without the user's reason\. One kept over two weeks ago comes back when its file changes/);
+  assert.match(r.out, /Ask the user, for each one: fix it, or keep the line with `\/\/ amk-ok \d{4}-\d{2}-\d{2}: <their reason>` on it \(# in a flow\)\.\n {2}Never add an amk-ok without the user's reason\. One kept over two weeks ago comes back when its file changes/);
 
   // the user keeps one with a reason, and fixes the rest: warnings alone don't fail
   write(dir, 'src/screens/login.tsx', `import { SafeAreaView } from 'react-native-safe-area-context';
@@ -112,7 +112,7 @@ console.log('x');
   // nothing changed since main
   commit(dir, 'login');
   git(dir, 'checkout', '-q', 'main');
-  assert.match(check(dir).out, /^rn-check: no changed source files since main$/m);
+  assert.match(check(dir).out, /^rn-check: no changed code or flows since main$/m);
 });
 
 test('rn-check: the rest of the removed and deprecated APIs, React 19, and an Expo app on SDK 56', () => {
@@ -128,11 +128,14 @@ let x: any = (y as any).z;
 z();
 const img = 'data:image/png;base64,${'A'.repeat(9000)}';
 `);
+  // an image of several MB, which a regular expression's repetition can't measure
+  write(bare, 'src/big.tsx', `export const big = 'data:image/png;base64,${'A'.repeat(7e6)}';
+`);
   const r = check(bare);
   for (const [line, re] of [[1, /✗ src\/a\.tsx:1 {2}StyleSheet\.absoluteFillObject was removed/], [2, /✗ src\/a\.tsx:2 {2}InteractionManager was removed/],
     [3, /✗ src\/a\.tsx:3 {2}Modal's animated was removed/], [4, /✗ src\/a\.tsx:4 {2}ScrollView's boolean keyboardShouldPersistTaps was removed/],
     [5, /! src\/a\.tsx:5 {2}forwardRef isn't needed in React 19/], [6, /! src\/a\.tsx:6 {2}React 19 renders a context directly/],
-    [7, /! src\/a\.tsx:7 {2}any turns off type checking/], [8, /! src\/a\.tsx:8 {2}@ts-ignore hides a type error/], [10, /✗ src\/a\.tsx:10 {2}a 7 KB base64 image in code/]]) {
+    [7, /! src\/a\.tsx:7 {2}any turns off type checking/], [8, /! src\/a\.tsx:8 {2}@ts-ignore hides a type error/], [10, /✗ src\/a\.tsx:10 {2}a 7 KB base64 image in code/], [11, /✗ src\/big\.tsx:1 {2}a 5127 KB base64 image in code/]]) {
     assert.match(r.out, re, `line ${line}\n${r.out}`);
   }
 
@@ -221,7 +224,7 @@ export const a = 1;
   git(dir, 'add', '-A');
   execFileSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@example.invalid', 'commit', '-q', '--amend', '--no-edit'], { cwd: dir, env: { ...process.env, GIT_COMMITTER_DATE: `${day(20)}T12:00:00` } });
   git(dir, 'checkout', '-q', '-B', 'feature');
-  assert.match(check(dir).out, /^rn-check: no changed source files since main$/m, 'files nobody changed stay quiet');
+  assert.match(check(dir).out, /^rn-check: no changed code or flows since main$/m, 'files nobody changed stay quiet');
 
   // the files change again, on other lines
   fs.writeFileSync(path.join(dir, 'src/settings.tsx'), fs.readFileSync(path.join(dir, 'src/settings.tsx'), 'utf8').replace('a = 1', 'a = 2'));
@@ -238,6 +241,85 @@ export const a = 1;
   const again = check(dir);
   assert.strictEqual(again.status, 0, again.out);
   assert.match(again.out, new RegExp(`kept with amk-ok: src/settings\\.tsx:1: a screen only iOS shows \\(${day(0)}\\)`));
+});
+
+test('rn-check: Maestro flows (syntax, missing files, taps by text, apostrophes, typed passwords, no assertion) and each scenario of a touched spec', () => {
+  const dir = app(undefined, {
+    // on main: a flow tapping by text, and a subflow, which aren't the branch's
+    '.maestro/old.yaml': 'appId: ${APP_ID}\n---\n- launchApp\n- tapOn: "Old button"\n- assertVisible:\n    id: "home"\n',
+    '.maestro/subflows/log-in.yaml': '- tapOn:\n    id: "login-email"\n- inputText: ${MAESTRO_EMAIL}\n',
+  });
+  // a stand-in for maestro check-syntax: a flow with tapOnn is invalid
+  write(dir, 'fake-maestro', '#!/bin/sh\nif grep -q tapOnn "$2"; then echo "Invalid Command: tapOnn at /syntax-checker:4:9"; exit 1; fi\necho OK\n');
+  fs.chmodSync(path.join(dir, 'fake-maestro'), 0o755);
+  write(dir, 'specs/x2-login/requirements.md', `## ADDED Requirements: Login
+
+### Requirement: Log in
+People SHALL log in with their email.
+
+#### Scenario: Log in with the test account
+- WHEN they enter the test account
+- THEN the home screen shows
+
+#### Scenario: Wrong password
+- WHEN the password is wrong
+- THEN an error shows
+
+#### Scenario: Offline
+- WHEN there's no network
+- THEN it says so
+`);
+  write(dir, '.maestro/x2-login.yaml', `appId: com.example.app
+---
+- launchApp
+- runFlow: subflows/log-in.yaml
+- runFlow: subflows/missing.yaml
+# Scenario 1: Log in with the test account
+- tapOn: "Log in"
+- tapOn: "Allow"
+- tapOn:
+    id: "login-password"
+- inputText: "hunter2"
+- inputText: \${MAESTRO_PASSWORD}
+- tapOn: { id: "submit" }
+- assertVisible:
+    id: "home"
+- takeScreenshot: x2-1-home
+# Scenario 2: Wrong password
+- assertVisible: "You're offline"
+- tapOn: "Retry" # amk-ok ${day(0)}: the retry button comes from a library without a testID
+# amk-ok ${day(0)}: the library's sheet has no testIDs
+- tapOn: "Share"
+`);
+  write(dir, '.maestro/x3-broken.yaml', 'appId: ${APP_ID}\n---\n- launchApp\n- tapOnn:\n    id: "x"\n');
+  write(dir, '.maestro/x4-nothing.yaml', 'appId: ${APP_ID}\n---\n- launchApp\n- tapOn:\n    id: "x"\n- takeScreenshot: x4-1\n');
+  // a copy verify.sh runs for a moment on Android, with view-tree steps: not the team's flow
+  write(dir, '.maestro/.amk-android-x4-nothing.yaml', 'appId: com.other\n---\n- tapOn: "Copy"\n');
+  const run = env => { const r = spawnSync(process.execPath, ['scripts/amk/rn-check.js'], { cwd: dir, encoding: 'utf8', env: { ...process.env, AMK_BASE: '', ...env } }); return { out: r.stdout + r.stderr, status: r.status }; };
+  const r = run({ AMK_MAESTRO: path.join(dir, 'fake-maestro') });
+  assert.strictEqual(r.status, 1, r.out);
+  // Windows can't run the shell-script stand-in, so there the flows go unchecked by it, and it says so
+  const sh = process.platform !== 'win32';
+  for (const re of [
+    /✗ \.maestro\/x2-login\.yaml:5 {2}runFlow subflows\/missing\.yaml: no such file next to this flow \(\.maestro\/\)/,
+    sh ? /✗ \.maestro\/x3-broken\.yaml:4 {2}maestro check-syntax: Invalid Command: tapOnn/ : /flows not syntax-checked/,
+    /! \.maestro\/x2-login\.yaml:1 {2}appId com\.example\.app: verify\.sh sets APP_ID/,
+    /! \.maestro\/x2-login\.yaml:7 {2}tapOn "Log in" taps by text/,
+    /! \.maestro\/x2-login\.yaml:11 {2}a password typed into the flow/,
+    /! \.maestro\/x2-login\.yaml:18 {2}"You're offline" has an apostrophe/,
+    /! \.maestro\/x4-nothing\.yaml:1 {2}this flow checks nothing/,
+    /! specs\/x2-login\/requirements\.md:\d+ {2}scenario 2 "Wrong password" has no screenshot in \.maestro\/x2-login\.yaml/,
+    /! specs\/x2-login\/requirements\.md:\d+ {2}scenario 3 "Offline" has no block in \.maestro\/x2-login\.yaml: add "# Scenario 3: Offline" above its steps/,
+    /kept with amk-ok: \.maestro\/x2-login\.yaml:19: the retry button comes from a library without a testID[^\n]*\.maestro\/x2-login\.yaml:21: the library's sheet has no testIDs/,
+  ]) assert.match(r.out, re, `${re}\n${r.out}`);
+  assert.doesNotMatch(r.out, /x2-login\.yaml:(4|8|9|12|13|14) /, 'an existing subflow, a system dialog button, taps by id, a password from a variable');
+  assert.doesNotMatch(r.out, /old\.yaml|log-in\.yaml/, 'flows the branch didn\'t change');
+  assert.doesNotMatch(r.out, /\.amk-android/, 'verify.sh\'s copies');
+  assert.doesNotMatch(r.out, /scenario 1 /, 'scenario 1 has its steps, an assertion and a screenshot');
+  // without Maestro on the machine: the rest still runs, and it says the syntax wasn't checked
+  const none = run({ AMK_MAESTRO: path.join(dir, 'no-such-maestro') });
+  assert.match(none.out, /flows not syntax-checked: Maestro isn't installed here/);
+  assert.doesNotMatch(none.out, /check-syntax/);
 });
 
 test('verify.sh quick: rn-check runs after lint, typecheck and tests, and its problems fail quick', { skip: process.platform === 'win32' && 'verify.sh needs sh' }, () => {

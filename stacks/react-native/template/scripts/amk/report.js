@@ -1,0 +1,78 @@
+#!/usr/bin/env node
+// A device check's report, from its evidence folder (.amk/evidence/<label>/): report.md for people (each screen, its
+// flows, passed or failed and why, and their screenshots) and junit.xml for CI. --summary prints a short Markdown
+// table instead, for a CI job's summary. verify.sh runs it after each device check, and builds it from what's on disk,
+// so devices and parts checked at the same time all end up in it: each screen's flows are in <screen>/.flows (or
+// <screen>/part-<k>/.flows), a line each: name, passed or failed, why, its screenshots, the screen when it failed.
+// Usage: node scripts/amk/report.js <evidence folder> [--summary]
+'use strict';
+const fs = require('fs');
+const path = require('path');
+
+const [dir, mode] = process.argv.slice(2);
+if (!dir || !fs.existsSync(dir)) {
+  console.error('usage: node scripts/amk/report.js <evidence folder> [--summary]');
+  process.exit(2);
+}
+const label = path.basename(path.resolve(dir));
+const read = f => { try { return fs.readFileSync(f, 'utf8'); } catch { return null; } };
+
+// the screens: <screen>/.flows, and <screen>/part-<k>/.flows for a device's flows split in parts
+const screens = [];
+for (const s of fs.readdirSync(dir, { withFileTypes: true }).filter(e => e.isDirectory()).map(e => e.name).sort()) {
+  for (const sub of ['', ...(fs.readdirSync(path.join(dir, s)).filter(p => /^part-\d+$/.test(p)).sort())]) {
+    const text = read(path.join(dir, s, sub, '.flows'));
+    if (text === null) continue;
+    // what the view trees showed on Android: flow, screenshot, problem, element (a11y.js)
+    const a11y = (read(path.join(dir, s, sub, '.a11y')) || '').split('\n').filter(Boolean).map(l => l.split('\t'));
+    const flows = text.split('\n').filter(Boolean).map(l => {
+      const [name, result, why, shots, shot] = l.split('\t');
+      return { name, passed: result === 'passed', why: why || '', shots: (shots || '').split(',').filter(Boolean), shot: shot || '',
+        a11y: a11y.filter(x => x[0] === name).map(([, at, problem, element]) => ({ at, problem, element })) };
+    });
+    screens.push({ name: sub ? `${s} (${sub.replace('-', ' ')})` : s, dir: sub ? `${s}/${sub}` : s, flows });
+  }
+}
+const all = screens.flatMap(s => s.flows);
+const failed = all.filter(f => !f.passed);
+const counts = s => `${s.flows.filter(f => f.passed).length}/${s.flows.length}`;
+const table = ['| Screen | Flows passed | Screenshots |', '|---|---|---|',
+  ...screens.map(s => `| ${s.name} | ${counts(s)}${s.flows.every(f => f.passed) ? '' : ' ✗'} | ${s.flows.reduce((n, f) => n + f.shots.length, 0)} |`)];
+const warned = all.reduce((n, f) => n + f.a11y.length, 0);
+const headline = `${all.length - failed.length} of ${all.length} flows passed on ${screens.length} screen${screens.length === 1 ? '' : 's'}${warned ? `, ${warned} accessibility warning${warned === 1 ? '' : 's'}` : ''}`;
+
+if (mode === '--summary') {
+  console.log([`### Device checks: ${label}`, '', headline, '', ...table, '',
+    ...failed.map(f => `- ✗ ${screens.find(s => s.flows.includes(f)).name}: ${f.name}${f.why ? `, failed ${f.why}` : ''}`)].join('\n'));
+  process.exit(0);
+}
+
+// a path inside the evidence folder, for a link from report.md, which sits in it
+const link = p => p.split('/').map(encodeURIComponent).join('/');
+const md = [`# Device checks: ${label}`, '', `${new Date().toISOString().slice(0, 16).replace('T', ' ')} UTC · ${headline}`, '', ...table];
+for (const s of screens) {
+  md.push('', `## ${s.name}`);
+  for (const f of s.flows) {
+    md.push('', `### ${f.passed ? '✓' : '✗'} ${f.name}`);
+    if (!f.passed) {
+      md.push('', `Failed${f.why ? ` ${f.why}` : ''}. Log: [${s.dir}/${f.name}.log](${link(`${s.dir}/${f.name}.log`)})${f.shot ? ` · [the screen when it failed](${link(f.shot)})` : ''}`);
+    }
+    if (f.shots.length) md.push('', f.shots.map(p => `<img src="${link(p)}" width="180" alt="${path.basename(p, '.png')}" title="${path.basename(p, '.png')}">`).join(' '));
+    if (f.a11y.length) md.push('', 'Accessibility, from the screen\'s view tree:', '', ...f.a11y.map(x => `- ${x.at}: ${x.element}: ${x.problem}`));
+  }
+}
+fs.writeFileSync(path.join(dir, 'report.md'), `${md.join('\n')}\n`);
+
+const xml = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+fs.writeFileSync(path.join(dir, 'junit.xml'), [
+  '<?xml version="1.0" encoding="UTF-8"?>',
+  `<testsuites name="${xml(label)}" tests="${all.length}" failures="${failed.length}">`,
+  ...screens.flatMap(s => [
+    `  <testsuite name="${xml(s.name)}" tests="${s.flows.length}" failures="${s.flows.filter(f => !f.passed).length}">`,
+    ...s.flows.map(f => (f.passed ? `    <testcase classname="${xml(s.name)}" name="${xml(f.name)}"/>`
+      : `    <testcase classname="${xml(s.name)}" name="${xml(f.name)}"><failure message="${xml(f.why || 'failed')}"/></testcase>`)),
+    '  </testsuite>',
+  ]),
+  '</testsuites>', '',
+].join('\n'));
+console.log(`${headline}: ${path.join(dir, 'report.md')}`);

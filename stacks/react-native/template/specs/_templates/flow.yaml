@@ -1,11 +1,16 @@
 # Copy to .maestro/<id>.yaml. verify.sh runs it on iOS and Android and keeps the screenshots as evidence.
 # Tap by testID (give every interactive element one); tapping by text can hit a label instead of the control.
+# Each scenario of specs/<id>/requirements.md gets a "# Scenario <n>: <name>" comment above its steps, an assertion for
+# its THEN and a screenshot: rn-check (in verify.sh quick) checks that, and Maestro's syntax, before any build.
+# Steps several flows share (logging in, skipping onboarding, a permission prompt) and resetting test data go in
+# .maestro/subflows/ (specs/_templates/subflow.yaml), run with "- runFlow: subflows/<name>.yaml".
 # Test logins: ${MAESTRO_EMAIL}, ${MAESTRO_PASSWORD} and the like, set in .maestro/.env.local, which isn't committed.
 # On a real iPhone (maestro-runner): text with an apostrophe can't be searched for (use a testID), and permission
 # prompts aren't answered for the flow (tapOn: { text: "Allow", optional: true }). setAirplaneMode works only on an
 # iPhone in English (it looks for "Airplane Mode" in Settings) and leaves Settings in front: launchApp: { stopApp: false }
 # brings the app back. verify.sh opens Settings on its main page before such a flow, and turns airplane mode off after.
 appId: ${APP_ID}  # set by verify.sh
+# tags: [smoke]  # optional: verify.sh --tags smoke checks only the flows with one of the tags
 ---
 - launchApp:
     clearState: true

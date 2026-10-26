@@ -55,6 +55,7 @@ test('fresh install: files, filled AGENTS.md, links, hooks, scripts; no CI unles
   for (const skill of ['m-feature', 'm-change', 'm-onboard', 'm-prototype']) assert.ok(fs.existsSync(path.join(dir, `.agents/skills/${skill}/SKILL.md`)), skill);
   assert.match(read(dir, '.gitignore'), /^\.env$/m);
   assert.match(read(dir, '.gitignore'), /^\.amk\/$/m);
+  assert.match(read(dir, '.gitignore'), /^\.maestro\/\.amk-\*$/m, 'the flow copies verify.sh runs for a moment');
   const pkg = JSON.parse(read(dir, 'package.json'));
   assert.strictEqual(pkg.scripts.typecheck, 'tsc --noEmit');
   assert.match(pkg.scripts.postinstall, /core\.hooksPath \.githooks/);
@@ -721,6 +722,7 @@ test('sync from before 0.7.0 moves the kit\'s files to docs/amk and scripts/amk,
   assert.doesNotMatch(read(dir, '.eslintignore'), /scripts\/ai/);
   assert.match(read(dir, '.gitignore'), /^\.ai\/$/m, 'old evidence stays out of git');
   assert.match(read(dir, '.gitignore'), /^\.amk\/$/m);
+  assert.match(read(dir, '.gitignore'), /^\.maestro\/\.amk-\*$/m, 'sync adds the kit\'s new lines');
 });
 
 test('uninstall still removes an install from before 0.7.0', () => {

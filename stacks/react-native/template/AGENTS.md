@@ -20,9 +20,9 @@ This project may also use other AI workflow frameworks (for example Superpowers,
 | iOS pods (after native dependency changes) | `sh scripts/amk/pod-install.sh` |
 | iOS build (simulator, no signing) | `sh scripts/amk/ios-build.sh` |
 | Android build | `cd android && ./gradlew assembleDebug` |
-| Check on devices (release builds, Maestro flows, screenshots) | `sh scripts/amk/verify.sh all --spec <id>`; with product flavors it checks the first unless `--flavor <name>`; another iOS scheme: `--scheme <name>`; only some screens: `--screens phone` (or `tablet`, `landscape`, …); on a real iPhone or iPad the user names: `AMK_IOS_DEVICE=<its UDID>` (the flows clear the app's data on it) |
+| Check on devices (release builds, Maestro flows, screenshots) | `sh scripts/amk/verify.sh all --spec <id>`; with product flavors it checks the first unless `--flavor <name>`; another iOS scheme: `--scheme <name>`; only some screens: `--screens phone` (or `tablet`, `landscape`, …); only the flows tagged smoke: `--tags smoke`; on a real iPhone or iPad the user names: `AMK_IOS_DEVICE=<its UDID>` (the flows clear the app's data on it) |
 | Check devices at the same time | `sh scripts/amk/verify.sh plan --spec <id>` says how many this machine's memory fits, and prints the commands: one per device (in rounds when they don't all fit; a device's flows in parts when there's room), each for an `m-device-checker` subagent |
-| React Native mistakes in this branch's changed lines (`verify.sh quick` runs it) | `node scripts/amk/rn-check.js` |
+| React Native mistakes and Maestro flow problems in this branch's changed lines (`verify.sh quick` runs it) | `node scripts/amk/rn-check.js` |
 | Specs: progress, format check, fold a finished feature into the living spec | `node scripts/amk/specs.js status`, `node scripts/amk/specs.js check`, `node scripts/amk/specs.js merge <id>` |
 | Check a release before tagging it (versions, permission texts, store review rules, debug leftovers) | `node scripts/amk/release-check.js` |
 | Signed release builds (a person runs them: they use the signing keys) | `sh scripts/amk/release-build.sh android [flavor]`, `sh scripts/amk/release-build.sh ios [scheme]` |

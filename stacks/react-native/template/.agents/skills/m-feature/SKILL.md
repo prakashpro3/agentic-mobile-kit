@@ -37,7 +37,7 @@ If the input describes a bug rather than new behavior, suggest `m-bugfix` and st
 
 1. **Search the codebase before designing.** List the components, hooks, API clients and helpers you'll reuse in `design.md` under "Existing code to reuse". Read `docs/amk/structure.md` and `docs/amk/conventions.md`.
 2. Fill `design.md`: approach, files to change, risks (native changes, pod install, migrations).
-3. Fill `tasks.md`: small tasks (about an hour, under ~300 changed lines each). Each task names the requirement it serves and how it's checked, and its tests are written in the same task, not left for the end. The last task writes `.maestro/<id>.yaml` (from `specs/_templates/flow.yaml`): a Maestro flow with one step and screenshot per scenario, tapping elements by `testID` and scrolling to the ones further down a screen first (`scrollUntilVisible`): turned screens are short.
+3. Fill `tasks.md`: small tasks (about an hour, under ~300 changed lines each). Each task names the requirement it serves and how it's checked, and its tests are written in the same task, not left for the end. The last task writes `.maestro/<id>.yaml` (from `specs/_templates/flow.yaml`): a Maestro flow with a `# Scenario <n>: <name>` comment above each scenario's steps, an assertion for its THEN and a screenshot, tapping elements by `testID` and scrolling to the ones further down a screen first (`scrollUntilVisible`): turned screens are short.
 4. Show design and tasks and **stop until the user approves them**. Ask them to check that every task serves an approved requirement and nothing goes beyond the agreed scope.
 
 From here the plan lives in files, so the building can also run in a fresh session or another tool with `m-continue <id>`.

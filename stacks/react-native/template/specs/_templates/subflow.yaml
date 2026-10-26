@@ -1,0 +1,36 @@
+# Copy to .maestro/subflows/<name>.yaml for steps several flows share: logging in, skipping onboarding, answering a
+# permission prompt. A flow runs it with "- runFlow: subflows/<name>.yaml". verify.sh runs only the flows directly in
+# .maestro/, not the subflows below it. This one logs in with the test account from .maestro/.env.local (MAESTRO_EMAIL,
+# MAESTRO_PASSWORD), which isn't committed.
+appId: ${APP_ID}
+---
+- tapOn:
+    id: "login-email"
+- inputText: ${MAESTRO_EMAIL}
+- tapOn:
+    id: "login-password"
+- inputText: ${MAESTRO_PASSWORD}
+- tapOn:
+    id: "login-submit"
+- extendedWaitUntil:
+    visible:
+      id: "home-screen"
+    timeout: 15000
+
+# Test data: so a flow starts from the same data every run, reset it through the app's API first. Put a script like
+# this in .maestro/subflows/reset-data.js, and run it at the start of the flow:
+#   - runScript:
+#       file: subflows/reset-data.js
+#       env:
+#         API_URL: ${MAESTRO_API_URL}
+#         TEST_TOKEN: ${MAESTRO_TEST_TOKEN}
+# Maestro runs it with its own JavaScript, which has http (docs.maestro.dev: Make HTTP requests) and reads the env
+# values as plain variables. MAESTRO_API_URL and MAESTRO_TEST_TOKEN go in .maestro/.env.local. Point it at the app's
+# own test-only endpoint and test account, never at production data.
+#
+#   /* global http, API_URL, TEST_TOKEN */
+#   const response = http.post(`${API_URL}/test/reset`, {
+#     headers: { Authorization: `Bearer ${TEST_TOKEN}`, 'Content-Type': 'application/json' },
+#     body: JSON.stringify({ account: 'e2e' }),
+#   });
+#   if (!response.ok) throw new Error(`resetting the test data failed: ${response.status} ${response.body}`);

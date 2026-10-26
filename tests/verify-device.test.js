@@ -127,7 +127,7 @@ touch "$out/shot.png"`;
   // Maestro's server on the device died (an emulator under load can drop out for a few minutes): run again, twice at most
   const drops = String.raw`debug=$(echo "$@" | sed 's/.*--debug-output \([^ ]*\).*/\1/'); out=$(echo "$@" | sed 's/.*--test-output-dir \([^ ]*\).*/\1/')
 mkdir -p "$debug"; n=$(( $(cat "$out/../tries" 2> /dev/null || echo 0) + 1 )); echo "$n" > "$out/../tries"
-if [ "$n" -le "$DROPS" ]; then echo "maestro.android.DeviceServerDiedException: Device server died during 'deviceInfo' on emulator-5556" >> "$debug/maestro.log"; echo "Launch app... FAILED"; exit 1; fi
+if [ "$n" -le "$DROPS" ]; then echo "maestro.android.DeviceServerDiedException: Device server died during 'deviceInfo' on emulator-5556" >> "$debug/maestro.log"; echo "Launch app...Disable airplane mode..."; exit 1; fi
 touch "$out/shot.png"`;
   const twice = verifyAndroid({ connected: ['emulator-5556 P35'], build: true, maestro: drops, env: { DROPS: '2' }, sleepless: true });
   assert.strictEqual((twice.out.match(/the device went offline during flow smoke/g) || []).length, 2);
@@ -135,19 +135,38 @@ touch "$out/shot.png"`;
   const thrice = verifyAndroid({ connected: ['emulator-5556 P35'], build: true, maestro: drops, env: { DROPS: '3' }, sleepless: true });
   assert.strictEqual((thrice.out.match(/the device went offline during flow smoke/g) || []).length, 2, 'twice at most');
   assert.match(thrice.out, /android: flows 0\/1 passed/);
-  const failing = verifyAndroid({ connected: ['emulator-5556 P35'], build: true, maestro: 'echo "Assert that id: x is visible... FAILED"; exit 1' });
+  // the step it dropped out of has no FAILED line: the reason is the device, not the flow
+  assert.match(thrice.out, /^ {4}failed when the device went offline, on each try \(an emulator under load drops out: check again with fewer devices open\)$/m);
+  // as Maestro does: its folder named after the file it ran (the copy with view-tree steps), and a step that failed in
+  // a subflow: the subflows around it fail too, onFlowComplete runs, then Maestro's message
+  const failing = verifyAndroid({ connected: ['emulator-5556 P35'], build: true, maestro: String.raw`debug=$(echo "$@" | sed 's/.*--debug-output \([^ ]*\).*/\1/')
+for last; do :; done; f=$debug/$(basename "$last" .yaml)
+mkdir -p "$f/screenshots"; touch "$f/screenshots/step-002-launch.png" "$f/screenshots/step-005-assertVisible.png"
+touch "$f/screenshots/step-007-assertCondition-amk-view-tree-smoke-launch.png"
+echo "  Launch app... COMPLETED"; echo "    Assert that id: x is visible... FAILED"; echo "  Run login.yaml... FAILED"; echo "Run flows/start.yaml... FAILED"
+echo "Disable airplane mode... COMPLETED"; echo ""; echo "Assertion is false: id: x is visible"; exit 1` });
   assert.doesNotMatch(failing.out, /once more/, 'other failures aren\'t run again');
-  assert.match(failing.out, /flow smoke failed, see \.amk\/evidence\/run\/android\/smoke\.log and Maestro's own log \.amk\/evidence\/run\/maestro-logs\/android-smoke\/maestro\.log/);
+  assert.deepStrictEqual(fs.readdirSync(path.join(failing.app, '.amk/evidence/run/maestro-logs/android-smoke')).filter(d => d !== 'maestro.log'), ['smoke'], 'the flow\'s own name, not the copy\'s hidden one');
+  assert.match(failing.out, /flow smoke failed, see \.amk\/evidence\/run\/android\/smoke\.log and Maestro's own log \.amk\/evidence\/run\/maestro-logs\/android-smoke\/maestro\.log\n {4}failed at "Assert that id: x is visible": Assertion is false: id: x is visible\n {4}the screen when it failed: \.amk\/evidence\/run\/maestro-logs\/android-smoke\/smoke\/screenshots\/step-005-assertVisible\.png\n/);
+  // the report: the flow, why it failed, the screen then; and CI's results
+  assert.match(failing.out, /^Report: \.amk\/evidence\/run\/report\.md \(each flow's result, why one failed, and its screenshots\)$/m);
+  const report = fs.readFileSync(path.join(failing.app, '.amk/evidence/run/report.md'), 'utf8');
+  assert.match(report, /^### ✗ smoke\n\nFailed at "Assert that id: x is visible": Assertion is false: id: x is visible\. Log: \[android\/smoke\.log\]\(android\/smoke\.log\) · \[the screen when it failed\]\(maestro-logs\/android-smoke\/smoke\/screenshots\/step-005-assertVisible\.png\)$/m);
+  assert.match(fs.readFileSync(path.join(failing.app, '.amk/evidence/run/junit.xml'), 'utf8'), /<testcase classname="android" name="smoke"><failure message="at &quot;Assert that id: x is visible&quot;: Assertion is false: id: x is visible"\/><\/testcase>/);
+  // a flow that passed: its screenshots in the report
+  assert.match(fs.readFileSync(path.join(twice.app, '.amk/evidence/run/report.md'), 'utf8'), /^### ✓ smoke\n\n<img src="android\/shot\.png" width="180" alt="shot" title="shot">$/m);
 });
 
-// records the device, and the orientation a flow is turned to or "direct" for a flow run as it is, then saves a screenshot
+// records the device, and the orientation a flow is turned to or "direct" for a flow run as it is (the flow's own name, not
+// the copy with view-tree steps that Android runs), then saves a screenshot
 // the shape the device shows: a phone tall and a tablet wide, unless turned (NOTURN set: the app never turns)
 const record = String.raw`for last; do :; done
 out=$(echo "$@" | sed 's/.*--test-output-dir \([^ ]*\).*/\1/'); device=$(echo "$@" | sed 's/.*--device \([^ ]*\).*/\1/')
 case $last in
-  */screen.yaml) o=$(sed -n 's/^- setOrientation: //p' "$last"); echo "$device $o $(sed -n "s/^- runFlow: '\(.*\)'$/\1/p" "$last" | sed 's/.*\///')" ;;
-  *) o=natural; echo "$device direct $(basename "$last")" ;;
-esac >> "$FAKE_STATE.maestro"
+  */screen.yaml) o=$(sed -n 's/^- setOrientation: //p' "$last"); line="$device $o $(sed -n "s/^- runFlow: '\(.*\)'$/\1/p" "$last" | sed 's/.*\///')" ;;
+  *) o=natural; line="$device direct $(basename "$last")" ;;
+esac
+echo "$line" | sed 's/ \.amk-android\(-tablet\)\{0,1\}\(-landscape\)\{0,1\}-/ /' >> "$FAKE_STATE.maestro"
 if [ "$(awk -v s="$device" '$1 == s { print $3 }' "$FAKE_STATE")" = tablet ]; then w=2560 h=1600; else w=1080 h=2400; fi
 [ "$o" != LANDSCAPE_LEFT ] || [ -n "$NOTURN" ] || { t=$w; w=$h; h=$t; }
 [ ! -f "$out/../noturn-once" ] || { rm "$out/../noturn-once"; t=$w; w=$h; h=$t; }
@@ -219,7 +238,8 @@ test('verify.sh build and --no-build: build once, then check each device without
 
 test('verify.sh plan: as many devices at once as memory allows (about 6 GB each, 4 GB kept), in rounds; else one command', { skip }, () => {
   const mac = process.platform === 'darwin';
-  const plan = (env, rotates = true) => verifyAndroid({ connected: [], rotates, env, args: ['plan', '--spec', 'x1'] }).out;
+  // with 50 GB of free disk, whatever this machine has
+  const plan = (env, rotates = true) => verifyAndroid({ connected: [], rotates, env: { AMK_DISK_GB: '50', ...env }, args: ['plan', '--spec', 'x1'] }).out;
   const cmd = c => `     sh scripts/amk/verify.sh ${c.replace(' ', ' --no-build --screens ')} --spec x1`;
   // room for every device: one round, the phones first
   const all = plan({ AMK_MEMORY_GB: '32' });
@@ -233,6 +253,7 @@ test('verify.sh plan: as many devices at once as memory allows (about 6 GB each,
     assert.ok(rounds.includes(`  3. round 1 of 2, at the same time, each in its own subagent (m-device-checker), which checks its screenshots and reports:\n${['ios phone', 'android phone'].map(cmd).join('\n')}\n  4. round 2 of 2, once round 1 has reported, the same way:\n${['ios tablet', 'android tablet'].map(cmd).join('\n')}\n`), rounds);
   }
   assert.match(plan({ AMK_MEMORY_GB: '12' }), /one device at a time \(it needs 16 GB of memory; AMK_PARALLEL=1 overrides\)\n {2}sh scripts\/amk\/verify\.sh all --spec x1\n/);
+  assert.match(plan({ AMK_MEMORY_GB: '32', AMK_DISK_GB: '12' }), /^plan: 32 GB of memory, 12 GB free disk, Maestro 2\.11\.0: one device at a time \(it needs 20 GB free disk; AMK_PARALLEL=1 overrides\)$/m);
   assert.match(plan({ AMK_MEMORY_GB: '64', AMK_DEVICES: '1' }), /one device at a time \(AMK_DEVICES=1; AMK_PARALLEL=1 overrides\)/);
   assert.match(plan({ AMK_PARALLEL: '0' }), /one device at a time \(AMK_PARALLEL=0; AMK_PARALLEL=1 overrides\)/);
   assert.match(plan({ AMK_MEMORY_GB: '12', AMK_PARALLEL: '1' }), new RegExp(`check the ${mac ? 4 : 2} devices at the same time`));
@@ -245,7 +266,7 @@ const threeFlows = { '.maestro/x1-a.yaml': 'appId: x\n---\n- launchApp\n', '.mae
 
 test('verify.sh plan: room for more devices than kinds splits each kind\'s flows into parts, each on its own device; never a real device\'s', { skip }, () => {
   const mac = process.platform === 'darwin';
-  const plan = env => verifyAndroid({ connected: [], rotates: false, env, files: threeFlows, args: ['plan', '--spec', 'x1'] }).out;
+  const plan = env => verifyAndroid({ connected: [], rotates: false, env: { AMK_DISK_GB: '50', ...env }, files: threeFlows, args: ['plan', '--spec', 'x1'] }).out;
   // a phone-only app: a part's device counts 6 GB for a simulator and 8 GB for an emulator, so 28 GB doesn't split an
   // iPhone and a phone emulator (2 × 14 > 24), and 32 GB does; Android alone needs 20 GB for 2 parts
   if (mac) assert.match(plan({ AMK_MEMORY_GB: '28' }), /check the 2 devices at the same time/);
@@ -363,7 +384,8 @@ echo "Launch app... COMPLETED"; touch "$out/shot.png"`;
 
 test('verify.sh --flow: a path in the project or an absolute one runs that flow; a missing file stops the run', { skip }, () => {
   const which = String.raw`for last; do :; done; echo "$last" >> "$FAKE_STATE.maestro"; touch "$(echo "$@" | sed 's/.*--test-output-dir \([^ ]*\).*/\1/')/shot.png"`;
-  const run = (flow, files = {}) => verifyAndroid({ connected: ['emulator-5556 P35'], build: true, maestro: which, files, args: ['android', '--flavor', 'x', '--label', 'run', '--screens', 'phone-portrait', '--flow', flow] });
+  // the path Maestro gets, so without the copy that adds view-tree steps
+  const run = (flow, files = {}) => verifyAndroid({ connected: ['emulator-5556 P35'], build: true, maestro: which, files, env: { AMK_A11Y: '0' }, args: ['android', '--flavor', 'x', '--label', 'run', '--screens', 'phone-portrait', '--flow', flow] });
   const rel = run('.maestro/x1-home.yaml', { '.maestro/x1-home.yaml': 'appId: ${APP_ID}\n---\n- launchApp\n' });
   assert.strictEqual(fs.realpathSync(rel.maestro.trim()), fs.realpathSync(path.join(rel.app, '.maestro/x1-home.yaml')));
   assert.match(rel.out, /^android: flows 1\/1 passed/m);
@@ -379,6 +401,48 @@ test('verify.sh --flow: a path in the project or an absolute one runs that flow;
   assert.match(missing.out, /^verify: no flow file \S+\/\.maestro\/nope\.yaml$/m);
   assert.strictEqual(missing.status, 2);
   assert.strictEqual(missing.maestro, '');
+});
+
+test('verify.sh android: after each screenshot the screen\'s view tree, for controls without a label or under 48 dp; AMK_A11Y=0 turns it off', { skip }, () => {
+  // Maestro's stand-in: keeps the flow it was given, saves a tree with a small icon without a label, and a screenshot
+  const trees = String.raw`for last; do :; done
+debug=$(echo "$@" | sed 's/.*--debug-output \([^ ]*\).*/\1/'); out=$(echo "$@" | sed 's/.*--test-output-dir \([^ ]*\).*/\1/')
+echo "$last" >> "$FAKE_STATE.maestro"; cp "$last" "$FAKE_STATE.flow"
+f=$debug/$(basename "$last" .yaml); mkdir -p "$f/screen-hierarchy"
+echo '{"attributes":{"bounds":"[0,0][1080,2400]"},"children":[{"attributes":{"clickable":"true","bounds":"[900,100][963,163]","resource-id":"close"}}]}' > "$f/screen-hierarchy/step-005-assertCondition-amk-view-tree-x1-1-home.json"
+touch "$out/x1-1-home.png"`;
+  // and a copy another run is using at the same time, which isn't a flow of its own
+  const files = { '.maestro/x1-home.yaml': 'appId: ${APP_ID}\n---\n- launchApp\n- takeScreenshot: x1-1-home\n', '.maestro/.amk-android-tablet-x2.yaml': 'appId: x\n' };
+  const args = ['android', '--flavor', 'x', '--label', 'run', '--screens', 'phone-portrait'];
+  const r = verifyAndroid({ connected: ['emulator-5556 P35'], build: true, maestro: trees, files, args });
+  const state = f => fs.readFileSync(path.join(path.dirname(r.app), `state.${f}`), 'utf8');
+  // Maestro ran a copy next to the flow, with a view-tree step after the screenshot; the copy is gone afterwards
+  assert.match(state('maestro'), /\/\.maestro\/\.amk-android-x1-home\.yaml\n$/);
+  assert.match(state('flow'), /- takeScreenshot: x1-1-home\n- extendedWaitUntil:\n {4}visible:\n {6}id: "amk-view-tree-x1-1-home"\n {4}timeout: 1\n {4}optional: true\n/);
+  assert.deepStrictEqual(fs.readdirSync(path.join(r.app, '.maestro')).sort(), ['.amk-android-tablet-x2.yaml', 'x1-home.yaml']);
+  assert.match(r.out, /android: flows 1\/1 passed/, 'the other run\'s copy isn\'t run');
+  assert.match(r.out, /^android: flows 1\/1 passed, 1 screenshots in \.amk\/evidence\/run\/android\n {2}android: 2 accessibility warnings on the flows' screens \(controls without a label, tap areas under 48 dp\): see the report$/m);
+  assert.match(fs.readFileSync(path.join(r.app, '.amk/evidence/run/report.md'), 'utf8'), /Accessibility, from the screen's view tree:\n\n- x1-1-home: testID close: no label: a screen reader can't say what it does\n- x1-1-home: testID close: 24×24 dp: under 48×48/);
+  assert.strictEqual(r.status, 0, 'warnings only');
+  // turned off: the flow as it is
+  const off = verifyAndroid({ connected: ['emulator-5556 P35'], build: true, maestro: trees, files, args, env: { AMK_A11Y: '0' } });
+  assert.match(fs.readFileSync(path.join(path.dirname(off.app), 'state.maestro'), 'utf8'), /\/\.maestro\/x1-home\.yaml\n$/);
+  assert.doesNotMatch(off.out, /accessibility warning/);
+});
+
+test('verify.sh --tags: only the flows with one of the tags in their header, inline or one a line', { skip }, () => {
+  const files = {
+    '.maestro/a-home.yaml': 'appId: ${APP_ID}\ntags: [smoke, home]\n---\n- launchApp\n',
+    '.maestro/b-settings.yaml': 'appId: ${APP_ID}\n---\n- launchApp\n',
+    '.maestro/c-login.yaml': 'appId: ${APP_ID}\ntags:\n  - login\n  - smoke\nenv:\n  - x\n---\n- launchApp\n',
+    '.maestro/d-env.yaml': 'appId: ${APP_ID}\ntags:\n  - nightly\nenv:\n  - smoke\n---\n- launchApp\n',
+  };
+  const run = tags => verifyAndroid({ connected: ['emulator-5556 P35'], build: true, maestro: record, files, args: ['android', '--flavor', 'x', '--label', 'run', '--screens', 'phone-portrait', '--tags', tags] });
+  assert.strictEqual(run('smoke').maestro, 'emulator-5556 direct a-home.yaml\nemulator-5556 direct c-login.yaml\n');
+  assert.strictEqual(run('home,nightly').maestro, 'emulator-5556 direct a-home.yaml\nemulator-5556 direct d-env.yaml\n');
+  const none = run('missing');
+  assert.match(none.out, /android: no flow has the tag missing, so this is a check that the app opens/);
+  assert.strictEqual(none.maestro, 'emulator-5556 direct smoke.yaml\n');
 });
 
 // verify.sh ios on a Mac, with stand-ins for Xcode's tools (xcrun simctl and devicectl, xcodebuild) and for maestro-runner
@@ -437,6 +501,8 @@ cp "$out/assets/flow-000/cmd-003-shot.png" "$(dirname "$flow")/shot.png"
 # a picture something else saves meanwhile
 [ -z "$FAKE_OTHER_PNG" ] || touch "$FAKE_OTHER_PNG"
 [ -z "$FAKE_CRASH" ] || grep -qx App-2026-10-16-120000.ips "$FAKE_STATE.crashes" || echo App-2026-10-16-120000.ips >> "$FAKE_STATE.crashes"
+# FAKE_RUNNER_FAIL: the flow fails, with that error in maestro-runner's report
+if [ -n "$FAKE_RUNNER_FAIL" ]; then echo "{\"flows\":[{\"error\":\"$FAKE_RUNNER_FAIL\"}]}" > "$out/report.json"; exit 1; fi
 `, 0o755);
   write(dir, 'bin/maestro', '#!/bin/sh\necho 2.11.0\n', 0o755);
   for (const tool of ['ps', 'sleep', 'sips']) write(dir, `bin/${tool}`, '#!/bin/sh\n', 0o755);
@@ -512,6 +578,10 @@ test('verify.sh ios: a connected iPhone, when named: a build signed for it, open
   assert.match(crashed.out, /^ios: the app crashed on 00008020-AAAA during the checks: 1 crash reports in \.amk\/evidence\/run\/crashes$/m);
   assert.deepStrictEqual(fs.readdirSync(path.join(crashed.app, '.amk/evidence/run/crashes')), ['App-2026-10-16-120000.ips']);
   assert.notStrictEqual(crashed.status, 0);
+
+  // a flow that fails on the iPhone: why, from maestro-runner's report, and the screen then
+  const broke = verifyIos({ env: { AMK_IOS_DEVICE: '00008020-AAAA', FAKE_RUNNER_FAIL: 'Element not visible: id=save' }, args: ['ios', '--label', 'run', '--screens', 'phone-portrait'] });
+  assert.match(broke.out, /flow smoke failed, see [^\n]* maestro-runner's own log [^\n]*\n {4}failed with: Element not visible: id=save\n {4}the screen when it failed: \.amk\/evidence\/run\/maestro-logs\/ios-smoke\/assets\/flow-000\/nested-000-after\.png\n/);
 });
 
 test('verify.sh ios: what a real device needs first is said before any flow runs: a team, trusting it, an app that stays open', { skip: skipIos }, () => {
