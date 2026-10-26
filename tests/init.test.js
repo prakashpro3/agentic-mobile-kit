@@ -395,6 +395,13 @@ test('husky 8 and a team\'s own hooks folder: the kit\'s line goes after the set
   assert.strictEqual(read(own, '.hooks/pre-commit'), '#!/bin/sh\n# team checks\nsh scripts/amk/run-hook.sh .githooks/pre-commit || exit 1 # agentic-mobile-kit\nset -e\n./scripts/check.sh\nexit 0\n');
   assert.ok(fs.existsSync(path.join(own, '.hooks/pre-push')));
   assert.strictEqual(localHooks(own), '.hooks/');
+
+  // the project's own .githooks, set as a full path: the kit's folder, not a team's
+  const full = fakeApp();
+  git(full, 'config', 'core.hooksPath', path.join(full, '.githooks'));
+  const { warnings } = init(full, { skipGenerate: true });
+  assert.doesNotMatch(warnings.join('\n'), /already run from/);
+  assert.strictEqual(localHooks(full), '.githooks');
 });
 
 test('husky 4 and simple-git-hooks: the kit\'s command goes first in package.json, and uninstall removes it', () => {
