@@ -10,7 +10,9 @@
 
 ## Risk
 
-<!-- What could break, and how to roll back -->
+<!-- Can it be undone? JavaScript can be fixed in the next release, but a store build can't be called back:
+     native changes, data saved in a new format, and API changes that installed versions still rely on need care.
+     And what else could it break, beyond the feature? -->
 
 ## AI use
 

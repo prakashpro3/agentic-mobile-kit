@@ -15,11 +15,10 @@ A prototype answers questions before the real build: what the client wants, how 
 ## 1. Understand
 
 1. Read the requirement, `docs/amk/product.md`, `structure.md` and `conventions.md`, the living spec for the area in `specs/current/`, and the screens around where this would live: their components, theme and navigation.
-2. Ask who the demo is for (the client or the team) and what it must show, one question at a time.
-3. Ask which UI/UX level the screens should have: Simple (clean, minimal and functional; the default), Mixed (simple, with modern touches) or Premium (polished, following current design trends). `specs/_templates/design.md` describes each; offer the level the app's other screens have, if an earlier spec's `design.md` records one. The concepts and the prototype are made at that level. Don't start them until the user has answered.
-4. Pick an ID: the task's ID if it has one, otherwise `YYYYMMDD-<slug>`. Create the branch `prototype/<id>` from the main branch; this workflow commits everything there.
-5. Write `specs/<id>/requirements.md` from `specs/_templates/requirements.md`: the goal, what's known so far, and the open questions the prototype should answer. Add a `## Decisions` section for what gets settled along the way, starting with the UI/UX level and the date.
-6. Decide which case this is:
+2. Ask in one round (`AGENTS.md`): who the demo is for (the client or the team), what it must show, and which UI/UX level the screens should have: Simple (clean, minimal and functional), Mixed (simple, with modern touches) or Premium (polished, following current design trends). `specs/_templates/design.md` describes each; recommend the level the app's other screens have, if an earlier spec's `design.md` records one, otherwise Simple. The concepts and the prototype are made at that level: don't start them until the user has answered.
+3. Pick an ID: the task's ID if it has one, otherwise `YYYYMMDD-<slug>`. Create the branch `prototype/<id>` from the main branch; this workflow commits everything there.
+4. Write `specs/<id>/requirements.md` from `specs/_templates/requirements.md`: the goal, what's known so far, and the open questions the prototype should answer. Add a `## Decisions` section for what gets settled along the way, starting with the UI/UX level and the date.
+5. Decide which case this is:
    - **What to show is clear** (the screens and the flow are known): go to step 3.
    - **How it should work or look is still open:** go to step 2.
 

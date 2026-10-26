@@ -23,29 +23,29 @@ If the input describes a bug rather than new behavior, suggest `m-bugfix` and st
 
 ## 2. Requirements (then stop for approval)
 
-1. Pick an ID: the task's ID if it has one, otherwise `YYYYMMDD-<slug>`. Copy `specs/_templates/` to `specs/<id>/`. If `specs/<id>/` already has a draft from `m-explore` or `m-prototype`, keep it and copy only the missing files.
+1. Pick an ID: the task's ID if it has one, otherwise `YYYYMMDD-<slug>`. Copy `requirements.md`, `design.md`, `tasks.md` and `progress.md` from `specs/_templates/` to `specs/<id>/`. If `specs/<id>/` already has a draft from `m-explore` or `m-prototype`, keep it and copy only the missing files.
 2. Read `specs/current/<area>.md` for each area this touches: it says what the app does now. In an area with no living spec yet, read the code that implements it.
 3. **One intent.** The feature should be one thing you can say in a sentence. If it needs "and also", suggest splitting it into separate features, and ask.
-4. Fill `requirements.md`: the goal; the requirements under `## ADDED`, `## MODIFIED` and `## REMOVED Requirements: <area>` (the format is in `specs/current/README.md`), with one SHALL per requirement and scenarios for the cases that matter; every edge-case line (or "n/a"); out of scope; open questions. Then run `node scripts/amk/specs.js check specs/<id>/requirements.md`.
-5. If something is unclear, ask the user **one question at a time**. Don't fill gaps with guesses.
-6. Show the requirements and **stop until the user approves them**. Give the user these questions to check them against:
+4. Fill `requirements.md`: the goal; the requirements under `## ADDED`, `## MODIFIED` and `## REMOVED Requirements: <area>` (the format is in `specs/current/README.md`), with one SHALL per requirement and scenarios for the cases that matter; every edge-case line (or "n/a"); out of scope; open questions. Use the app's words from `docs/amk/glossary.md`; a new word, or one used two ways, gets settled with the user and added there. Then run `node scripts/amk/specs.js check specs/<id>/requirements.md`.
+5. If something is unclear, ask the user in rounds (`AGENTS.md`): every question you can ask now, numbered, each with the answer you recommend. Don't fill gaps with guesses.
+6. Show the requirements, with the answers worked in, and **stop until the user approves them**. Answers to a round aren't that approval: ask for it on its own. Give the user these questions to check them against:
    - Is this the problem you asked me to solve, with nothing extra in scope?
    - Could someone test each requirement without reading the code?
    - Does a scenario cover the case you care about most?
 
 ## 3. Design and tasks (then stop for approval)
 
-1. **Ask for the UI/UX level first, when the feature has screens.** As one question, ask which level its screens should have: Simple (clean, minimal and functional), Mixed (simple, with modern touches) or Premium (polished, following current design trends; it takes longer). `specs/_templates/design.md` describes each. Offer as the default the level a prototype settled (under `## Decisions` in `requirements.md`), otherwise the one the app's other screens have (an earlier spec's `design.md`), otherwise Simple. Don't design until the user has answered. Write the answer and the date under "UI/UX level" in `design.md` (n/a for a feature without screens).
+1. **Ask for the UI/UX level first, when the feature has screens**, in one round with any other open design question: which level its screens should have: Simple (clean, minimal and functional), Mixed (simple, with modern touches) or Premium (polished, following current design trends; it takes longer). `specs/_templates/design.md` describes each. Offer as the default the level a prototype settled (under `## Decisions` in `requirements.md`), otherwise the one the app's other screens have (an earlier spec's `design.md`), otherwise Simple. Don't design until the user has answered. Write the answer and the date under "UI/UX level" in `design.md` (n/a for a feature without screens).
 2. **Search the codebase before designing.** List the components, hooks, API clients and helpers you'll reuse in `design.md` under "Existing code to reuse". Read `docs/amk/structure.md` and `docs/amk/conventions.md`.
 3. Fill `design.md`: approach, files to change, risks (native changes, pod install, migrations).
-4. Fill `tasks.md`: small tasks (about an hour, under ~300 changed lines each). Each task names the requirement it serves and how it's checked, and its tests are written in the same task, not left for the end. The last task writes `.maestro/<id>.yaml` (from `specs/_templates/flow.yaml`): a Maestro flow with a `# Scenario <n>: <name>` comment above each scenario's steps, an assertion for its THEN and a screenshot, tapping elements by `testID` and scrolling to the ones further down a screen first (`scrollUntilVisible`): turned screens are short.
+4. Fill `tasks.md`: small tasks (about an hour, under ~300 changed lines each), each a thin slice through every layer it needs (screen, state, API call, test) that works and can be checked on its own, rather than one layer at a time. Changes that make the feature easy to add (moving or renaming code that's there) come first, as their own task. Each task names the requirement it serves, the tasks it waits on (`after:`) and how it's checked, and its tests are written in the same task, not left for the end. The last task writes `.maestro/<id>.yaml` (from `specs/_templates/flow.yaml`): a Maestro flow with a `# Scenario <n>: <name>` comment above each scenario's steps, an assertion for its THEN and a screenshot, tapping elements by `testID` and scrolling to the ones further down a screen first (`scrollUntilVisible`): turned screens are short.
 5. Show design and tasks and **stop until the user approves them**. Ask them to check that every task serves an approved requirement and nothing goes beyond the agreed scope.
 
 From here the plan lives in files, so the building can also run in a fresh session or another tool with `m-continue <id>`.
 
 ## 4. Build, one task at a time
 
-For each task:
+For each task, in order (a task with `after:` once those tasks are ticked; one without, as listed):
 1. Implement only that task. Write tests first for logic (state, data, utils); UI can be tested after. Build screens to the UI/UX level in `design.md`, and to the screen rules in the React Native rules file `AGENTS.md` names (keyboard, system bars, scrolling, large text, announced messages), for every phone, tablet and orientation `AGENTS.md` lists: they're the bugs device checks and reviews find most.
 2. Run `lint`, `typecheck` and `test` (see AGENTS.md). Paste the real output. If something fails, fix it; after 2 failed attempts, stop and report.
 3. Commit with a clear message ending in `Spec: specs/<id>`.
@@ -72,6 +72,6 @@ Then update the `docs/amk/` files the feature made untrue: a new key journey in 
 ## 7. Review and pull request
 
 1. Run `m-review` (or ask the `m-reviewer` subagent, if your tool has subagents). Fix real problems only; skip style nits.
-2. Ask the user before pushing. Then push the feature branch (never `main`) and open a PR. Start the description with the requirements this adds, changes and removes, so reviewers read what should be true before the code. Then add the evidence: lint, typecheck and test output, and the screenshot for each scenario. Use `.github/pull_request_template.md` if the repo has one.
+2. Ask the user before pushing. Then push the feature branch (never `main`) and open a PR. Start the description with the requirements this adds, changes and removes, so reviewers read what should be true before the code. Then add the evidence: lint, typecheck and test output, and the screenshot for each scenario. Then the risk: whether it can be undone once a store build ships (native changes, data saved in a new format, and API changes that installed versions still rely on can't be; JavaScript can be fixed in the next release), and what else it could break. Use `.github/pull_request_template.md` if the repo has one.
 
 Never claim a check passed without running it in this session.

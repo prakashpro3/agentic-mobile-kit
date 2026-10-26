@@ -10,7 +10,7 @@ Every AI tool reads the same rules (`AGENTS.md`), the same project facts (`docs/
 
 **Once per project** (the lead):
 1. In the app's root, on a clean branch, run `npx agentic-mobile-kit` and choose an install: the recommended setup, or your own choice of AI tools and CI. Choose CI only if the app uses GitHub Actions or Codemagic; without it, the kit adds no CI files. You can add CI later from the same menu. In scripts: `npx agentic-mobile-kit init`, with `--tools claude,codex,antigravity` and `--ci github`, `--ci codemagic` or both. For a new app, run it in an empty folder (an empty clone of the team's repository works too) and choose a React Native or an Expo app: the kit creates it with the official tool, commits it, and installs itself (`init --new bare` or `init --new expo`).
-2. Run `m-onboard` in your AI tool. It drafts `docs/amk/product.md`, `tech.md`, `structure.md` and `conventions.md` from the code and asks what the code can't show. Read the drafts carefully: agents are only as good as these four files.
+2. Run `m-onboard` in your AI tool. It drafts `docs/amk/product.md`, `tech.md`, `structure.md`, `conventions.md` and `glossary.md` (the app's own words) from the code and asks what the code can't show. Read the drafts carefully: agents are only as good as these five files.
 3. Open a PR with the `large-pr` label, merge it, and turn on branch protection (see `docs/branch-protection.md` in the kit repo).
 4. With `--ci codemagic`, do the one-time Codemagic setup in the app's `docs/amk/codemagic.md`.
 
@@ -39,12 +39,12 @@ Every AI tool reads the same rules (`AGENTS.md`), the same project facts (`docs/
 
 | You want to | Run | What happens |
 |---|---|---|
-| Describe the app for agents (after installing, and after big changes) | `m-onboard` | Reads the project, drafts the four `docs/amk/` files, asks what the code can't show, and writes them once you approve. Files the team already wrote get suggested changes, never a rewrite. |
+| Describe the app for agents (after installing, and after big changes) | `m-onboard` | Reads the project, drafts the five `docs/amk/` files, asks what the code can't show, and writes them once you approve. Files the team already wrote get suggested changes, never a rewrite. |
 | Think a problem through first | `m-explore <question or problem>` | Reads the code, explains how it works today and lays out options with trade-offs. It never edits code; it hands off to `m-feature` or `m-bugfix`. |
 | Demo an idea to the client or team before building it | `m-prototype <rough requirement>` | **You choose the UI/UX level** (Simple, the default; Mixed; or Premium) → two or three concepts as clickable HTML mocks if how it should work is open → **you pick** → real screens with mock data on a throwaway `prototype/<id>` branch → screenshots and a video → feedback into the requirements → hands off to `m-feature` |
 | Build a feature | `m-feature <task text or link>` | Requirements with acceptance criteria → **you approve** → **you choose the UI/UX level** for its screens (Simple, the default; Mixed; or Premium) → design and tasks → **you approve** → one task at a time with tests and real command output → device check with screenshots → living spec updated → review → PR |
 | Make a small change to existing behavior (a text, a limit, a rule, a style) | `m-change <the change>` | Checks it's small → shows the code, living-spec and docs changes → **you approve** → makes them together, with tests and screens on both platforms for visible changes |
-| Fix a bug | `m-bugfix <report>` | Checks known issues → reproduces → failing test → root cause → smallest fix → verifies |
+| Fix a bug | `m-bugfix <report>` | Checks known issues → a check that fails on the bug (a test, or a Maestro flow for a device bug) → three to five likely causes, shown to you → root cause → smallest fix → verifies, keeping the check |
 | Stop for now, or switch tool | `m-pause` | Writes the handoff in `progress.md`, moves decisions out of the chat, commits as `wip:` and pushes |
 | Carry on anywhere | `m-continue <id>` | Reads the spec and handoff, tells you the open question, the status and the next step, then waits for you |
 | Review a branch | `m-review` | A read-only review for scope, tests, both platforms, error states, security and native changes |
@@ -52,6 +52,8 @@ Every AI tool reads the same rules (`AGENTS.md`), the same project facts (`docs/
 | Stop a mistake from repeating | `m-learn <what went wrong>` | The smallest lasting fix: a check, a known-issues entry, a docs line or a skill step |
 
 How to invoke a skill: `/m-feature` in Claude Code and Antigravity, and `$m-feature` in Codex. The skills only run when you invoke them; they never start on their own.
+
+When agents need your decisions, they ask in rounds: every question they can ask at that point, numbered, each with the answer they recommend. Reply "yes" to take all the recommendations, or answer by number. Facts they find in the code themselves. A question only someone else can answer, such as the client, goes into `specs/<id>/questions-<who>.md` for you to send, and the work goes on with the rest.
 
 `specs/current/` is the living spec: one file per area of the app, saying what it does now, requirement by requirement. Each feature's requirements say what they add, change and remove, and `m-feature` merges them in when the feature is done (`node scripts/amk/specs.js merge <id>`). `m-bugfix` corrects it when a fix changes behavior, and `node scripts/amk/specs.js status` shows every feature's progress. It starts empty and grows with each change, so there's no need to write it all up front.
 

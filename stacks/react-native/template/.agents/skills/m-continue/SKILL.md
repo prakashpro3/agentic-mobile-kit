@@ -21,4 +21,4 @@ Input: $ARGUMENTS (a spec ID, or empty).
    3. the exact next step.
 
    Use only what the files and git say. If something isn't recorded, say it's unknown. Never fill gaps with guesses.
-5. **Wait for the user to confirm**, then continue with the next unchecked task, following step 4 of `m-feature` (one task at a time, real check output, commit, update `progress.md`).
+5. **Wait for the user to confirm**, then continue with the next unchecked task (one with `after:` only once those tasks are ticked; one without, in list order), following step 4 of `m-feature` (one task at a time, real check output, commit, update `progress.md`).

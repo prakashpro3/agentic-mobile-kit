@@ -56,6 +56,10 @@ These changed after most AI training data was written: check them instead of wri
 - List keys come from the item's ID, not its index: index keys mix up rows when items are added, removed or reordered.
 - Images go in asset files, never in code as base64 strings: they bloat the bundle, and all of it loads with the JavaScript.
 - Component tests use React Native Testing Library (`@testing-library/react-native`) and find elements as users and screen readers do, by role, label or text (`getByRole('button', { name: 'Save' })`), rather than relying on snapshots.
+- A test checks what a user or a caller sees, through the public interface (rendered text and roles, a hook's result, a function's return), so a refactor that keeps the behavior keeps the test passing.
+- Mock only what the app doesn't own: the network, storage, native modules, time and randomness. Not the app's own components, hooks or modules: a test of mocks passes whatever the code does.
+- Expected values come from the spec or a worked example (`expect(total([10, 5])).toBe(15)`), never computed the way the code computes them, or the test can't fail.
+- A bug fix comes with a test that failed before the fix.
 
 ## Platform guidelines and accessibility
 

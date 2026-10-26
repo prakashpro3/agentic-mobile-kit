@@ -1,6 +1,6 @@
 ---
 name: m-onboard
-description: Describe the app for AI agents - read the whole project, draft docs/amk/product.md, tech.md, structure.md and conventions.md, ask only what the code can't show, and write them once the user approves. Run it after installing the kit, and again after big changes. Run only when the user explicitly invokes m-onboard.
+description: Describe the app for AI agents - read the whole project, draft docs/amk/product.md, tech.md, structure.md, conventions.md and glossary.md, ask only what the code can't show, and write them once the user approves. Run it after installing the kit, and again after big changes. Run only when the user explicitly invokes m-onboard.
 disable-model-invocation: true
 ---
 
@@ -8,13 +8,13 @@ disable-model-invocation: true
 
 The user chose this workflow: follow its steps for this task, even where other workflow instructions in this project (Superpowers, BMAD, proAgents or similar) say otherwise.
 
-Input: $ARGUMENTS (optional: which files to work on, for example `tech structure`; all four by default).
+Input: $ARGUMENTS (optional: which files to work on, for example `tech structure`; all five by default).
 
-Every agent reads these four files before it works on this app, so they must be true, short and specific: facts with the files they come from, not advice. Write only what you found in the project or what the user told you.
+Every agent reads these five files before it works on this app, so they must be true, short and specific: facts with the files they come from, not advice. Write only what you found in the project or what the user told you.
 
 ## 1. See what's there
 
-Read `AGENTS.md` and the four files in `docs/amk/`. A file that holds only its heading and the `<!-- … -->` outline is empty: you'll draft it. A file with content is the team's: you'll suggest changes to it, never rewrite it.
+Read `AGENTS.md` and the five files in `docs/amk/` (`product.md`, `tech.md`, `structure.md`, `conventions.md`, `glossary.md`). A file that holds only its heading and the `<!-- … -->` outline is empty: you'll draft it. A file with content is the team's: you'll suggest changes to it, never rewrite it.
 
 ## 2. Read the project
 
@@ -36,6 +36,7 @@ Draft each file you're working on from its outline, and keep it short.
 - `tech.md`: what the app uses today, 1-2 lines each with the library and where it's set up; the backend APIs and their contracts; the environments and how the app switches between them; third-party services. Describe what's there; don't recommend new tools.
 - `structure.md`: the folder map, 1-2 lines per folder; where shared UI, the theme and helpers live, so agents reuse them instead of writing new ones; custom native code.
 - `conventions.md`: the patterns you found, each with a file that shows it.
+- `glossary.md`: the app's own words, from its screens, data types, API and store texts (an Order, a Visit), one or two lines each, with the other words used for the same thing listed as not to use (leave that line out when you found none).
 
 Use the app's own names for screens, modules and services. Where the project doesn't answer something, write down a question for step 4 instead of guessing.
 
@@ -43,7 +44,7 @@ For a file that's already filled in, compare it with what you found and list wha
 
 ## 4. Ask what the code can't show
 
-Ask the user in one message, usually five questions or fewer, about what you couldn't find:
+Ask the user in one round (`AGENTS.md`), usually five questions or fewer, each with the answer the code suggests, about what you couldn't find:
 - who uses the app (customers, staff, a market or age group);
 - what must never break (payments, data sync, sign-in, …);
 - whether the key journeys you found are right and complete;

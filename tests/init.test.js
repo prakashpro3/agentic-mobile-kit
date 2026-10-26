@@ -53,6 +53,8 @@ test('fresh install: files, filled AGENTS.md, links, hooks, scripts; no CI unles
   else assert.ok(fs.statSync(path.join(dir, '.githooks/pre-commit')).mode & 0o111, 'pre-commit is executable');
   assert.strictEqual(fs.readlinkSync(path.join(dir, '.claude/skills')).replace(/\\/g, '/'), '../.agents/skills');
   for (const skill of ['m-feature', 'm-change', 'm-onboard', 'm-prototype']) assert.ok(fs.existsSync(path.join(dir, `.agents/skills/${skill}/SKILL.md`)), skill);
+  // the app's words, and the questions for someone else to answer
+  for (const f of ['docs/amk/glossary.md', 'specs/_templates/questions.md']) assert.ok(fs.existsSync(path.join(dir, f)), f);
   assert.match(read(dir, '.gitignore'), /^\.env$/m);
   assert.match(read(dir, '.gitignore'), /^\.amk\/$/m);
   assert.match(read(dir, '.gitignore'), /^\.maestro\/\.amk-\*$/m, 'the flow copies verify.sh runs for a moment');
@@ -189,6 +191,8 @@ function oldKit() {
 
 test('sync: updates untouched kit files, merges the team\'s changes, flags conflicts, leaves filled-in docs alone', () => {
   const old = oldKit();
+  const glossary = path.join(old, 'docs/amk/glossary.md');
+  fs.writeFileSync(glossary, `${fs.readFileSync(glossary, 'utf8')}Old outline.\n`);
   const rn = path.join(old, 'docs/amk/react-native.md');
   fs.writeFileSync(rn, fs.readFileSync(rn, 'utf8').replace('# React Native rules (bare)', '# Old title'));
   const dir = fakeApp({ files: { 'AGENTS.md': '# Team notes\n' } });
@@ -198,6 +202,7 @@ test('sync: updates untouched kit files, merges the team\'s changes, flags confl
   fs.appendFileSync(path.join(dir, '.github/workflows/ci.yml'), '      - run: echo team step\n');
   fs.writeFileSync(path.join(dir, 'cliff.toml'), read(dir, 'cliff.toml').replace('header = "# Old\\n"', 'header = "# Team\\n"'));
   fs.writeFileSync(path.join(dir, 'docs/amk/product.md'), 'This app books meeting rooms.\n');
+  fs.writeFileSync(path.join(dir, 'docs/amk/glossary.md'), '# Glossary\n\n**Room**: a space people book by the hour.\n');
   fs.appendFileSync(path.join(dir, '.gitleaks.toml'), '# team addition\n');
   fs.writeFileSync(path.join(dir, 'docs/amk/react-native.md'), read(dir, 'docs/amk/react-native.md').replace('# Old title', '# Team title'));
   commitAll(dir);
@@ -229,6 +234,7 @@ test('sync: updates untouched kit files, merges the team\'s changes, flags confl
   assert.ok(report.added.includes('scripts/amk/set-version.sh'));
   assert.ok(!fs.existsSync(path.join(dir, 'scripts/amk/retired.sh')), 'dropped file removed');
   assert.strictEqual(read(dir, 'docs/amk/product.md'), 'This app books meeting rooms.\n');
+  assert.strictEqual(read(dir, 'docs/amk/glossary.md'), '# Glossary\n\n**Room**: a space people book by the hour.\n', 'the team\'s glossary too');
   assert.ok(!Object.values(report).flat().includes('.gitleaks.toml'), 'a file only the team changed is left out of the report');
   const agents = read(dir, 'AGENTS.md');
   assert.match(agents, /^# Team notes\n/);

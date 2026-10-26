@@ -68,6 +68,7 @@ The whole kit is our own code either way. The question was only who writes each 
 | Callstack agent-skills (MIT) | Reuse directly, pinned | Maintained React Native knowledge |
 | Expo agent guidance | Reuse in Expo projects | Official and kept current |
 | proAgents (MIT, npm `proagents` 1.6.22; same goal as this kit) | Borrow seven ideas (section 3.2); write our own text | Its `pa:` commands rely on a long instruction file every AI must read; that's only advice (CTX-09) and takes up context (CTX-10). Native skills now do this job. Its per-tool files (`.cursorrules`, `KIRO.md`, `GEMINI.md`…) are replaced by `AGENTS.md`. Its 240 files of prompts are mostly web and Node. "Always do, never just tell" conflicts with our approval gates (GEN-06, SEC-17). Its custom activity logs repeat what git does, and its JSON learning memory goes stale (CTX-12). |
+| mattpocock/skills (MIT; checked 2026-10-26) | Borrow eight ideas; write our own text | Questions in rounds with a recommended answer, the app's own words (glossary), tasks as thin slices that say what they wait on, a failing check and ranked causes before a bug fix, the risk of a merge, questions for someone else in a file to send, testing rules, and blocking commands that throw away uncommitted work. Not its issue-tracker workflows (specs stay in the repo) or parallel implementers (one writer: builds and devices collide) |
 
 **Memory tools** (checked 2026-10-07)
 

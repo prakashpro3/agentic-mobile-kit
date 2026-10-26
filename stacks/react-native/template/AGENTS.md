@@ -10,6 +10,7 @@ This project may also use other AI workflow frameworks (for example Superpowers,
 - Bare React Native {{RN_VERSION}} ({{RN_ARCH}}), React {{REACT_VERSION}}, {{LANGUAGE}}, Node {{NODE_VERSION}}. Package manager: {{PM}}.
 - Screens: {{SCREENS}}. Build every screen for each of them (`docs/amk/react-native.md`, Tablets and landscape); `verify.sh` checks each one.
 - What the app does: `docs/amk/product.md`, and requirement by requirement, as it works now: `specs/current/`. Stack and services: `docs/amk/tech.md`. Folders and layers: `docs/amk/structure.md`. Code style: `docs/amk/conventions.md`.
+- The app's own words, to use in names, specs and messages: `docs/amk/glossary.md`.
 
 ## Commands
 
@@ -40,6 +41,7 @@ Never say a check passed unless you ran it in this session.
 ## Rules
 
 - Stay inside the task. Ask before touching unrelated files.
+- Ask the user in rounds: every question you can ask now (its answer doesn't wait on another open question), numbered, each with the answer you recommend and worded so "yes" takes it. A "yes" answers that round and nothing more: an approval is asked for on its own. The answers can open the next round. Look facts up in the code yourself; ask only for decisions. A question only someone else can answer (the client, a designer, the backend team) goes into `specs/<id>/questions-<who>.md`, from `specs/_templates/questions.md`, for the user to send; go on with the rest.
 - Before designing a feature's screens, ask the user which UI/UX level they want: Simple (the default), Mixed or Premium (`specs/_templates/design.md` describes each). Build them to it.
 - Ask before adding or upgrading dependencies, and before editing `package.json`, lockfiles, `Podfile`, `build.gradle`, `Info.plist`, `AndroidManifest.xml` or `.github/workflows/`.
 - Don't hand-edit `ios/*.xcodeproj/project.pbxproj`. If a native file must be added to the Xcode project, stop and ask.

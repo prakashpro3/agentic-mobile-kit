@@ -19,7 +19,7 @@ If your tool has subagents, hand the review to the `m-reviewer` subagent, so it 
      - *Correct:* the code does what each requirement says, edge cases included, and nothing outside the agreed scope.
      - *Coherent:* the decisions in `design.md` show up in the code, its UI/UX level in the screens, and `specs/current/` was updated (`node scripts/amk/specs.js merge <id>`) if behavior changed.
    - **No spec:** does the diff do what was asked, and nothing unrelated?
-   - **Tests:** were tests added for new logic? Were any tests deleted, skipped or weakened?
+   - **Tests:** were tests added for new logic? Were any tests deleted, skipped or weakened? Do they check behavior through the public interface, mock only what the app doesn't own, and take expected values from the spec rather than recompute them (the React Native rules file)?
    - **TypeScript:** any new `any`, `@ts-ignore` or non-null `!` to get past a check, or a loosened `tsconfig.json`?
    - **Both platforms:** anything iOS-only or Android-only (insets, back button, permissions, keyboard)?
    - **Screens:** with the keyboard open, do the field and its button stay visible? Does anything sit under the status bar, home indicator or gesture bar? Do lists that grow with the user's data scroll? Does text wrap at the largest text size?
