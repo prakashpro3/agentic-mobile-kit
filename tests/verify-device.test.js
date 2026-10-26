@@ -167,6 +167,7 @@ case $last in
   *) o=natural; line="$device direct $(basename "$last")" ;;
 esac
 echo "$line" | sed 's/ \.amk-android\(-tablet\)\{0,1\}\(-landscape\)\{0,1\}-/ /' >> "$FAKE_STATE.maestro"
+echo "$device $(echo "$@" | sed -n 's/.* -e ORIENTATION=\([^ ]*\) .*/\1/p')" >> "$FAKE_STATE.orientation"
 if [ "$(awk -v s="$device" '$1 == s { print $3 }' "$FAKE_STATE")" = tablet ]; then w=2560 h=1600; else w=1080 h=2400; fi
 [ "$o" != LANDSCAPE_LEFT ] || [ -n "$NOTURN" ] || { t=$w; w=$h; h=$t; }
 [ ! -f "$out/../noturn-once" ] || { rm "$out/../noturn-once"; t=$w; w=$h; h=$t; }
@@ -182,6 +183,10 @@ test('verify.sh android: an app that turns and runs on tablets is checked on a p
   // upright flows run as they are, as before tablets and landscape; turned ones inside a flow that turns the device.
   // The tablet is landscape when Maestro calls it upright (its natural orientation, like a Pixel Tablet's): swapped
   assert.strictEqual(r.maestro, 'emulator-5556 direct smoke.yaml\nemulator-5556 LANDSCAPE_LEFT smoke.yaml\nemulator-5554 LANDSCAPE_LEFT smoke.yaml\nemulator-5554 direct smoke.yaml\n');
+  // and each tells its flows how it turned the device (\${ORIENTATION}), to turn it back after another app's screen
+  // turned it (issue #11)
+  assert.strictEqual(fs.readFileSync(path.join(path.dirname(r.app), 'state.orientation'), 'utf8'),
+    'emulator-5556 PORTRAIT\nemulator-5556 LANDSCAPE_LEFT\nemulator-5554 LANDSCAPE_LEFT\nemulator-5554 PORTRAIT\n');
   assert.match(r.calls, /-s emulator-5554 install -r/);
   assert.match(r.calls, /-s emulator-5554 shell settings put global hide_error_dialogs 1/);
 
@@ -533,7 +538,8 @@ test('verify.sh ios: a connected iPhone, when named: a build signed for it, open
   // fail when the home screen in front doesn't turn: the screenshots show whether the app did
   const runs = r.runner.trim().split('\n');
   assert.strictEqual(runs.length, 2, r.runner);
-  for (const run of runs) assert.match(run, /^-y maestro-runner@\d+\.\d+\.\d+ --platform ios --driver wda --device 00008020-AAAA --team-id ABCDE12345 --wda-bundle-id com\.example\.app\.wda --app-file \S+\/Release-iphoneos\/App\.app test -e APP_ID=com\.example\.app --output \S+ --flatten \S+\/screen\.yaml \(telemetry off: 1\)$/);
+  for (const run of runs) assert.match(run, /^-y maestro-runner@\d+\.\d+\.\d+ --platform ios --driver wda --device 00008020-AAAA --team-id ABCDE12345 --wda-bundle-id com\.example\.app\.wda --app-file \S+\/Release-iphoneos\/App\.app test -e APP_ID=com\.example\.app -e ORIENTATION=(PORTRAIT|landscape) --output \S+ --flatten \S+\/screen\.yaml \(telemetry off: 1\)$/);
+  assert.deepStrictEqual(runs.map(run => / -e ORIENTATION=(\S+) /.exec(run)[1]), ['PORTRAIT', 'landscape'], 'the names its driver knows');
   // each flow runs inside one that starts with a launchApp that never runs (on Android only) and says to leave
   // permissions alone, so maestro-runner doesn't answer the app's own alerts
   const first = "- runFlow:\n    when:\n      platform: Android\n    commands:\n      - launchApp:\n          permissions:\n            all: unset\n";
@@ -640,6 +646,8 @@ test("verify.sh: a screen whose screenshots aren't in its orientation runs once 
   // never turns
   const never = verifyAndroid({ ...devices, env: { ...devices.env, NOTURN: '1' } });
   assert.match(never.out, /android-landscape: flows 1\/1 passed, 1 screenshots in .*\n {2}android-landscape: 1 screenshots show the screen upright: the device or the app didn't turn, so this screen isn't checked; treating this as a failure/);
+  // a flow that left the app may have come back upright: how to turn it back (issue #11)
+  assert.match(never.out, /^ {2}android-landscape: a flow that leaves the app \(a call, the camera, a picker\) comes back upright when the other app's screen turned the device: turn it back after that step with - setOrientation: \$\{ORIENTATION\}$/m);
   assert.doesNotMatch(never.out, /sets its orientation/, 'nothing in its code to point at');
   assert.notStrictEqual(never.status, 0);
   // never turns, and its code locks it upright although its native settings allow turning: says where

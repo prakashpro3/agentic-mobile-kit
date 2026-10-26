@@ -9,6 +9,9 @@
 # prompts aren't answered for the flow (tapOn: { text: "Allow", optional: true }). setAirplaneMode works only on an
 # iPhone in English (it looks for "Airplane Mode" in Settings) and leaves Settings in front: launchApp: { stopApp: false }
 # brings the app back. verify.sh opens Settings on its main page before such a flow, and turns airplane mode off after.
+# A flow that leaves the app (a call, the camera, a system picker) can come back upright on a turned screen: the other
+# app's portrait-only screen turned the device. Turn it back after that step with "- setOrientation: ${ORIENTATION}",
+# which verify.sh sets to the screen's (run by hand: maestro test -e ORIENTATION=PORTRAIT <flow>).
 appId: ${APP_ID}  # set by verify.sh
 # tags: [smoke]  # optional: verify.sh --tags smoke checks only the flows with one of the tags
 ---

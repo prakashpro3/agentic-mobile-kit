@@ -255,7 +255,8 @@ run_flow() { # screen device app_id file name orientation
     pngs "$@" > "$debug/.pngs"
     # with the app's build: on a real device, clearState installs the app again
     MAESTRO_RUNNER_NO_TELEMETRY=1 DO_NOT_TRACK=1 npx -y "$runner" --platform ios --driver wda --device "$2" \
-      --team-id "$team" --wda-bundle-id "$3.wda" --app-file "$device_app" test -e APP_ID="$3" --output "$debug" \
+      --team-id "$team" --wda-bundle-id "$3.wda" --app-file "$device_app" test -e APP_ID="$3" \
+      -e ORIENTATION="$([ "$6" = PORTRAIT ] && echo PORTRAIT || echo landscape)" --output "$debug" \
       --flatten "$target" > "$out/$5.log" 2>&1 || rc=$?
     pngs "$@" | comm -13 "$debug/.pngs" - | while IFS= read -r f; do mv "$f" "$debug/"; done
     # its takeScreenshot files, not the ones of a step that failed (<step>-after.png)
@@ -264,8 +265,10 @@ run_flow() { # screen device app_id file name orientation
   fi
   # screenshots use relative names: older Maestro saves them in the current folder, then in --test-output-dir, and
   # from 2.7 in the debug output under <flow>/takeScreenshot/, from where they join the screen's evidence
+  # ORIENTATION: how this screen turned the device, for a flow to turn it back after another app's portrait-only screen
+  # (a call, the camera) turned it
   (cd "$out" && maestro --device "$2" test --test-output-dir "$out" --debug-output "$debug" --flatten-debug-output \
-    -e APP_ID="$3" "$target" > "$out/$5.log" 2>&1) || rc=$?
+    -e APP_ID="$3" -e ORIENTATION="$6" "$target" > "$out/$5.log" 2>&1) || rc=$?
   find "$debug" -path '*/takeScreenshot/*.png' -exec cp {} "$out/screenshots/" \;
   if [ -n "$tree_flow" ]; then
     rm -f "$tree_flow"
@@ -458,6 +461,7 @@ run_flows() { # screen device app_id orientation (PORTRAIT, or LANDSCAPE_LEFT to
       case $was in upright) other=landscape ;; *) other=portrait ;; esac
       echo "  $1: the app sets its orientation in its code (${set_in% }), which can keep it $was. If it's meant to stay $was, take $other out of its native settings (UISupportedInterfaceOrientations in Info.plist, screenOrientation in AndroidManifest.xml) and this screen isn't checked any more; otherwise change that code"
     fi
+    echo "  $1: a flow that leaves the app (a call, the camera, a picker) comes back $was when the other app's screen turned the device: turn it back after that step with - setOrientation: \${ORIENTATION}"
   fi
 }
 
