@@ -2,6 +2,9 @@
 # Tap by testID (give every interactive element one); tapping by text can hit a label instead of the control.
 # Each scenario of specs/<id>/requirements.md gets a "# Scenario <n>: <name>" comment above its steps, an assertion for
 # its THEN and a screenshot: rn-check (in verify.sh quick) checks that, and Maestro's syntax, before any build.
+# A screen that loads data also gets its empty and error states, each a scenario with a screenshot, where a flow can
+# reach them: cleared data (launchApp: { clearState: true }) or an account without any for empty, and for no network
+# "- setAirplaneMode: enabled" before the step and "disabled" after it (and in onFlowComplete, so a failure can't leave it on).
 # Steps several flows share (logging in, skipping onboarding, a permission prompt) and resetting test data go in
 # .maestro/subflows/ (specs/_templates/subflow.yaml), run with "- runFlow: subflows/<name>.yaml".
 # Test logins: ${MAESTRO_EMAIL}, ${MAESTRO_PASSWORD} and the like, set in .maestro/.env.local, which isn't committed.

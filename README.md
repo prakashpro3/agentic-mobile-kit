@@ -18,7 +18,7 @@ Tested with Claude Code, Codex and Antigravity. `--tools` also sets up Cursor, O
 
 2. Run it again and choose **Check this project and machine**. It lists each problem with its fix.
 
-3. In your AI tool, run `m-onboard`. It reads the project, drafts `docs/amk/product.md`, `tech.md`, `structure.md`, `conventions.md` and `glossary.md`, asks what the code can't show, and writes them once you approve. Then commit and open a PR.
+3. In your AI tool, run `m-onboard`. It reads the project, drafts `docs/amk/product.md`, `tech.md`, `structure.md`, `conventions.md`, `glossary.md` and `design-system.md`, asks what the code can't show, and writes them once you approve. Then commit and open a PR.
 
 Each choice prints the command it runs, for scripts and CI: `init` (with `--ci github`, `--ci codemagic` or `--tools claude,codex,antigravity`, and `--new bare` or `--new expo` to create the app first), `sync`, `doctor` and `uninstall`. `--help` lists every option.
 
@@ -28,7 +28,7 @@ Each choice prints the command it runs, for scripts and CI: `init` (with `--ci g
 
 | You want to | Run | What happens |
 |---|---|---|
-| Describe the app for agents | `m-onboard` | Reads the whole project, drafts the product, tech, structure, conventions and glossary files in `docs/amk/`, asks what the code can't show, and writes them once you approve. Run it after installing, and again after big changes. |
+| Describe the app for agents | `m-onboard` | Reads the whole project, drafts the product, tech, structure, conventions, glossary and design-system files in `docs/amk/`, asks what the code can't show, and writes them once you approve. Run it after installing, and again after big changes. |
 | Think a problem through | `m-explore` | The agent reads the code, explains how it works today and lays out options with trade-offs. It never edits code. |
 | Agree on an idea before building it | `m-prototype` | Concepts as clickable HTML mocks when how it should work is still open, then real screens with mock data on a throwaway branch, with screenshots and a video for the demo. The agreed requirements go to `m-feature` |
 | Build a feature | `m-feature` | Requirements → you approve → design and tasks → you approve → one task at a time with tests → device checks with screenshots → living spec updated → review → PR |

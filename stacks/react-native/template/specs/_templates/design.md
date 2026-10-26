@@ -3,9 +3,9 @@
 ## UI/UX level
 
 <!-- For a feature with screens: the level the user confirmed before the design, and the date (n/a without screens).
-     Simple (the default): clean, minimal and functional. The app's own components and theme, or the platform's
-       standard ones; a clear hierarchy with room around it; standard navigation, lists and forms; motion only where
-       the platform gives it (screen transitions, pressed states).
+     Simple (the default): clean, minimal and functional. The app's own components and theme
+       (`docs/amk/design-system.md`), or the platform's standard ones; a clear hierarchy with room around it; standard
+       navigation, lists and forms; motion only where the platform gives it (screen transitions, pressed states).
      Mixed: Simple, with modern touches where they help: cards with rounded corners and soft shadows, an accent colour
        and icons, subtle transitions and feedback when something changes, skeletons while loading, friendly empty and
        error states.

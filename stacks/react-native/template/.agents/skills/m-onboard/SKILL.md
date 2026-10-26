@@ -1,6 +1,6 @@
 ---
 name: m-onboard
-description: Describe the app for AI agents - read the whole project, draft docs/amk/product.md, tech.md, structure.md, conventions.md and glossary.md, ask only what the code can't show, and write them once the user approves. Run it after installing the kit, and again after big changes. Run only when the user explicitly invokes m-onboard.
+description: Describe the app for AI agents - read the whole project, draft docs/amk/product.md, tech.md, structure.md, conventions.md, glossary.md and design-system.md, ask only what the code can't show, and write them once the user approves. Run it after installing the kit, and again after big changes. Run only when the user explicitly invokes m-onboard.
 disable-model-invocation: true
 ---
 
@@ -8,13 +8,13 @@ disable-model-invocation: true
 
 The user chose this workflow: follow its steps for this task, even where other workflow instructions in this project (Superpowers, BMAD, proAgents or similar) say otherwise.
 
-Input: $ARGUMENTS (optional: which files to work on, for example `tech structure`; all five by default).
+Input: $ARGUMENTS (optional: which files to work on, for example `tech structure`; all six by default).
 
-Every agent reads these five files before it works on this app, so they must be true, short and specific: facts with the files they come from, not advice. Write only what you found in the project or what the user told you.
+Every agent reads these six files before it works on this app, so they must be true, short and specific: facts with the files they come from, not advice. Write only what you found in the project or what the user told you.
 
 ## 1. See what's there
 
-Read `AGENTS.md` and the five files in `docs/amk/` (`product.md`, `tech.md`, `structure.md`, `conventions.md`, `glossary.md`). A file that holds only its heading and the `<!-- … -->` outline is empty: you'll draft it. A file with content is the team's: you'll suggest changes to it, never rewrite it.
+Read `AGENTS.md` and the six files in `docs/amk/` (`product.md`, `tech.md`, `structure.md`, `conventions.md`, `glossary.md`, `design-system.md`). A file that holds only its heading and the `<!-- … -->` outline is empty: you'll draft it. A file with content is the team's: you'll suggest changes to it, never rewrite it.
 
 ## 2. Read the project
 
@@ -24,6 +24,7 @@ Change nothing in this step. List the project's files with `git ls-files` (it le
 - **Screens and journeys:** the entry point (`index.js`, `App.tsx`, or the `app/` folder with Expo Router), the navigation setup and the list of screens. The key user journeys come from these: sign-in, the main flows, payments, settings.
 - **Tech:** for each dependency that matters, what the app uses it for and where it's set up: state, navigation, the API client, storage, forms, i18n, analytics, push, crash reporting, payments, maps. Also the backend APIs and where their contracts live, and the environments: config files, `.env.example`, build flavors and schemes. Never open `.env` files, keystores or signing files.
 - **Structure:** the folder map, two or three levels into the app's code; where shared components, the theme and helpers live; custom native code under `ios/` and `android/` (native modules, extensions, widgets), or config plugins and local modules in Expo apps.
+- **Look:** the theme (colours, fonts, spacing, radius, dark mode), the shared components that draw buttons, fields and rows, the icon library, and what the texts on screen sound like.
 - **Conventions:** a few files from each layer (a screen, a component, a hook, an API call, a test) and what they have in common: naming, file layout, styling, error, loading and empty states, how tests mock the API. Also the lint and formatter configs, and `git log --oneline -30` for the style of commit messages and branch names. A convention is a pattern you saw in several files; a single file is an example, not a rule.
 
 In a large app, sample: a few files per layer are enough. Keep a note of the files each finding comes from.
@@ -37,6 +38,7 @@ Draft each file you're working on from its outline, and keep it short.
 - `structure.md`: the folder map, 1-2 lines per folder; where shared UI, the theme and helpers live, so agents reuse them instead of writing new ones; custom native code.
 - `conventions.md`: the patterns you found, each with a file that shows it.
 - `glossary.md`: the app's own words, from its screens, data types, API and store texts (an Order, a Visit), one or two lines each, with the other words used for the same thing listed as not to use (leave that line out when you found none).
+- `design-system.md`: how the app looks, from its theme and shared components, each with the file it comes from: colours by role, the type size and weight of each text role, spacing steps, radius, the buttons, fields and rows, the icon set, motion, and the voice of its texts. In an app without a theme, write what the screens use most, and say so.
 
 Use the app's own names for screens, modules and services. Where the project doesn't answer something, write down a question for step 4 instead of guessing.
 

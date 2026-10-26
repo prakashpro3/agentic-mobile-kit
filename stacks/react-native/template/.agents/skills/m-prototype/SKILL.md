@@ -25,12 +25,12 @@ A prototype answers questions before the real build: what the client wants, how 
 ## 2. Concepts
 
 1. Work out two or three genuinely different ways it could work: different flows or layouts, not colour variants. For each, note the user flow step by step, the key screens, and the trade-offs: effort, iOS and Android differences, native or backend work.
-2. Make one HTML file per concept in `specs/<id>/concepts/`: the key screens as phone-sized frames side by side, with the app's colours, fonts and spacing taken from its theme, real texts where they're known, and links between the frames so it can be clicked through. Each is a single file of plain HTML and CSS, with nothing to install or build and nothing loaded from the internet, so it opens in any browser.
+2. Make one HTML file per concept in `specs/<id>/concepts/`: the key screens as phone-sized frames side by side, with the app's colours, fonts and spacing taken from `docs/amk/design-system.md` (its theme), real texts where they're known, and links between the frames so it can be clicked through. Each is a single file of plain HTML and CSS, with nothing to install or build and nothing loaded from the internet, so it opens in any browser.
 3. Show the concepts with your recommendation. **Stop until the user picks one or combines them.** Write the choice and why under `## Decisions`, and commit.
 
 ## 3. Build the prototype in the app
 
-1. Build the screens with the app's own components, theme and navigation, so it looks and feels like the app. Keep the mock data in one file next to the screens.
+1. Build the screens with the app's own components, theme and navigation, as `docs/amk/design-system.md` describes them, so it looks and feels like the app. Keep the mock data in one file next to the screens.
 2. No API calls, no native files and no new dependencies. If one seems unavoidable, ask.
 3. Make it easy to reach in a demo: a temporary entry where the feature would live, or the app's first screen when that's simpler.
 4. Skip tests: the prototype is thrown away. It only has to build and run.
@@ -40,7 +40,7 @@ A prototype answers questions before the real build: what the client wants, how 
 
 1. Write `.maestro/<id>-prototype.yaml` from `specs/_templates/flow.yaml`: walk through the prototype the way the demo would, with a `takeScreenshot` on every screen, and `startRecording: <id>-prototype` after the launch and `stopRecording` at the end for a video.
 2. Run `sh scripts/amk/verify.sh all --flow .maestro/<id>-prototype.yaml --label <id>-prototype`. Off a Mac it covers Android only.
-3. Open every screenshot and check that it shows what the demo needs. Give the user the folder `.amk/evidence/<id>-prototype/`, which has the screenshots and a video per platform, and the concept files if there are any. For a live demo, run the app from this branch on a phone or simulator.
+3. Open every screenshot and check that it shows what the demo needs. Then ask the `m-design-reviewer` subagent for a design review of them (without subagents, check the same yourself), and fix what it finds before the demo. Give the user the folder `.amk/evidence/<id>-prototype/`, which has the screenshots and a video per platform, and the concept files if there are any. For a live demo, run the app from this branch on a phone or simulator.
 
 ## 5. Take in the feedback
 

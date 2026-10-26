@@ -12,6 +12,7 @@ This project may also use other AI workflow frameworks (for example Superpowers,
 - Screens: {{SCREENS}}. Build every screen for each of them (`docs/amk/expo.md`, Tablets and landscape); `verify.sh` checks each one.
 - What the app does: `docs/amk/product.md`, and requirement by requirement, as it works now: `specs/current/`. Stack and services: `docs/amk/tech.md`. Folders and layers: `docs/amk/structure.md`. Code style: `docs/amk/conventions.md`.
 - The app's own words, to use in names, specs and messages: `docs/amk/glossary.md`.
+- How the app looks, which new screens follow (colours, type, spacing, controls): `docs/amk/design-system.md`.
 
 ## Commands
 
