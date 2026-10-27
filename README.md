@@ -80,6 +80,16 @@ Both need a clean working tree and leave the result for you to review with `git 
 - [Tool matrix](docs/tool-matrix.md): how the kit was tested in each AI tool and on a real app.
 - Published from GitHub Actions with npm provenance.
 
+## Star History
+
+<a href="https://www.star-history.com/?repos=prakashpro3%2Fagentic-mobile-kit&type=date&legend=top-left">
+ <picture>
+   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=prakashpro3/agentic-mobile-kit&type=date&theme=dark&legend=top-left" />
+   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=prakashpro3/agentic-mobile-kit&type=date&legend=top-left" />
+   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=prakashpro3/agentic-mobile-kit&type=date&legend=top-left" />
+ </picture>
+</a>
+
 ## License
 
 MIT
