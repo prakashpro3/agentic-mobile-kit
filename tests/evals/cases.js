@@ -48,9 +48,11 @@ const SPEC_TOOLS = ['Read', 'Glob', 'Grep', 'Write', 'Edit', 'Bash(node scripts/
   'Bash(git log*)', 'Bash(git diff*)', 'Bash(git switch -c *)', 'Bash(git checkout -b *)'];
 // the open questions in a run's last message: numbered lines that ask something other than an approval
 const numbered = run => run.final.split('\n').filter(l => /^\s*(\*\*)?\d+[.)]/.test(l));
-const questionsIn = run => numbered(run).filter(l => /\?/.test(l) && !/approv/i.test(l));
+// asking to approve the requirements, the design and tasks, or the spec (not to approve a dependency, which is a question)
+const approval = l => /approv\w*\s+(?:the\s+|these\s+)?(?:requirements|design|spec|tasks|plan)\b/i.test(l) && /\?/.test(l);
+const questionsIn = run => numbered(run).filter(l => /\?/.test(l) && !approval(l));
 // an approval asked in the same numbered round as other questions, not as a question of its own
-const approvalInRound = run => questionsIn(run).length > 0 && numbered(run).some(l => /approv/i.test(l) && /\?/.test(l));
+const approvalInRound = run => questionsIn(run).length > 0 && numbered(run).some(approval);
 
 module.exports = [
   {
