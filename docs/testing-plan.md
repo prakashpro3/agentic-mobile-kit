@@ -1,6 +1,6 @@
 # Plan: tests that grow with each change, a tester, user stories, planning all features before building, and hands-off running
 
-Status: 0.8.0 tagged and staged on npm on 2026-10-30 (live once approved); 0.9.0 built; 0.10.0 to 0.14.0 planned.
+Status: 0.9.0 released on 2026-10-30, with 0.8.0's changes, which never reached npm (live once approved there); 0.10.0 built; 0.11.0 to 0.14.0 planned.
 
 ## In one page
 
@@ -733,6 +733,19 @@ Each release ships on its own and keeps its own docs current: both `AGENTS.md` f
 - **Coverage floors live in `.amk-coverage`** at the project root. `coverage.js check` runs Jest with its own `--coverageThreshold`, but judges by the coverage numbers alone: failing tests are `verify.sh quick`'s to judge against the base branch, and many apps' base branches already fail some.
 - **The design review stays in `m-feature`**, after `m-test`, on the screenshots `verify.sh` lists as changed.
 - **"passed (mock API)"** waits for the mock mode in 0.13.0; until then `m-tester` uses the other six statuses.
+
+**What building 0.10.0 settled:**
+- **Each feature's detail is drafted by a subagent** (`m-spec-writer`): a fresh context inside the planning session, rather than a session without a chat window. Without subagents, a fresh session every two or three features. `autopilot.js` (0.11.0) can still run whole features that way.
+- **The approval commit isn't written into `specs/plan.md`.** `specs.js start` finds it in git: the first of the commits since which `specs/plan.md` has said `approved` for that feature. It can't drift from the file, and a draft committed later never reaches the build.
+- **No stack file.** The build's stack is the planned features done on their own `feature/<id>` branch and not built on main yet. A feature starts from the highest of those branches that holds the dependencies it has there, or from main, so a feature blocked halfway is never under another.
+- **Built means on main:** the living spec names the feature (`Source:`), or its `progress.md` there says done.
+- **The check against the living spec** compares each requirement a feature modifies or removes as it was on main when the plan approved it (the last commit before the approval) with the branch it starts from. A change made by a feature it depends on is expected; any other stops it for approval again (`start` exits 4), after making its branch, so the stop is recorded in its `progress.md`.
+- **Glossary words:** `check --plan` warns about words the glossary, or the plan's new words, list under `_Not:_`. A warning only, since such a word can be right in another sense. New words go in the plan's shared design, because `docs/amk/` on the `plan` branch never reaches main, and the build adds them to the glossary with the first feature that uses them.
+- **`specs.js tests <id>` on the `plan` branch** runs in a temporary worktree of main, so a planned feature's test plan is drawn from the flows and tests as they are now, not the branch's old copies.
+- **The planning and build steps live beside the skill,** in `m-feature/plan.md` and `m-feature/build.md`, each with its own length budget, so `m-feature`'s own steps stay within theirs.
+- **A feature still waiting on someone is held.** Its summary's `Waiting on:` line counts, not only its status: `start` doesn't take an approved feature that waits on the client, and `check --plan` flags one; `none` there builds on the working assumptions.
+- **`specs.js plan-folder` makes the second folder** to plan in while a build runs: a git worktree on the `plan` branch, with the kit's files copied in that an app keeps out of git, as a worktree holds only what git tracks.
+- **Moved to 0.11.0, with `autopilot.js`:** the open-PR limit and the first PR's review (`Open PRs before the build waits`, `First PR review`); `team-process.md`'s settings block starts with `Feature mode` alone. Merging `main` forward stays in 0.12.0.
 
 ## Compatibility with apps that sync
 

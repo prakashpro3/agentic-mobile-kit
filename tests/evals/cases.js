@@ -1,6 +1,8 @@
 // The eval cases, which run.js runs. Each sets up its own copy of the scratch app, runs Claude Code once or more (a later
 // run goes on in the same session, as a person answering would), and returns what went wrong (nothing: it passed).
 // The checks look at the files and the tool calls; at the words only where a rule is about what the user is asked.
+// No case may reach a device: verify.sh is allowed for its code checks (quick) only, as a developer's own emulator or
+// simulator may be running.
 'use strict';
 const fs = require('fs');
 const path = require('path');
@@ -81,6 +83,30 @@ The app SHALL open on its welcome screen and show its version.
 - WHEN the welcome screen shows
 - THEN it shows the app's version
 `;
+
+// plan all, then build: a product with three planned features, the second needing the first
+const PRODUCT = `# Product
+
+A field app: sales reps plan Visits to their Customers.
+
+## Planned, in build order
+
+- Visit list (planned): a rep sees today's Visits, soonest first: only their own, and an empty day says so.
+- Visit detail (planned, after Visit list): tapping a Visit shows its Customer, the address and the notes.
+- Dark mode (planned): a switch in settings, off by default, kept until the app closes.
+`;
+const PLAN_TOOLS = [...SPEC_TOOLS, 'Bash(git switch *)', 'Bash(git branch*)', 'Bash(git show *)', 'Bash(git grep *)', 'Bash(git worktree *)', 'Bash(node scripts/amk/*)'];
+const featureMode = (dir, mode) => write(dir, 'docs/amk/team-process.md', read(dir, 'docs/amk/team-process.md').replace(/^- Feature mode: .*$/m, `- Feature mode: ${mode}`));
+// the plan's features table on a ref: [id, depends on] for each row
+const planRows = (dir, ref) => { try { return git(dir, 'show', `${ref}:specs/plan.md`); } catch { return ''; } };
+const onBranch = (dir, ref, f) => { try { return git(dir, 'show', `${ref}:${f}`); } catch { return ''; } };
+const hasRef = (dir, ref) => { try { git(dir, 'rev-parse', '--verify', '--quiet', ref); return true; } catch { return false; } };
+// a planned feature, approved: one requirement, one task
+const plannedSpec = (id, title, what) => ({
+  [`specs/${id}/requirements.md`]: `# ${id}: ${title}\n\nSource: eval\nMode: plan-all\n\n## Goal\n\nThe home screen ${what}.\n\n## User stories\n\n### US-1: ${title}\nAs a user, I want the home screen to show it, so that I see it at a glance.\n- Requirements: ${title}\n\n## ADDED Requirements: home\n\n### Requirement: ${title}\nThe app SHALL ${what.replace(/^shows/, 'show')} on the home screen.\n\n#### Scenario: ${title} on the home screen\n- WHEN the user opens the app\n- THEN the home screen ${what}\n\n## Out of scope\n\nAnything else.\n`,
+  [`specs/${id}/design.md`]: `# ${id}: design\n\n## UI/UX level\n\nSimple\n\n## Existing code to reuse\n\nApp.tsx\n\n## Approach\n\nA Text in App.tsx.\n\n## Files to change\n\nApp.tsx\n\n## Tests\n\n| Scenario | Check |\n|---|---|\n| ${title} on the home screen | manual: open the app and read the home screen |\n\n- To change or retire: none\n- Regression: sh scripts/amk/verify.sh all --spec ${id}\n\n## Risks\n\nNone.\n`,
+  [`specs/${id}/tasks.md`]: `# ${id}: tasks\n\n- [ ] 1. The home screen ${what} — for: ${title} — after: none — files: App.tsx — check: verify.sh quick\n`,
+});
 
 module.exports = [
   {
@@ -183,7 +209,7 @@ module.exports = [
       commit(dir, 'EV-2');
     },
     runs: [{ prompt: '/m-test EV-2 (no simulator or emulator on this machine: skip the device step, and say so in the report)',
-      tools: ['Read', 'Glob', 'Grep', 'Write', 'Edit', 'Agent', 'Task', 'Bash(sh scripts/amk/verify.sh *)', 'Bash(node scripts/amk/*)', 'Bash(git diff*)', 'Bash(git log*)', 'Bash(git status*)'], maxTurns: 40, budget: 2 }],
+      tools: ['Read', 'Glob', 'Grep', 'Write', 'Edit', 'Agent', 'Task', 'Bash(sh scripts/amk/verify.sh quick*)', 'Bash(node scripts/amk/*)', 'Bash(git diff*)', 'Bash(git log*)', 'Bash(git status*)'], maxTurns: 40, budget: 2 }],
     check: (dir, [r]) => {
       const report = read(dir, 'specs/EV-2/test-report.md') || '';
       return [
@@ -192,6 +218,117 @@ module.exports = [
         report && !/Not ready/i.test(report) && 'the report doesn\'t say Not ready',
         report && !/Shows the welcome screen[^\n]*\bfailed\b/i.test(report) && '"Shows the welcome screen" isn\'t failed',
         report && !/Shows the version[^\n]*\bno check\b/i.test(report) && '"Shows the version" isn\'t no check',
+      ].filter(Boolean);
+    },
+  },
+  {
+    name: 'mode-question', skill: 'm-feature',
+    about: 'several planned features without a spec, and Feature mode: ask: m-feature offers both ways to build them, and starts neither until the user picks',
+    setup: dir => { write(dir, 'docs/amk/product.md', PRODUCT); commit(dir, 'the product'); },
+    runs: [{ prompt: '/m-feature', tools: PLAN_TOOLS, maxTurns: 20, budget: 1 }],
+    check: (dir, [r], base) => [
+      !/feature[ -]by[ -]feature/i.test(r.final) && 'it didn\'t offer feature by feature',
+      !/plan[ -]all/i.test(r.final) && 'it didn\'t offer plan all, then build',
+      hasRef(dir, 'plan') && 'it made the plan branch before the user chose',
+      newSpecs(dir).length && `it wrote a spec before the user chose: ${newSpecs(dir).join(', ')}`,
+      git(dir, 'rev-parse', 'HEAD').trim() !== base && 'it committed before the user chose',
+    ].filter(Boolean),
+  },
+  {
+    name: 'plan-feature-map', skill: 'm-feature/plan',
+    about: 'Feature mode: plan-all: /m-feature plans on the plan branch, shows the feature map with its dependencies and stops for its approval, then writes each feature\'s stories and stops again',
+    setup: dir => { write(dir, 'docs/amk/product.md', PRODUCT); featureMode(dir, 'plan-all'); commit(dir, 'the product, planned all at once'); },
+    runs: [{ prompt: '/m-feature', tools: PLAN_TOOLS, maxTurns: 50, budget: 2 }],
+    // the map approved, then the recommended answers, until the stories wait for their approval
+    next: (runs, dir) => {
+      const last = runs[runs.length - 1];
+      const map = runs.some(r => r.prompt === 'Approved.');
+      if (runs.length >= 4 || (map && /\bapprov/i.test(last.final) && !questionsIn(last).length)) return null;
+      return { prompt: !map && /\bapprov/i.test(last.final) && !questionsIn(last).length ? 'Approved.' : 'Take your recommended answer for each question.', tools: PLAN_TOOLS, maxTurns: 50, budget: 2 };
+    },
+    check: (dir, runs, base) => {
+      const plan = planRows(dir, 'plan');
+      const rows = plan.split('\n').filter(l => /^\|\s*\d+\s*\|/.test(l)).map(l => l.split('|').map(x => x.trim()));
+      const detail = rows.find(c => /detail/i.test(`${c[2]} ${c[3]}`));
+      const list = rows.find(c => c !== detail && /list/i.test(`${c[2]} ${c[3]}`));
+      const ids = rows.map(c => c[2]);
+      const stories = ids.filter(id => /^### US-1\b[\s\S]*?\bAs an?\b[\s\S]*?\bI want\b/m.test(onBranch(dir, 'plan', `specs/${id}/requirements.md`)));
+      const check = hasRef(dir, 'plan') && (git(dir, 'switch', '-q', 'plan'), spawnSync(process.execPath, ['scripts/amk/specs.js', 'check', '--plan'], { cwd: dir, encoding: 'utf8' }));
+      return [
+        !hasRef(dir, 'plan') && 'no plan branch',
+        !runs[0].calls.some(c => c.name === 'Bash' && /\b(switch|checkout)\b[^\n]*\bplan\b|worktree add/.test(String(c.input.command || ''))) && 'it didn\'t go straight to planning (Feature mode: plan-all)',
+        rows.length < 3 && `specs/plan.md lists ${rows.length} feature(s), not the 3 planned`,
+        list && detail && !detail[4].includes(list[2]) && `the Visit detail feature doesn't depend on the Visit list one (${detail[4]})`,
+        check && check.status !== 0 && `specs.js check --plan fails: ${`${check.stderr}${check.stdout}`.trim().split('\n')[0]}`,
+        runs[0].calls.some(c => c.name === 'Bash' && /git commit[^\n]*approved/.test(String(c.input.command || ''))) && 'it committed an approval before the user approved',
+        !git(dir, 'log', '--format=%s', 'plan').includes('docs(plan): feature map approved') && 'no commit "docs(plan): feature map approved"',
+        stories.length < 3 && `stories for ${stories.length} of the 3 features`,
+        stories.some(id => !/^Mode: plan-all$/m.test(onBranch(dir, 'plan', `specs/${id}/requirements.md`))) && 'a planned spec without Mode: plan-all',
+        runs.some(approvalInRound) && 'it asked for an approval inside a numbered round, not as a question of its own',
+        codeChanged(dir, base).length && `it changed code while planning: ${codeChanged(dir, base).join(', ')}`,
+      ].filter(Boolean);
+    },
+  },
+  {
+    name: 'plan-build-one', skill: 'm-feature/build',
+    about: 'two approved features in the plan, and a draft committed after the approval: /m-feature build --one starts the first from its approval commit, builds and tests it without asking, marks it done and leaves the second',
+    setup: dir => {
+      git(dir, 'switch', '-q', '-c', 'plan');
+      write(dir, 'specs/plan.md', `# Plan\n\nApproved: feature map 2026-10-30; stories and shared design 2026-10-30\n\n## Features\n\n| # | Feature | Goal | Depends on | Batch | Size | Status |\n|---|---|---|---|---|---|---|\n| 1 | EV-3 | The home screen says hello | none | 1 | 1 | approved |\n| 2 | EV-4 | The home screen shows the app's name | EV-3 | 1 | 1 | approved |\n\n## Shared design\n\n- UI/UX level: Simple\n\n## Approved up front\n\n- Pushing a \`feature/<id>\` branch and opening a pull request for each feature\n- The look: docs/amk/design-system.md\n`);
+      for (const [f, text] of Object.entries({ ...plannedSpec('EV-3', 'Says hello', 'shows "Hello"'), ...plannedSpec('EV-4', 'Shows the name', 'shows "EvalApp"') })) write(dir, f, text);
+      for (const id of ['EV-3', 'EV-4']) write(dir, `specs/${id}/progress.md`, read(dir, 'specs/_templates/progress.md').replace(/^Status:.*$/m, 'Status:        not started'));
+      commit(dir, 'docs(spec): EV-3, EV-4 approved');
+      fs.appendFileSync(path.join(dir, 'specs/EV-3/requirements.md'), '\nDRAFT: a change nobody approved yet\n');
+      commit(dir, 'docs(plan): a draft');
+      git(dir, 'switch', '-q', 'main');
+    },
+    runs: [{ prompt: '/m-feature build --one (no simulator or emulator on this machine: skip the device steps and say so; there\'s no remote, so skip the push and the PR)',
+      tools: [...PLAN_TOOLS, 'Agent', 'Task', 'Bash(sh scripts/amk/verify.sh quick*)', 'Bash(git -C *)'], maxTurns: 90, budget: 3 }],
+    check: (dir, [r]) => {
+      const on = f => onBranch(dir, 'feature/EV-3', f);
+      return [
+        !bash(r, 'specs.js start').length && 'it never ran specs.js start',
+        !hasRef(dir, 'feature/EV-3') && 'no feature/EV-3 branch',
+        /DRAFT/.test(on('specs/EV-3/requirements.md')) && 'it built the draft committed after the approval',
+        !/Hello/.test(on('App.tsx')) && 'App.tsx on feature/EV-3 doesn\'t say Hello',
+        !/^Status:\s*done/m.test(on('specs/EV-3/progress.md')) && 'EV-3\'s progress.md doesn\'t say done',
+        !on('specs/EV-3/test-report.md') && 'no test report (m-test)',
+        hasRef(dir, 'feature/EV-4') && 'it started EV-4: --one builds one feature',
+        !r.calls.some(c => ['Agent', 'Task'].includes(c.name) && /m-reviewer/.test(JSON.stringify(c.input))) && 'no review by the m-reviewer subagent',
+        r.final.split('\n').some(approval) && 'it asked for an approval the plan already gave',
+      ].filter(Boolean);
+    },
+  },
+  {
+    name: 'plan-continue-blocked', skill: 'm-continue',
+    about: 'a planned feature the build stopped on a question: m-continue shows the question and waits, then, once it\'s answered, carries the feature through build.md\'s last steps to done',
+    setup: dir => {
+      git(dir, 'switch', '-q', '-c', 'plan');
+      write(dir, 'specs/plan.md', `# Plan\n\nApproved: feature map 2026-11-02; stories and shared design 2026-11-02\n\n## Features\n\n| # | Feature | Goal | Depends on | Batch | Size | Status |\n|---|---|---|---|---|---|---|\n| 1 | EV-3 | The home screen says hello | none | 1 | 1 | approved |\n\n## Approved up front\n\n- Pushing a \`feature/<id>\` branch and opening a pull request for each feature\n- The look: docs/amk/design-system.md\n`);
+      for (const [f, text] of Object.entries(plannedSpec('EV-3', 'Says hello', 'shows "Hello"'))) write(dir, f, text);
+      write(dir, 'specs/EV-3/progress.md', read(dir, 'specs/_templates/progress.md').replace(/^Status:.*$/m, 'Status:        not started'));
+      commit(dir, 'docs(spec): EV-3 approved');
+      git(dir, 'switch', '-q', 'main');
+      execFileSync(process.execPath, ['scripts/amk/specs.js', 'start'], { cwd: dir, stdio: 'ignore' });
+      write(dir, 'App.tsx', read(dir, 'App.tsx').replace('<Text>Settings</Text>', '<Text>Hello</Text>\n      <Text>Settings</Text>'));
+      write(dir, 'specs/EV-3/tasks.md', read(dir, 'specs/EV-3/tasks.md').replace('- [ ] 1.', '- [x] 1.'));
+      write(dir, 'specs/EV-3/progress.md', read(dir, 'specs/EV-3/progress.md').replace(/^Status:.*$/m, 'Status:        in progress — task 1 of 1')
+        .replace(/^Open question:.*$/m, 'Open question: Should "Hello" be bold? Recommended: no, like the other text.')
+        .replace(/^Blocked:.*$/m, 'Blocked:       the look of "Hello" needs the user\'s decision (the open question), then m-continue EV-3'));
+      commit(dir, 'feat: the home screen says hello\n\nSpec: specs/EV-3');
+    },
+    runs: [{ prompt: '/m-continue EV-3', tools: [...PLAN_TOOLS, 'Agent', 'Task', 'Bash(sh scripts/amk/verify.sh quick*)'], maxTurns: 20, budget: 1 }],
+    next: runs => (runs.length > 1 ? null : { prompt: 'Not bold, as you recommend. Go on (no simulator or emulator here: skip the device steps and say so; there\'s no remote, so the push and the PR wait).',
+      tools: [...PLAN_TOOLS, 'Agent', 'Task', 'Bash(sh scripts/amk/verify.sh quick*)'], maxTurns: 90, budget: 3 }),
+    check: (dir, runs) => {
+      const changed = ['Edit', 'Write'].some(n => runs[0].calls.some(c => c.name === n)) || bash(runs[0], 'git commit').length;
+      return [
+        changed && 'it changed files before the user answered',
+        !/bold/i.test(runs[0].final) && 'it didn\'t show the open question first',
+        !/^Status:\s*done/m.test(read(dir, 'specs/EV-3/progress.md') || '') && 'EV-3\'s progress.md doesn\'t say done',
+        !read(dir, 'specs/EV-3/test-report.md') && 'no test report (m-test)',
+        !/^Source: specs\/EV-3$/m.test(read(dir, 'specs/current/home.md') || '') && 'the living spec wasn\'t merged',
+        !runs[1].calls.some(c => ['Agent', 'Task'].includes(c.name) && /m-reviewer/.test(JSON.stringify(c.input))) && 'no review by the m-reviewer subagent',
       ].filter(Boolean);
     },
   },

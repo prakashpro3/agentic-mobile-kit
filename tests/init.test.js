@@ -55,7 +55,8 @@ test('fresh install: files, filled AGENTS.md, links, hooks, scripts; no CI unles
   for (const skill of ['m-feature', 'm-change', 'm-onboard', 'm-prototype', 'm-test']) assert.ok(fs.existsSync(path.join(dir, `.agents/skills/${skill}/SKILL.md`)), skill);
   // the app's words, and the questions for someone else to answer
   for (const f of ['docs/amk/glossary.md', 'specs/_templates/questions.md', 'docs/amk/design-system.md', '.rulesync/subagents/m-design-reviewer.md',
-    '.rulesync/subagents/m-tester.md', 'specs/_templates/test-report.md', 'scripts/amk/coverage.js', 'scripts/amk/shots.js', 'scripts/amk/redact.js']) assert.ok(fs.existsSync(path.join(dir, f)), f);
+    '.rulesync/subagents/m-tester.md', 'specs/_templates/test-report.md', 'scripts/amk/coverage.js', 'scripts/amk/shots.js', 'scripts/amk/redact.js',
+    'specs/_templates/plan.md', '.agents/skills/m-feature/plan.md', '.agents/skills/m-feature/build.md', '.rulesync/subagents/m-spec-writer.md']) assert.ok(fs.existsSync(path.join(dir, f)), f);
   assert.match(read(dir, '.gitignore'), /^\.env$/m);
   assert.match(read(dir, '.gitignore'), /^\.amk\/$/m);
   assert.match(read(dir, '.gitignore'), /^\.maestro\/\.amk-\*$/m, 'the flow copies verify.sh runs for a moment');

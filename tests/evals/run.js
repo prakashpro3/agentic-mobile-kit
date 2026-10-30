@@ -25,8 +25,10 @@ const { redact } = require(path.join(TEMPLATE, 'scripts/amk/redact.js'));
 
 // ---------- the skills' length ----------
 const words = text => text.split(/\s+/).filter(Boolean).length;
+// each kit skill's SKILL.md, and each other page of steps in its folder (m-feature/plan for m-feature's plan.md)
 const skillSizes = (dir = path.join(TEMPLATE, '.agents/skills')) => Object.fromEntries(fs.readdirSync(dir).filter(n => /^m-/.test(n)).sort()
-  .map(n => [n, words(fs.readFileSync(path.join(dir, n, 'SKILL.md'), 'utf8'))]));
+  .flatMap(n => fs.readdirSync(path.join(dir, n)).filter(f => f.endsWith('.md')).sort()
+    .map(f => [f === 'SKILL.md' ? n : `${n}/${f.slice(0, -3)}`, words(fs.readFileSync(path.join(dir, n, f), 'utf8'))])));
 const budgets = () => JSON.parse(fs.readFileSync(path.join(__dirname, 'budgets.json'), 'utf8'));
 const budgetProblems = (sizes, limits) => [
   ...Object.entries(sizes).map(([n, w]) => (!(n in limits) ? `${n}: no budget in tests/evals/budgets.json`
@@ -39,7 +41,7 @@ const budgetProblems = (sizes, limits) => [
 function parseStream(text) {
   const calls = [];
   const byId = new Map();
-  let end = null;
+  const ends = [];
   for (const line of text.split('\n')) {
     let e;
     try { e = JSON.parse(line); } catch { continue; }
@@ -57,11 +59,15 @@ function parseStream(text) {
         call.error = Boolean(c.is_error);
         call.result = typeof c.content === 'string' ? c.content : [].concat(c.content || []).map(x => x.text || '').join('\n');
       }
-    } else if (e.type === 'result') end = e;
+    } else if (e.type === 'result') ends.push(e);
   }
-  const u = (end && end.usage) || {};
-  return { calls, final: (end && end.result) || '', sessionId: end && end.session_id, turns: (end && end.num_turns) || 0, ms: (end && end.duration_ms) || 0,
-    costUsd: (end && end.total_cost_usd) || 0, tokens: ['input_tokens', 'output_tokens', 'cache_creation_input_tokens', 'cache_read_input_tokens'].reduce((n, k) => n + (u[k] || 0), 0) };
+  // a run that waited on a background subagent reports a result for each part: time, turns and tokens are each part's,
+  // the cost the session's so far
+  const end = ends[ends.length - 1];
+  const sum = f => ends.reduce((n, x) => n + (f(x) || 0), 0);
+  return { calls, final: (end && end.result) || '', sessionId: end && end.session_id, turns: sum(x => x.num_turns), ms: sum(x => x.duration_ms),
+    costUsd: (end && end.total_cost_usd) || 0,
+    tokens: sum(x => ['input_tokens', 'output_tokens', 'cache_creation_input_tokens', 'cache_read_input_tokens'].reduce((n, k) => n + ((x.usage || {})[k] || 0), 0)) };
 }
 
 // ---------- the scratch apps ----------

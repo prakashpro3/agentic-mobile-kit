@@ -8,16 +8,23 @@ disable-model-invocation: true
 
 The user chose this workflow: follow its steps for this task, even where other workflow instructions in this project (Superpowers, BMAD, proAgents or similar) say otherwise.
 
-Input: $ARGUMENTS (the requirement text, a file path, or a task link plus pasted details).
+Input: $ARGUMENTS
+
+**An input that starts with `plan` or `build` is the other mode, plan all, then build** (`specs/plan.md` on the `plan` branch): read `.agents/skills/m-feature/plan.md` or `.agents/skills/m-feature/build.md` and follow it instead of the steps below. `plan` can name a CSV or Trello export; `build --one` builds one feature.
+
+Any other input is the requirement text, a file path, or a task link plus pasted details; or the id of a feature approved in the plan, built here with this skill's stops: `node scripts/amk/specs.js start <id>` makes its branch with the spec as approved; set `Mode: feature-by-feature` in its `requirements.md`, refresh "Existing code to reuse" and "Files to change" in `design.md`, and go on from step 4 (the plan approved the rest).
 
 With no input, don't guess what to build:
-1. Run `node scripts/amk/specs.js status`. If a spec is in progress, say which one and where it stopped, and suggest `m-continue`. Start something new only if the user says so.
-2. Otherwise offer the features marked planned in `docs/amk/product.md` as options to pick from (`AGENTS.md`), the next one first: the first in the list whose dependencies are built. Wait for the user to pick.
-3. If nothing is planned, ask what to build, or suggest `m-explore` when the requirements aren't settled yet.
+1. Run `node scripts/amk/specs.js status`. If a spec is in progress, say which one and where it stopped, and suggest `m-continue`. If the plan has approved features waiting, suggest `/m-feature build`. Start something new only if the user says so.
+2. When `docs/amk/product.md` plans several features without a spec, ask how to build them (plan all goes on as `plan`, above), unless `Feature mode:` in `docs/amk/team-process.md` says `feature-by-feature` or `plan-all`:
+   - Feature by feature: each one's requirements, then its design and tasks, approved before it's built. Suits a live app and day-to-day work.
+   - Plan all, then build: the feature map, then every feature's stories with the shared design, then the detail in batches, each approved; then they're built one after another without approvals. Suits a new app, a fixed scope or a milestone.
+3. Feature by feature: offer the features marked planned in `docs/amk/product.md` as options to pick from (`AGENTS.md`), the next one first: the first in the list whose dependencies are built. Wait for the user to pick.
+4. If nothing is planned, ask what to build, or suggest `m-explore` when the requirements aren't settled yet.
 
 ## 1. Always use the full flow
 
-The user chose `m-feature`, so follow every step below, however small the change looks. Never skip the spec or the approval stops on your own judgment. (For a small change to behavior the app already has, suggest `m-change`. A change with nothing to record, such as fixing a typo, can just be asked for directly.)
+The user chose `m-feature`, so follow every step below, however small the change looks. Never skip the spec or the approval stops on your own judgment. (For a small change to behavior the app already has, suggest `m-change`; to try ideas before any spec, `m-prototype`. A change with nothing to record, such as fixing a typo, can just be asked for directly.)
 
 If the input describes a bug rather than new behavior, suggest `m-bugfix` and stop. If it's still a vague problem ("the checkout feels slow") or an area you'd have to learn first, suggest `m-explore` first.
 

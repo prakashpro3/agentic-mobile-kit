@@ -355,6 +355,14 @@ People SHALL log in with their email.
   const none = run({ AMK_MAESTRO: path.join(dir, 'no-such-maestro') });
   assert.match(none.out, /flows not syntax-checked: Maestro isn't installed here/);
   assert.doesNotMatch(none.out, /check-syntax/);
+  // Maestro there but unable to start (Codex's sandbox keeps it out of ~/.maestro): not a broken flow
+  if (sh) {
+    write(dir, 'crashing-maestro', '#!/bin/sh\necho \'Exception in thread "main" java.lang.ExceptionInInitializerError\' >&2\nexit 1\n');
+    fs.chmodSync(path.join(dir, 'crashing-maestro'), 0o755);
+    const crash = run({ AMK_MAESTRO: path.join(dir, 'crashing-maestro') });
+    assert.match(crash.out, /flows not syntax-checked: Maestro couldn't start here \(Exception in thread "main" java\.lang\.ExceptionInInitializerError\)/);
+    assert.doesNotMatch(crash.out, /✗ [^\n]*check-syntax/);
+  }
 });
 
 // n lines of source

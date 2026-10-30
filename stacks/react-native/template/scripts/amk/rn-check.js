@@ -323,6 +323,8 @@ const ASSERTS = /^(assertVisible|assertNotVisible|assertTrue|assertWithAI|assert
 const SYSTEM_BUTTON = /^(allow|allow while using (the )?app|allow once|only this time|while using the app|ok|cancel|continue|don.t allow|not now|deny|close)$/i;
 const unquote = v => { v = v.trim(); return /^'.*'$/.test(v) ? v.slice(1, -1).replace(/''/g, "'") : /^".*"$/.test(v) ? v.slice(1, -1) : v; };
 let noMaestro = false;
+// Maestro there but unable to start (a sandbox that keeps it out of ~/.maestro, a broken Java): its first line
+let maestroFailed = '';
 function checkFlow(file, text) {
   const out = [];
   const add = (level, at, message, always) => out.push({ level, at, end: at, message, always });
@@ -368,9 +370,11 @@ function checkFlow(file, text) {
   // a flow verify.sh runs (not a subflow) that never checks anything passes whatever the app shows
   if (/^\.maestro\/[^/]+$/.test(file) && !asserts) add('!', 0, 'this flow checks nothing: add an assertVisible for what each scenario\'s THEN expects', true);
   // Maestro's own syntax check (seconds, no device): AMK_MAESTRO names another maestro
-  const r = noMaestro ? null : spawnSync(process.env.AMK_MAESTRO || 'maestro', ['check-syntax', file], { cwd: root, encoding: 'utf8' });
+  const r = noMaestro || maestroFailed ? null : spawnSync(process.env.AMK_MAESTRO || 'maestro', ['check-syntax', file], { cwd: root, encoding: 'utf8' });
   if (r && r.error) noMaestro = true;
-  else if (r && r.status !== 0) {
+  else if (r && r.status !== 0 && /Exception in thread|java\.lang\.\w+(?:Error|Exception)|Error occurred during initialization of VM|Could not find or load main class|Operation not permitted/.test(`${r.stdout}${r.stderr}`)) {
+    maestroFailed = `${r.stdout || ''}\n${r.stderr || ''}`.split('\n').map(x => x.trim()).find(Boolean);
+  } else if (r && r.status !== 0) {
     const said = `${r.stdout || ''}\n${r.stderr || ''}`.split('\n').map(s => s.trim()).find(s => s && s !== 'OK') || 'invalid flow';
     const n = Number((/:(\d+):\d+/.exec(said) || [])[1]) || 1;
     add('✗', text.split('\n').slice(0, n - 1).reduce((a, s) => a + s.length + 1, 0), `maestro check-syntax: ${said.replace(/\s+at \/syntax-checker:\d+:\d+/, '')}`, true);
@@ -542,6 +546,7 @@ else if (!findings.length) console.log(`rn-check: nothing to report in the lines
 else console.log(`rn-check: ${plural(problems.length, 'problem')}, ${plural(warnings.length, 'warning')} in the lines changed since ${since}`);
 for (const f of [...problems, ...warnings]) console.log(`  ${f.level} ${f.where}  ${f.message}`);
 if (noMaestro && [...changed.keys()].some(flowFile)) console.log('  flows not syntax-checked: Maestro isn\'t installed here');
+if (maestroFailed && [...changed.keys()].some(flowFile)) console.log(`  flows not syntax-checked: Maestro couldn't start here (${maestroFailed.slice(0, 120)})`);
 const sources = [...changed.keys()].filter(source);
 if (sources.length && !complexity) console.log('  complexity not counted: ESLint isn\'t installed here');
 else if (sources.some(f => /\.tsx?$/.test(f)) && complexity && !complexity.ts) console.log('  complexity not counted in TypeScript files: rn-check can\'t find the app\'s @typescript-eslint/parser');

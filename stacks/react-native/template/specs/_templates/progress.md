@@ -6,7 +6,7 @@ Next step:     <the very next action>
 Decisions:     <decisions made in chat, and where they were written down>
 Open question: <anything waiting for an answer>
 Last verify:   <lint / typecheck / test / iOS / Android results>
-Blocked:       <none, or what's blocking>
+Blocked:       <none, or what's blocking and what would unblock it (Status keeps its words)>
 Notes:         <anything the next session must know>
 
 ## Log

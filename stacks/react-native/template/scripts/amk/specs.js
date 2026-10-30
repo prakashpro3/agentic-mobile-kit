@@ -8,15 +8,25 @@
 //                                             no spec links to, and the verify.sh command that runs them
 //   node scripts/amk/specs.js flow <id>        write .maestro/<id>.yaml with a "# Scenario" block for each scenario; with a
 //                                             flow already there, list the blocks it's missing instead
-//   node scripts/amk/specs.js status           each spec's status and task progress, and the living spec's size
+//   node scripts/amk/specs.js status           each spec's status and task progress, the living spec's size, and the plan's
+//                                             features (specs/plan.md on the plan branch): where each stands, and sizes
+//   node scripts/amk/specs.js check --plan     the plan: its features table, each planned spec, and what they get wrong
+//                                             together (a requirement added twice, a missing dependency, a loop, …)
+//   node scripts/amk/specs.js plan-folder      a second folder of this repository on the plan branch, to plan in while a
+//                                             build runs here, with the kit's files git doesn't track copied in
+//   node scripts/amk/specs.js start [<id>]     build a planned feature: the next ready one (approved, not taken, its
+//                                             dependencies built or on the build's stack), or <id>. Makes feature/<id>
+//                                             from main or the top of the stack, with the spec as of its approval commit.
+//                                             Exits 3 when none is ready, 4 when the living spec changed under it
 // A requirement is "### Requirement: <name>", a sentence with SHALL or MUST, and at least one
 // "#### Scenario: <case>" with WHEN and THEN. Changes are "## ADDED Requirements: <area>" (and MODIFIED, REMOVED),
 // where <area> names the file specs/current/<area>.md. User stories and use cases, when a spec has them, name its
 // requirements and scenarios. Format: specs/current/README.md and specs/_templates/requirements.md.
 'use strict';
 const fs = require('fs');
+const os = require('os');
 const path = require('path');
-const { execFileSync } = require('child_process');
+const { execFileSync, spawnSync } = require('child_process');
 
 const [cmd, ...args] = process.argv.slice(2);
 const read = f => { try { return fs.readFileSync(f, 'utf8').replace(/\r\n/g, '\n'); } catch { return null; } };
@@ -114,7 +124,9 @@ function blockProblems(b) {
   return p;
 }
 
-// the ADDED/MODIFIED/REMOVED sections of a feature's requirements.md
+// the template's own placeholders, left as they are until the requirements are written: "<area>", "<name>"
+const placeholder = t => /^<[^>]*>$/.test(t.trim());
+// the ADDED/MODIFIED/REMOVED sections of a feature's requirements.md (a section the template left untouched is none yet)
 function deltas(text) {
   const lines = text.split('\n');
   const sections = [];
@@ -123,23 +135,26 @@ function deltas(text) {
   for (let i = 0; i < lines.length; i++) {
     const h = /^## (ADDED|MODIFIED|REMOVED) Requirements\b(.*)$/.exec(lines[i]);
     if (!h) continue;
-    const area = (/^:\s*([a-z0-9][a-z0-9-]*)\s*$/.exec(h[2]) || [])[1];
-    if (!area) problems.push(`line ${i + 1}: name the area, e.g. "## ${h[1]} Requirements: login" (the file specs/current/login.md)`);
+    const named = (/^:\s*(.*?)\s*$/.exec(h[2]) || [])[1] || '';
+    const area = (/^([a-z0-9][a-z0-9-]*)$/.exec(named) || [])[1];
     let j = i + 1;
     while (j < lines.length && !/^#{1,2} /.test(lines[j])) j++;
-    const bs = blocks(lines, i + 1, j);
-    bs.forEach(b => inSection.add(b.start));
-    sections.push({ op: h[1], area, blocks: bs });
+    const all = blocks(lines, i + 1, j);
+    all.forEach(b => inSection.add(b.start));
+    const bs = all.filter(b => !placeholder(b.name));
+    if (!(placeholder(named) && !bs.length)) {
+      if (!area) problems.push(`line ${i + 1}: name the area, e.g. "## ${h[1]} Requirements: login" (the file specs/current/login.md)`);
+      sections.push({ op: h[1], area, blocks: bs });
+    }
     i = j - 1;
   }
   for (const b of blocks(lines)) {
-    if (!inSection.has(b.start)) problems.push(`line ${b.line}: "${b.name}" isn't under an "## ADDED/MODIFIED/REMOVED Requirements: <area>" heading`);
+    if (!inSection.has(b.start) && !placeholder(b.name)) problems.push(`line ${b.line}: "${b.name}" isn't under an "## ADDED/MODIFIED/REMOVED Requirements: <area>" heading`);
   }
   return { lines, sections, problems };
 }
 
-function checkFile(file) {
-  const text = read(file);
+function checkFile(file, text = read(file)) {
   if (text === null) return [`${file}: not found`];
   const problems = [];
   const where = (b, p) => `${file}:${b.line} "${b.name}": ${p}`;
@@ -184,7 +199,8 @@ function listed(text, label, known) {
   let s = (new RegExp(`^\\s*-?\\s*${label}:(.*)$`, 'im').exec(text) || ['', ''])[1];
   const long = [...known.values()].filter(n => /[,;]/.test(n));
   long.forEach((n, i) => { s = s.split(new RegExp(n.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i')).join(`\0${i}\0`); });
-  return s.split(/[,;]/).map(x => bare(x.replace(/\0(\d+)\0/g, (_, i) => long[i]))).filter(Boolean);
+  // the template's placeholder, or a note in brackets ("(written with the requirements)"), names none
+  return s.split(/[,;]/).map(x => bare(x.replace(/\0(\d+)\0/g, (_, i) => long[i]))).filter(n => n && !/^[<(].*[>)]$/.test(n));
 }
 
 // user stories and use cases, when a spec has them: each story is its sentence and names requirements of this spec,
@@ -217,7 +233,7 @@ function storyProblems(text, d) {
     // one a line, or several: "3a. … → Scenario: <name>; 4a. …" or "… → Scenario: <name>. 4a. …"
     for (const m of c.text.matchAll(/\bScenario:\s*(.+?)(?=\s*(?:;|$|\.?\s+\d+[a-z]\.\s))/gm)) {
       const n = bare(m[1]);
-      if (n && !names.includes(norm(n))) p.push(`line ${c.line}: ${c.id} names the scenario "${n}", which isn't in this spec`);
+      if (n && !/^[<(].*[>)]$/.test(n) && !names.includes(norm(n))) p.push(`line ${c.line}: ${c.id} names the scenario "${n}", which isn't in this spec`);
     }
   }
   return p;
@@ -300,10 +316,15 @@ function merge(id) {
   return 0;
 }
 
+// a handoff's status: the template's placeholder until work starts
+const stateOf = p => { const s = (/^Status:\s*(.*?)\s*$/m.exec(p) || [])[1] || ''; return !s || s.startsWith('<') ? 'not started' : s; };
+
 function status() {
+  if (branch() === 'plan') { planStatus(); return 0; }
   const rows = specDirs().map(name => {
     const dir = `specs/${name}`;
-    const state = ((read(`${dir}/progress.md`) || '').match(/^Status:\s*(.*?)\s*$/m) || [])[1] || 'no progress.md';
+    const progress = read(`${dir}/progress.md`);
+    const state = progress === null ? 'no progress.md' : stateOf(progress);
     const tasks = read(`${dir}/tasks.md`) || '';
     const done = (tasks.match(/^\s*- \[[xX]\]/gm) || []).length;
     const total = done + (tasks.match(/^\s*- \[ \]/gm) || []).length;
@@ -316,6 +337,7 @@ function status() {
   const current = allSpecFiles().filter(f => f.startsWith('specs/current/'));
   const count = current.reduce((n, f) => n + blocks(read(f).split('\n')).length, 0);
   console.log(`\nLiving spec: ${current.length} area(s), ${count} requirement(s) in specs/current/`);
+  planStatus();
   return 0;
 }
 
@@ -419,6 +441,373 @@ function flow(id) {
   return 0;
 }
 
+// ---------- the plan: plan all, then build ----------
+// specs/plan.md and the planned specs live on the plan branch, which is never merged: each spec reaches main with its
+// feature's PR. Built means on main: the living spec names it (Source:), or its progress.md there says done.
+const git = (...a) => {
+  try { return execFileSync('git', a, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], maxBuffer: 2 ** 28 }).replace(/\r\n/g, '\n').replace(/\n$/, ''); } catch { return null; }
+};
+const show = (ref, f) => git('show', `${ref}:${f}`);
+const branch = () => git('symbolic-ref', '--quiet', '--short', 'HEAD');
+const exists = ref => git('rev-parse', '--verify', '--quiet', `${ref}^{commit}`) !== null;
+const isAncestor = (a, b) => git('merge-base', '--is-ancestor', a, b) !== null;
+// main, as the kit's other checks see it (the remote's when there is one)
+const mainRef = () => {
+  try { return execFileSync(process.execPath, [path.join(__dirname, 'baseline.js'), 'base'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim() || null; } catch { return null; }
+};
+// the plan branch, or the remote's when it's further on (planning in another place pushes it)
+function planRef() {
+  const [local, remote] = ['plan', 'origin/plan'].map(r => (exists(r) ? r : null));
+  return local && remote && git('rev-parse', local) !== git('rev-parse', remote) && isAncestor(local, remote) ? remote : local || remote;
+}
+// where the plan is read from: this folder when it's on the plan branch, else the plan branch
+const planSource = () => (branch() === 'plan' ? { where: 'this folder', read } : (r => r && { where: r, ref: r, read: f => show(r, f) })(planRef()));
+
+const STATUSES = ['drafting', 'questions open', 'ready for approval', 'approved', 'changes requested', 'held'];
+// a handoff or summary line that says nothing is there: none, nothing, n/a, dashes, the template's placeholder, or empty
+const NONE = /^(?:(?:none|nobody|nothing|n\/a)\b|-+(?:\s|$)|<.*>|$)/i;
+// the features whose summary (### <id> under ## Summaries) still waits on someone: "- Waiting on: the client, …"
+function waitingOn(text) {
+  const out = new Map();
+  const body = (/^## Summaries\s*$([\s\S]*?)(?=^## |(?![\s\S]))/m.exec(text.replace(/<!--[\s\S]*?-->/g, '')) || [])[1] || '';
+  let id = null;
+  for (const l of body.split('\n')) {
+    const h = /^###\s+(.+?)\s*$/.exec(l);
+    if (h) { id = cell(h[1]); continue; }
+    const w = /^\s*-\s*Waiting on:\s*(.*?)\s*$/i.exec(l);
+    if (id && w && !NONE.test(w[1])) out.set(id, w[1]);
+  }
+  return out;
+}
+const cell = c => bare(c.replace(/\[([^\]]*)\]\([^)]*\)/g, '$1'));
+// the "## Features" table: a row per feature, by its columns' names
+function planFeatures(text) {
+  const lines = text.replace(/<!--[\s\S]*?-->/g, c => c.replace(/[^\n]/g, '')).split('\n');
+  const at = lines.findIndex(l => /^## Features\s*$/i.test(l));
+  if (at < 0) return { rows: [], problems: ['specs/plan.md has no "## Features" table'] };
+  const rows = [];
+  let head = null;
+  for (let i = at + 1; i < lines.length && !/^#{1,2} /.test(lines[i]); i++) {
+    if (!/^\s*\|/.test(lines[i])) continue;
+    const cells = lines[i].trim().replace(/^\||\|$/g, '').split('|').map(c => c.trim());
+    if (!head) { head = cells.map(c => c.toLowerCase()); continue; }
+    if (cells.every(c => /^:?-+:?$/.test(c))) continue;
+    const get = name => cells[head.indexOf(name)] || '';
+    const id = cell(get('feature'));
+    if (!id || /^<.*>$/.test(id)) continue;
+    const status = get('status');
+    rows.push({ line: i + 1, id, goal: get('goal'), batch: Number(get('batch')) || null, size: get('size'), status,
+      word: STATUSES.find(w => status.toLowerCase().startsWith(w)) || null,
+      deps: get('depends on').split(/[,;]/).map(cell).filter(d => d && !/^(none|n\/a|[-—–]+)$/i.test(d)) });
+  }
+  const missing = ['feature', 'depends on', 'batch', 'status'].filter(c => !(head || []).includes(c));
+  return { rows, problems: missing.length ? [`specs/plan.md: the Features table needs the columns ${missing.join(', ')}`] : [] };
+}
+// the features built on ref (main)
+function builtOn(ref) {
+  const ids = new Set();
+  for (const l of (git('grep', '-h', '-E', '^Source: specs/', ref, '--', 'specs/current/') || '').split('\n')) {
+    const m = /^Source:\s*specs\/([^\s/]+)/.exec(l);
+    if (m) ids.add(m[1]);
+  }
+  for (const l of (git('grep', '-l', '-E', '^Status:[[:space:]]*done', ref, '--', 'specs/*/progress.md') || '').split('\n')) {
+    const m = /specs\/([^/]+)\/progress\.md$/.exec(l);
+    if (m) ids.add(m[1]);
+  }
+  return ids;
+}
+// a feature's dependencies in the plan, theirs too
+function depsOf(rows, id, seen = new Set()) {
+  for (const d of (rows.find(r => r.id === id) || { deps: [] }).deps) if (!seen.has(d)) { seen.add(d); depsOf(rows, d, seen); }
+  return seen;
+}
+// a feature's progress where it's being built: its branch, the status in its handoff, and what blocks it
+function building(id) {
+  const b = [`feature/${id}`, `origin/feature/${id}`].find(exists);
+  if (!b) return null;
+  const p = show(b, `specs/${id}/progress.md`);
+  const blocked = (/^Blocked:\s*(.*?)\s*$/m.exec(p || '') || [])[1] || '';
+  return { branch: b, status: p === null ? 'no handoff yet' : stateOf(p), blocked: NONE.test(blocked) ? '' : blocked };
+}
+// stories, requirements, scenarios and tasks of a spec on the plan
+function counts(src, id) {
+  const req = src.read(`specs/${id}/requirements.md`);
+  if (req === null) return null;
+  const lines = req.replace(/<!--[\s\S]*?-->/g, c => c.replace(/[^\n]/g, '')).split('\n');
+  const tasks = src.read(`specs/${id}/tasks.md`) || '';
+  return { stories: (entries(lines, 'User stories', 'US') || []).length, reqs: deltas(req).sections.reduce((n, x) => n + x.blocks.length, 0),
+    scenarios: scenarios(req).length, tasks: (tasks.match(/^\s*- \[[ xX]\] \d/gm) || []).length };
+}
+// the commit that approved a feature: the first of the commits since which specs/plan.md has said "approved" for it
+function approvalCommit(ref, id) {
+  let found = null;
+  for (const c of (git('log', '--format=%H', ref, '--', 'specs/plan.md') || '').split('\n').filter(Boolean)) {
+    const row = planFeatures(show(c, 'specs/plan.md') || '').rows.find(r => r.id === id);
+    if (!row || row.word !== 'approved') break;
+    found = c;
+  }
+  return found;
+}
+
+// the words the glossary, or the plan's new words, say not to use: "**Visit**: … _Not:_ appointment, call."
+function avoidedWords(text) {
+  const out = [];
+  let term = null;
+  for (const l of (text || '').replace(/<!--[\s\S]*?-->/g, '').split('\n')) {
+    const t = /\*\*([^*]+)\*\*\s*:/.exec(l);
+    if (t) term = t[1].trim();
+    const m = /_Not:_\s*(.*)$/.exec(l);
+    if (m && term) for (const w of m[1].split(/[,;]/).map(x => bare(x).replace(/\.$/, '')).filter(Boolean)) out.push({ word: w, use: term });
+  }
+  return out;
+}
+
+function checkPlan() {
+  const src = planSource();
+  const text = src && src.read('specs/plan.md');
+  if (!text) { console.error('No plan: specs/plan.md isn\'t on a plan branch here (/m-feature plan makes one).'); return 1; }
+  const { rows, problems } = planFeatures(text);
+  const main = mainRef();
+  const built = main ? builtOn(main) : new Set();
+  const at = new Map(rows.map((r, i) => [r.id, i]));
+  const p = [...problems];
+  const waits = waitingOn(text);
+  rows.forEach((r, i) => {
+    if (r.word === 'approved' && waits.has(r.id)) p.push(`specs/plan.md:${r.line} ${r.id} is approved, but its summary waits on ${waits.get(r.id)}: hold it (held: <who>) until the answer comes, or set its Waiting on: to none to build on the working assumptions`);
+    if (rows.findIndex(x => x.id === r.id) !== i) p.push(`specs/plan.md:${r.line} ${r.id} is listed twice`);
+    if (!r.word) p.push(`specs/plan.md:${r.line} ${r.id}: status "${r.status}" isn't one of: ${STATUSES.join(', ')}`);
+    if (!r.batch) p.push(`specs/plan.md:${r.line} ${r.id}: give it a batch number`);
+    for (const d of r.deps) {
+      if (!at.has(d)) { if (!built.has(d)) p.push(`specs/plan.md:${r.line} ${r.id} depends on ${d}, which is neither in the plan nor built on ${main || 'main'}`); continue; }
+      const dep = rows[at.get(d)];
+      if (at.get(d) > i) p.push(`specs/plan.md:${r.line} ${r.id} depends on ${d}, which comes after it`);
+      else if (dep.batch && r.batch && dep.batch > r.batch) p.push(`specs/plan.md:${r.line} ${r.id} depends on ${d}, which is in a later batch`);
+    }
+    if (depsOf(rows, r.id).has(r.id)) p.push(`specs/plan.md:${r.line} ${r.id} is in a dependency loop`);
+  });
+  // each planned spec on its own, then what the specs get wrong together
+  const specs = rows.map(r => ({ r, text: src.read(`specs/${r.id}/requirements.md`) })).filter(x => x.text !== null);
+  for (const r of rows) {
+    if (['ready for approval', 'approved'].includes(r.word) && !(specs.find(x => x.r === r) && counts(src, r.id).reqs && counts(src, r.id).tasks)) {
+      p.push(`specs/${r.id}: ${r.word}, but its requirements or tasks aren't written yet`);
+    }
+  }
+  const added = new Map();
+  const living = new Map();
+  const inMain = (area, name) => {
+    if (!living.has(area)) living.set(area, blocks(((main && show(main, `specs/current/${area}.md`)) || '').split('\n')).map(b => key(b.name)));
+    return living.get(area).includes(key(name));
+  };
+  for (const { r, text: t } of specs) {
+    checkFile(`specs/${r.id}/requirements.md`, t).forEach(x => p.push(x));
+    const d = deltas(t);
+    const lines = t.replace(/<!--[\s\S]*?-->/g, c => c.replace(/[^\n]/g, '')).split('\n');
+    const known = new Map(d.sections.flatMap(x => x.blocks).map(b => [key(b.name), b.name]));
+    if (known.size) {
+      for (const st of entries(lines, 'User stories', 'US') || []) {
+        if (!listed(st.text, 'Requirements', known).length) p.push(`specs/${r.id}/requirements.md:${st.line} ${st.id} names no requirement`);
+      }
+    }
+    for (const x of d.sections.filter(y => y.op === 'ADDED' && y.area)) {
+      for (const b of x.blocks) {
+        const k = `${x.area}\0${key(b.name)}`;
+        added.set(k, [...(added.get(k) || []), r.id]);
+        if (inMain(x.area, b.name)) p.push(`specs/${r.id} adds "${b.name}" (${x.area}), which the living spec on ${main} already has: list it under MODIFIED`);
+      }
+    }
+  }
+  for (const [k, ids] of added) if (ids.length > 1) p.push(`"${k.split('\0')[1]}" (${k.split('\0')[0]}) is added by both ${ids.join(' and ')}`);
+  for (const { r, text: t } of specs) {
+    for (const x of deltas(t).sections.filter(y => y.op !== 'ADDED' && y.area)) {
+      for (const b of x.blocks) {
+        const by = (added.get(`${x.area}\0${key(b.name)}`) || []).filter(id => id !== r.id);
+        if (inMain(x.area, b.name)) continue;
+        if (!by.length) p.push(`specs/${r.id} ${x.op === 'MODIFIED' ? 'modifies' : 'removes'} "${b.name}" (${x.area}), which neither the living spec on ${main || 'main'} nor another planned feature has`);
+        for (const g of by) if (!depsOf(rows, r.id).has(g)) p.push(`specs/${r.id} ${x.op === 'MODIFIED' ? 'modifies' : 'removes'} "${b.name}", which ${g} adds: add ${g} to its Depends on`);
+      }
+    }
+  }
+  const shared = (/^## Shared design\s*$([\s\S]*?)(?=^## |(?![\s\S]))/m.exec(text) || [])[1];
+  // a warning only: a word to avoid can be right in another sense (an API "call" in an app whose Visits aren't calls)
+  const avoid = [...avoidedWords(main && show(main, 'docs/amk/glossary.md')), ...avoidedWords(shared)];
+  // the spec's own words: not the template's comments, or its section headings ("## User stories")
+  const own = t => t.replace(/<!--[\s\S]*?-->/g, '').replace(/^## .*$/gm, '').replace(/<[^<>\n]*>/g, '');
+  const words = specs.flatMap(({ r, text: t }) => avoid.filter(a => new RegExp(`\\b${a.word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}s?\\b`, 'i')
+    .test(own(t))).map(a => `specs/${r.id} says "${a.word}": the glossary's word is ${a.use}, unless it means something else here`));
+  // the plan branch never takes main's changes, so a kit update there doesn't reach it
+  const kit = branch() === 'plan' && main && show(main, 'scripts/amk/specs.js') !== null;
+  if (kit && git('diff', '--quiet', main, '--', 'scripts/amk/specs.js') === null) words.push(`the kit's scripts here aren't ${main}'s (a kit update there?): git checkout ${main} -- scripts/amk .agents/skills .rulesync, then commit`);
+  p.forEach(x => console.error(`✗ ${x}`));
+  words.forEach(x => console.error(`! ${x}`));
+  if (!p.length) console.log(`✓ plan: ${rows.length} feature(s), ${specs.length} with a spec, checked together${main ? ` against ${main}` : ''}`);
+  return p.length ? 1 : 0;
+}
+
+// the plan's features, where each stands, and the sizes added up per batch
+function planStatus() {
+  const src = planSource();
+  const text = src && src.read('specs/plan.md');
+  if (!text) return;
+  const { rows } = planFeatures(text);
+  const waits = waitingOn(text);
+  const main = mainRef();
+  const built = main ? builtOn(main) : new Set();
+  const out = rows.map(r => {
+    const b = building(r.id);
+    const c = (b && b.branch && counts({ read: f => show(b.branch, f) }, r.id)) || counts(src, r.id);
+    const state = built.has(r.id) ? 'built' : b ? `being built on ${b.branch}: ${b.status}${b.blocked ? `; blocked: ${b.blocked}` : ''}`
+      : `${r.status || 'no status'}${r.word === 'approved' && waits.has(r.id) ? `, but waits on ${waits.get(r.id)}` : ''}`;
+    const hours = c && c.tasks ? c.tasks : Number((r.size.match(/\d+(?:\.\d+)?/) || [])[0]) || 0;
+    return { r, state, c, hours, rough: !(c && c.tasks) };
+  });
+  console.log(`\nPlan (specs/plan.md on ${src.where}): ${rows.length} feature(s)`);
+  const w = Math.max(7, ...rows.map(r => r.id.length));
+  for (const x of out) {
+    const what = x.c ? `${x.c.stories} stories, ${x.c.reqs} requirements, ${x.c.scenarios} scenarios, ${x.c.tasks ? `${x.c.tasks} tasks` : `~${x.hours} h`}` : `no spec yet, ~${x.hours} h`;
+    console.log(`  ${x.r.id.padEnd(w)}  batch ${String(x.r.batch || '?').padEnd(2)}  ${x.state}  (${what})`);
+  }
+  const batches = [...new Set(rows.map(r => r.batch || 0))].sort((a, b) => a - b);
+  console.log(`  Size: ${batches.map(n => { const xs = out.filter(x => (x.r.batch || 0) === n); return `batch ${n || '?'} ${xs.some(x => x.rough) ? '~' : ''}${xs.reduce((t, x) => t + x.hours, 0)} h`; }).join(', ')} (a task is about an hour)`);
+}
+
+// requirements a feature modifies or removes that changed on main after the plan approved it, other than through the
+// features it depends on: building it as approved would undo that change
+function changedSince(id, approved, from, main, deps) {
+  const when = git('log', '-1', '--format=%cI', approved);
+  const then = when && git('rev-list', '-1', '--first-parent', `--before=${when}`, main);
+  if (!then) return [];
+  const out = [];
+  for (const x of deltas(show(approved, `specs/${id}/requirements.md`) || '').sections.filter(y => y.op !== 'ADDED' && y.area)) {
+    const at = ref => blocks((show(ref, `specs/current/${x.area}.md`) || '').split('\n'));
+    const [before, now] = [at(then), at(from)];
+    for (const b of x.blocks) {
+      const was = before.find(y => key(y.name) === key(b.name));
+      const is = now.find(y => key(y.name) === key(b.name));
+      if (normalize(was ? was.lines : []) === normalize(is ? is.lines : [])) continue;
+      const by = is && (/^Source:\s*specs\/([^\s/]+)/m.exec(is.lines.join('\n')) || [])[1];
+      if (by && deps.has(by)) continue;
+      out.push(`"${b.name}" (${x.area}) ${is ? `changed after the plan approved ${id}${by ? `, in specs/${by}` : ''}` : 'isn\'t in the living spec any more'}`);
+    }
+  }
+  return out;
+}
+
+// on the plan branch, which never takes main's changes, a planned spec's tests are found in main as it is now: in a
+// temporary worktree of main, with the spec copied in
+function testsOnMain(id) {
+  const main = mainRef();
+  const text = read(`specs/${id}/requirements.md`);
+  if (!main || text === null) return tests(id);
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'amk-plan-'));
+  try {
+    execFileSync('git', ['worktree', 'add', '--detach', '--force', dir, main], { stdio: 'ignore' });
+    fs.mkdirSync(path.join(dir, 'specs', id), { recursive: true });
+    fs.writeFileSync(path.join(dir, 'specs', id, 'requirements.md'), text);
+    console.log(`(the living spec, flows and tests as they are on ${main}: this branch's copies are older)`);
+    return spawnSync(process.execPath, [process.argv[1], 'tests', id], { cwd: dir, stdio: 'inherit' }).status;
+  } finally {
+    git('worktree', 'remove', '--force', dir);
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+// a second folder of this repository on the plan branch: a git worktree, which holds only what git tracks, so the kit's
+// files an app keeps out of git (its skills, tool settings and hooks) are copied in from this folder
+const KIT_FOLDERS = ['.agents', '.claude', '.codex', '.antigravity', '.githooks', '.rulesync', 'rulesync.jsonc', '.kiro', '.cursor', '.opencode'];
+function planFolder() {
+  const top = git('rev-parse', '--show-toplevel');
+  if (!top) { console.error('Not in a git repository.'); return 1; }
+  const dir = path.join(path.dirname(top), `${path.basename(top)}-plan`);
+  if (fs.existsSync(dir)) { console.log(`${dir} is there already: open a session there, and run /m-feature plan.`); return 0; }
+  const main = exists('plan') || exists('origin/plan') ? null : mainRef();
+  const how = exists('plan') ? [dir, 'plan'] : exists('origin/plan') ? ['-b', 'plan', dir, 'origin/plan'] : main && ['--no-track', '-b', 'plan', dir, main];
+  if (!how) { console.error('No main branch found: set AMK_BASE to the branch features start from.'); return 1; }
+  try { execFileSync('git', ['worktree', 'add', ...how], { cwd: top, stdio: ['ignore', 'ignore', 'pipe'] }); } catch (e) { console.error(`git worktree add: ${String(e.stderr || e.message).trim()}`); return 1; }
+  const files = (git('-C', top, 'ls-files', '--others', '--ignored', '--exclude-standard', '--', ...KIT_FOLDERS) || '').split('\n').filter(Boolean);
+  const missed = [];
+  for (const f of files) {
+    const from = path.join(top, f);
+    const to = path.join(dir, f);
+    fs.mkdirSync(path.dirname(to), { recursive: true });
+    try {
+      if (fs.lstatSync(from).isSymbolicLink()) fs.symlinkSync(fs.readlinkSync(from), to);
+      else fs.copyFileSync(from, to); // its mode too: a hook stays executable
+    } catch { missed.push(f); }
+  }
+  console.log(`${dir}: on the plan branch${files.length ? `, with the ${files.length - missed.length} kit file(s) git doesn't track here` : ''}. It needs no installs or devices: open a session there and run /m-feature plan.`);
+  if (missed.length) console.log(`  not copied (copy them by hand): ${missed.join(', ')}`);
+  return 0;
+}
+
+function start(want) {
+  if (branch() === 'plan') { console.error('This folder is on the plan branch: build in a folder on main or a feature branch.'); return 1; }
+  if (git('status', '--porcelain', '--untracked-files=no')) { console.error('Commit the changes here first (git status): a feature starts from a clean folder.'); return 1; }
+  if (git('remote')) {
+    // never waiting on a password or passphrase prompt: offline, it goes on with what's here
+    const env = { ...process.env, GIT_TERMINAL_PROMPT: '0', GIT_SSH_COMMAND: process.env.GIT_SSH_COMMAND || 'ssh -o BatchMode=yes' };
+    try { execFileSync('git', ['fetch', '--quiet', 'origin'], { stdio: 'ignore', timeout: 60000, env }); } catch {}
+  }
+  const ref = planRef();
+  const plan = ref && show(ref, 'specs/plan.md');
+  if (!plan) { console.error('No plan branch with specs/plan.md here: /m-feature plan makes one.'); return 1; }
+  const main = mainRef();
+  if (!main) { console.error('No main branch found: set AMK_BASE to the branch features start from.'); return 1; }
+  const { rows } = planFeatures(plan);
+  const waits = waitingOn(plan);
+  const built = builtOn(main);
+  // the build's stack: planned features done on their own branch whose PR isn't merged yet, the highest first (holding
+  // the most of the others, then the latest in the plan)
+  const stack = rows.filter(r => !built.has(r.id) && exists(`feature/${r.id}`) && /^done/i.test((building(r.id) || {}).status || ''));
+  const holds = (a, b) => isAncestor(`feature/${b}`, `feature/${a}`);
+  const high = stack.map((r, i) => ({ r, i, n: stack.filter(o => o !== r && holds(r.id, o.id)).length })).sort((a, b) => b.n - a.n || b.i - a.i).map(x => x.r);
+  // where a feature starts: the highest branch of the stack that holds the dependencies it has there, or main
+  const baseFor = r => {
+    const need = r.deps.filter(d => !built.has(d) && stack.some(o => o.id === d));
+    const s = high.find(o => need.every(d => d === o.id || holds(o.id, d)));
+    return s ? `feature/${s.id}` : need.length ? null : main;
+  };
+  const why = r => {
+    if (built.has(r.id)) return 'built';
+    const b = building(r.id);
+    if (b) return `taken: ${b.branch}, ${b.status}${b.blocked ? `; blocked: ${b.blocked}` : ''}`;
+    if (r.word !== 'approved') return r.status || 'no status';
+    if (waits.has(r.id)) return `approved, but waits on ${waits.get(r.id)}`;
+    const missing = r.deps.filter(d => !built.has(d) && !stack.some(o => o.id === d));
+    if (missing.length) return `waits for ${missing.join(', ')}`;
+    return baseFor(r) ? null : `waits for ${r.deps.join(', ')} to be merged: no one branch holds them all`;
+  };
+  const pick = want ? rows.find(r => r.id === want) : rows.find(r => !why(r));
+  if (want && !pick) { console.error(`${want} isn't in specs/plan.md on ${ref}.`); return 1; }
+  if (!pick || why(pick)) {
+    console.log(`${want ? `${want} can't start` : 'Waiting for the plan: no feature is ready'} (specs/plan.md on ${ref}):`);
+    for (const r of want ? [pick] : rows.filter(x => why(x) !== 'built')) console.log(`  ${r.id}: ${why(r)}`);
+    return 3;
+  }
+  const approved = approvalCommit(ref, pick.id);
+  if (!approved || !show(approved, `specs/${pick.id}/requirements.md`)) { console.error(`${pick.id}: no approved spec on ${ref} (specs/${pick.id}/ in the commit that approved it).`); return 1; }
+  const short = approved.slice(0, 7);
+  const name = `feature/${pick.id}`;
+  const from = baseFor(pick);
+  for (const a of [['switch', '--quiet', '--no-track', '-c', name, from], ['checkout', approved, '--', `specs/${pick.id}/`]]) {
+    try { execFileSync('git', a, { stdio: ['ignore', 'ignore', 'pipe'] }); } catch (e) { console.error(`git ${a.join(' ')}: ${String(e.stderr || e.message).trim()}`); return 1; }
+  }
+  const progress = `specs/${pick.id}/progress.md`;
+  const log = `- ${new Date().toISOString().slice(0, 16).replace('T', ' ')}: started from ${from} (its PR goes to ${from.replace(/^origin\//, '')}), with the spec as approved in ${short} on ${ref}`;
+  const p = read(progress) || read('specs/_templates/progress.md') || '## Log\n';
+  fs.writeFileSync(progress, /^## Log\s*$/m.test(p) ? p.replace(/^## Log\s*\n(\s*<!--[\s\S]*?-->\s*\n)?/m, m => `${m.replace(/\n*$/, '\n')}\n${log}\n`) : `${p.replace(/\n*$/, '\n')}\n## Log\n\n${log}\n`);
+  try {
+    execFileSync('git', ['add', '--', `specs/${pick.id}/`], { stdio: 'ignore' });
+    execFileSync('git', ['commit', '--quiet', '-m', `docs(spec): ${pick.id} from the plan, as approved in ${short}\n\nSpec: specs/${pick.id}`], { stdio: ['ignore', 'ignore', 'pipe'] });
+  } catch (e) { console.error(`git commit: ${String(e.stderr || e.message).trim()}`); return 1; }
+  console.log(`Started ${pick.id} on ${name}, from ${from} (its PR's base), with the spec as approved in ${short}.`);
+  const changed = changedSince(pick.id, approved, from, main, depsOf(rows, pick.id));
+  if (changed.length) {
+    console.log(`Stop: the living spec changed under it, so it needs approving again (a change after approval):\n${changed.map(c => `  ${c}`).join('\n')}`);
+    return 4;
+  }
+  return 0;
+}
+
 // a feature spec still being drafted: its work hasn't started (progress.md says "not started")
 const isDraft = f => /^specs\/[^/]+\/requirements\.md$/.test(f) && !f.startsWith('specs/current/')
   && !/^Status:\s*(in progress|done)/im.test(read(f.replace(/requirements\.md$/, 'progress.md')) || '');
@@ -426,22 +815,28 @@ const isDraft = f => /^specs\/[^/]+\/requirements\.md$/.test(f) && !f.startsWith
 module.exports = { norm, same, stripYamlComments, scenarios, flowBlocks, blockFor, allFlows, flowsOf, tagsOf };
 
 if (require.main === module) {
-  if (cmd === 'check') {
+  if (cmd === 'check' && args.includes('--plan')) {
+    process.exitCode = checkPlan();
+  } else if (cmd === 'check') {
     const skipDrafts = args.includes('--skip-drafts');
     const named = args.filter(a => a !== '--skip-drafts');
     const files = (named.length ? named : allSpecFiles()).filter(f => !(skipDrafts && isDraft(f)));
-    const problems = files.flatMap(checkFile);
+    const problems = files.flatMap(f => checkFile(f));
     problems.forEach(p => console.error(`✗ ${p}`));
     if (!problems.length) console.log(`✓ ${files.length} spec file(s) checked`);
     process.exitCode = problems.length ? 1 : 0;
   } else if (cmd === 'merge' && args[0]) {
     process.exitCode = merge(args[0]);
   } else if (cmd === 'tests') {
-    process.exitCode = tests(args[0]);
+    process.exitCode = args[0] && branch() === 'plan' ? testsOnMain(args[0]) : tests(args[0]);
   } else if (cmd === 'flow' && args[0]) {
     process.exitCode = flow(args[0]);
   } else if (cmd === 'status') {
     process.exitCode = status();
+  } else if (cmd === 'start') {
+    process.exitCode = start(args[0]);
+  } else if (cmd === 'plan-folder') {
+    process.exitCode = planFolder();
   } else {
     const head = fs.readFileSync(process.argv[1], 'utf8').split('\n').slice(1);
     console.log(head.slice(0, head.findIndex(l => !l.startsWith('//'))).map(l => l.replace(/^\/\/ ?/, '')).join('\n'));

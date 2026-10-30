@@ -27,6 +27,11 @@ test('evals: a run\'s stream gives its tool calls, its final text and its totals
   const { calls, ...totals } = evals.parseStream(`${stream}\nnot a JSON line\n`);
   assert.deepStrictEqual(calls, [{ name: 'Bash', input: { command: 'rm -r -f build' }, result: 'blocked by the hook', error: true }]);
   assert.deepStrictEqual(totals, { final: 'It was blocked.', sessionId: 's1', turns: 2, ms: 4200, costUsd: 0.002, tokens: 3104 });
+  // waiting on a background subagent, the session reports a second part: its time, turns and tokens add up; its cost is the session's
+  const more = `${stream}\n${JSON.stringify({ type: 'result', subtype: 'success', result: 'Done after the review.', session_id: 's1', num_turns: 1, duration_ms: 800,
+    total_cost_usd: 0.003, usage: { input_tokens: 1, output_tokens: 10, cache_creation_input_tokens: 0, cache_read_input_tokens: 500 } })}`;
+  const { calls: _, ...both } = evals.parseStream(more);
+  assert.deepStrictEqual(both, { final: 'Done after the review.', sessionId: 's1', turns: 3, ms: 5000, costUsd: 0.003, tokens: 3615 });
 });
 
 test('evals: it runs only in a scratch app this run made', () => {

@@ -1,6 +1,10 @@
 # <ID>: <title>
 
 Source: <link to the task in Excel, Trello or the task platform>
+Mode: feature-by-feature
+
+<!-- Mode: feature-by-feature (m-feature's approval stops), or plan-all for a feature of specs/plan.md, approved in
+     the plan and built by /m-feature build. -->
 
 ## Goal
 
