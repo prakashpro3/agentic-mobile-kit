@@ -39,7 +39,7 @@ Build one kit that any React Native repo installs with a single command. It make
 | D3 | Write workflows as **Agent Skills**, not slash commands. | Skills work at project level in all six tools. Codex has deprecated custom prompts in favor of skills. |
 | D4 | **Enforcement lives outside the agent**, in git hooks, CI and scripts. Agent permissions and hooks are a second layer. | Rules files are only advice (CTX-09, GEN-07), and agent hooks vanish when you switch tools (XTL-05). Git hooks and CI apply no matter which tool or model wrote the code. |
 | D5 | **One writer, read-only helpers.** The main session writes code. Subagents only review or research. BA and Architect are phases of `feature` with a human approval step, not separate agents. | Parallel writers conflict and multiply token cost (ORC-02 to ORC-05), and handoffs lose decisions. |
-| D6 | **Work state lives in the repo:** `specs/<id>/requirements.md`, `design.md`, `tasks.md`, `progress.md` (with a handoff block updated after every step), plus `docs/ai/decisions.md`. A `pause` skill pushes it all before you stop, so any tool on any machine can pick up the work the next day (section 5.12). | Chat history, memories and approvals stay inside one tool on one machine (XTL-06, CTX-08, HUM-10). Git is the only thing every tool on every machine can read. The file names match Kiro's spec format. |
+| D6 | **Work state lives in the repo:** `specs/<id>/requirements.md`, `design.md`, `tasks.md`, `progress.md` (with a handoff block updated after every step), plus `docs/amk/decisions.md`. A `pause` skill pushes it all before you stop, so any tool on any machine can pick up the work the next day (section 5.12). | Chat history, memories and approvals stay inside one tool on one machine (XTL-06, CTX-08, HUM-10). Git is the only thing every tool on every machine can read. The file names match Kiro's spec format. |
 | D7 | **"Done" requires evidence:** command output, a test summary, and simulator/emulator screenshots, recorded in `progress.md` and in the PR. | Agents misreport success (TST-02, GEN-05, REQ-03) and can't see the app (TST-08). |
 | D8 | **Intake works from any source.** `feature` accepts pasted text, a file (CSV/XLSX export, Trello card text, a task from the team's task platform) or a link, and turns it into `requirements.md`. No tracker integration in v1. | Requirements arrive from three places. A common format matters more than an API connection. |
 | D9 | **Reuse before writing.** Workflows are adapted from Superpowers and Spec Kit skills (MIT). Stack knowledge is copied from Callstack, Expo and Google's Android skills (MIT and Apache-2.0), pinned to a commit. Changelogs, secret scanning, metadata checks and end-to-end tests use existing tools. Section 3.2 lists every piece. We write only what is specific to mobile and to the evidence rules. Full frameworks are not adopted (section 3.1). | Maintainers keep these current as frameworks change (GEN-09 to GEN-14). The borrowed skills already target the main failure modes (TST-02, DBG-01, REV-06), and less custom text means less for us to maintain. |
@@ -130,7 +130,7 @@ Rule: we write only what no one else has written. There are three ways to reuse:
 | A clean `uninstall` command | Removes the kit's files and marked sections, leaving the project's own content (section 4.1) |
 | Tool picker: detect installed tools and remember the choice | `init` asks which of the six tools the team uses (detected ones pre-ticked) and generates files only for those |
 | Workflow modes with hard size limits | Size triage in `feature` (section 5.2) |
-| Error log with cause, fix and prevention | `docs/ai/known-issues.md`: `bugfix` checks it first, and `learn` adds recurring errors |
+| Error log with cause, fix and prevention | `docs/amk/known-issues.md`: `bugfix` checks it first, and `learn` adds recurring errors |
 | Extra handoff fields: blocked items, notes for the next session, tool and model | The handoff block (section 5.12) |
 | Watchlist of files to confirm before editing | The "ask before editing" permission row (section 5.4), extended with mobile files |
 | Existing-project adoption: fit around existing patterns, adopt in steps | Section 4.1, "Adding the kit to an existing project" |
@@ -153,8 +153,8 @@ Rule: we write only what no one else has written. There are three ways to reuse:
   app repo
   ├─ Layer 3  Workflows    .agents/skills/  feature · bugfix · continue · review · release-notes · learn
   │                        (.claude/skills and .kiro/skills link here; the other four tools read it directly)
-  ├─ Layer 2  Context      AGENTS.md (+ one-line CLAUDE.md) · docs/ai/ · specs/
-  └─ Layer 1  Enforcement  .githooks/ · .github/workflows/ · scripts/ai/ · codemagic.yaml
+  ├─ Layer 2  Context      AGENTS.md (+ one-line CLAUDE.md) · docs/amk/ · specs/
+  └─ Layer 1  Enforcement  .githooks/ · .github/workflows/ · scripts/amk/ · codemagic.yaml
      + agent guardrails    .rulesync/ (permissions, hooks, subagents only)
                 │  rulesync generate (pinned version, 3 features)
                 ▼
@@ -172,11 +172,11 @@ CLAUDE.md                    # one line: @AGENTS.md
 .kiro/skills   -> ../.agents/skills   # folder link for Kiro
 .rulesync/                   # only for parts with no shared format
   subagents/                 # reviewer, researcher (read-only)
-  hooks.jsonc                # preToolUse → scripts/ai/guard.sh
+  hooks.jsonc                # preToolUse → scripts/amk/guard.js
   permissions.jsonc          # deny / ask / allow lists
 rulesync.jsonc               # six targets; features: permissions, hooks, subagents; pinned version
 .agents/skills/THIRD_PARTY.md   # vendored skills: source, commit, license
-docs/ai/                     # split the way Kiro's steering docs are
+docs/amk/                    # split the way Kiro's steering docs are
   product.md                 # what the app does, users, key journeys
   tech.md                    # stack, services, environments
   structure.md               # folders, layers, state, navigation, networking
@@ -187,7 +187,7 @@ docs/ai/                     # split the way Kiro's steering docs are
   team-process.md            # human rules (section 5.11)
 specs/_templates/            # requirements · design · tasks · progress
 .githooks/                   # pre-commit, pre-push (no dependencies)
-scripts/ai/                  # verify.sh · guard.sh · release-check.sh · pr-size.sh
+scripts/amk/                 # verify.sh · guard.js · release-check.js · specs.js · rn-check.js
 .github/workflows/ci.yml
 .github/pull_request_template.md
 codemagic.yaml               # added in Phase 5
@@ -210,7 +210,7 @@ The folder links work on macOS and Linux. Windows machines need git's symlink su
 `sync` updates a repo to a newer kit version, replacing only the marked sections and the files the kit owns. `doctor` checks that hooks are installed, that generated files are current, that each rules file is within its size limit and that the required scripts exist. On a new machine it also checks that dependencies, pods and `.env` are in place. `uninstall` removes the kit's files and marked sections and leaves the project's own content.
 
 **Adding the kit to an existing project:**
-- `docs/ai/` describes the patterns the project already uses; it doesn't impose new ones.
+- `docs/amk/` describes the patterns the project already uses; it doesn't impose new ones.
 - Adopt in two steps: first enforcement (git hooks, CI) and `AGENTS.md`, then the workflows once the team is comfortable.
 
 ### 4.2 Tool support
@@ -245,8 +245,8 @@ Size limit: 150 lines or 8 KB at most, so every tool loads all of it (CTX-10, CT
    - Never use `--no-verify`.
    - Never read or write secrets.
    - After 2 failed fix attempts, stop and report.
-   - Chat is not memory. Write every decision or instruction into the spec or `docs/ai/decisions.md` straight away, and update the handoff block in `progress.md` after every step.
-6. **Pointers** to `docs/ai/`, `specs/` and the workflow list. Details stay in those files, not here.
+   - Chat is not memory. Write every decision or instruction into the spec or `docs/amk/decisions.md` straight away, and update the handoff block in `progress.md` after every step.
+6. **Pointers** to `docs/amk/`, `specs/` and the workflow list. Details stay in those files, not here.
 
 ### 5.2 Workflows (skills)
 
@@ -255,12 +255,12 @@ Each workflow adapts the skills listed for it in section 3.2. What we add on top
 | Skill | Steps | Output | Issues addressed |
 |---|---|---|---|
 | `feature` | 1. Intake and size triage. **Quick change** (1 file, ≤20 lines): skip the spec, change, verify, commit. **Bug fix** (up to 5 files): hand over to `bugfix`. **Feature** (anything larger): the full flow below. If the work outgrows its size partway through, stop and move up a level.<br>2. **BA phase:** acceptance criteria plus an edge-case checklist (offline, error, empty, loading, permission denied, background/resume, screen sizes and tablets, dark mode, accessibility, iOS vs Android, analytics) and open questions. **Stop for approval.**<br>3. **Architect phase:** search for existing components and helpers first, then write the design and a task list. Each task is about 1 hour and under ~300 lines. **Stop for approval.**<br>4. Per task: implement, run `verify quick`, commit, record evidence in progress.md.<br>5. Run `verify ios` and `verify android` for screenshots.<br>6. Review by the reviewer subagent in a fresh context.<br>7. Open the PR from the template. | `specs/<id>/*`, commits, PR | REQ-01 to REQ-05, ARC-01 to ARC-06, GEN-05, GEN-06, TST-02, TST-08 |
-| `bugfix` | Check `docs/ai/known-issues.md` for a known fix → reproduce → write a failing test → find the root cause → minimal fix → regression test → evidence → PR. After 2 failed attempts, stop and report findings. | Test, fix, PR | DBG-01 to DBG-04, DBG-08, TST-04 |
+| `bugfix` | Check `docs/amk/known-issues.md` for a known fix → reproduce → write a failing test → find the root cause → minimal fix → regression test → evidence → PR. After 2 failed attempts, stop and report findings. | Test, fix, PR | DBG-01 to DBG-04, DBG-08, TST-04 |
 | `continue` | Run `git fetch` and warn if the branch is behind or has uncommitted changes. Read `AGENTS.md`, `specs/<id>/*` and `git log`. Start with any open question, then the next step, and never invent anything that isn't in the files. Confirm with the user, then resume. | Resumed work | XTL-06, CTX-03, CTX-05, ARC-03 |
 | `pause` | Update the handoff block in `progress.md`. Move decisions made in chat into the spec or `decisions.md`. Commit the work in progress to the feature branch (git hooks still run) and push it. | Pushed branch with a current handoff | XTL-06, XTL-08, CTX-08, HUM-10 |
 | `review` | Read-only checklist: scope, tests changed or weakened, platform parity, accessibility, performance, security, secrets. Findings come with a severity; no style nits. | Findings list | REV-02, REV-04 to REV-06, TST-01 |
 | `release-notes` | Build notes from a git range plus the specs. Outputs: Play "What's new" (≤500 characters), App Store "What's New" (≤4,000 characters), client changelog. Cite only real commits and tasks. | Notes | REL-08 |
-| `learn` | Turn a correction into the smallest durable change. Prefer a lint rule or guard over more prose, then docs, then a skill. Add recurring errors (error, cause, fix, prevention) to `docs/ai/known-issues.md`, and remove entries that no longer apply. | PR to the project or the kit | CTX-12, HUM-07, HUM-10 |
+| `learn` | Turn a correction into the smallest durable change. Prefer a lint rule or guard over more prose, then docs, then a skill. Add recurring errors (error, cause, fix, prevention) to `docs/amk/known-issues.md`, and remove entries that no longer apply. | PR to the project or the kit | CTX-12, HUM-07, HUM-10 |
 
 ### 5.3 Subagents
 
@@ -279,13 +279,13 @@ Defined once in `.rulesync/`; rulesync writes each tool's format.
 | Deny | `rm -rf`, `git reset --hard`, `git push --force`, `git clean -f`, `xcrun simctl erase`, `eas submit`, release `fastlane` lanes, production `eas update`, piping `curl` into `sh` |
 | Ask first | adding dependencies (`npm install`, `yarn add`, `npx expo install`), `git push` |
 | Ask before editing | `package.json` and lockfiles, `.github/workflows/*`, `app.json`/`app.config.*`, `eas.json`, `tsconfig.json`, Babel and Metro config; in bare projects also `Podfile`, `build.gradle`, `Info.plist`, `AndroidManifest.xml` |
-| Allow | `npm run lint/typecheck/test`, `scripts/ai/verify.sh`, `git status/diff/log/add/commit` |
+| Allow | `npm run lint/typecheck/test`, `scripts/amk/verify.sh`, `git status/diff/log/add/commit` |
 | Deny reading | `.env*` (except `.env.example`), `*.keystore`, `*.jks`, `*.p8`, `*.p12`, `*.mobileprovision`. Phase 0 showed Codex and the Antigravity CLI still read `.env`, so real secrets must stay out of the project folder (section 10). |
 | Deny editing | Expo CNG: all of `ios/` and `android/` (they are generated). Bare React Native: `*.pbxproj` |
 
 **`hooks.jsonc`:**
-- `preToolUse` on shell commands runs `scripts/ai/guard.sh`. It applies the same deny list but also catches variants that glob rules miss, such as `rm -r -f` or chained commands (SEC-15).
-- `stop` runs `scripts/ai/handoff-check.sh`. If code changed after the last handoff update, it reminds the agent to update `progress.md` first, or blocks the stop in tools that allow it (checked in P0).
+- `preToolUse` on shell commands runs `scripts/amk/guard.js`. It applies the same deny list but also catches variants that glob rules miss, such as `rm -r -f` or chained commands (SEC-15).
+- `stop` runs `scripts/amk/handoff-check.js`. If code changed after the last handoff update, it reminds the agent to update `progress.md` first, or blocks the stop in tools that allow it (checked in P0).
 
 None of this is a security boundary. Turn on each tool's sandbox where it offers one.
 
@@ -324,19 +324,19 @@ Also set up:
 
 ### 5.8 Verify scripts: the agent's eyes
 
-`scripts/ai/verify.sh quick|ios|android|all`
+`scripts/amk/verify.sh quick|ios|android|all`
 
 - **quick:** lint, typecheck and related tests.
-- **ios:** simulator build → install → launch → `xcrun simctl io booted screenshot` → `.ai/evidence/<task>/`.
-- **android:** `assembleDebug` → install on emulator → launch → `adb exec-out screencap -p` → `.ai/evidence/<task>/`.
+- **ios:** simulator build → install → launch → `xcrun simctl io booted screenshot` → `.amk/evidence/<task>/`.
+- **android:** `assembleDebug` → install on emulator → launch → `adb exec-out screencap -p` → `.amk/evidence/<task>/`.
 
 Each mode exits non-zero on failure and prints a one-line summary, which the agent copies into `progress.md`. Screenshots are the ground truth. A tool reporting "tap succeeded" is not (TST-11).
 
-The `.ai/evidence/` folder is gitignored. The PR author attaches the relevant screenshots. In Phase 4, CI uploads Maestro screenshots as build artifacts, which become the trusted record.
+The `.amk/evidence/` folder is gitignored. The PR author attaches the relevant screenshots. In Phase 4, CI uploads Maestro screenshots as build artifacts, which become the trusted record.
 
 ### 5.9 Release check
 
-`scripts/ai/release-check.sh` checks:
+`scripts/amk/release-check.js` checks:
 - version and build number are bumped on both platforms;
 - `PrivacyInfo.xcprivacy` is present;
 - every iOS permission has a usage string;
@@ -354,10 +354,10 @@ Optional per project, pinned and approved:
 - **Figma MCP:** for design-to-code. Its output is React + Tailwind by default, so the stack rules translate it to React Native (UI-01).
 - **One device driver:** mobile-mcp or Maestro MCP, evaluated in Phase 4.
 
-### 5.11 Team process (`docs/ai/team-process.md`)
+### 5.11 Team process (`docs/amk/team-process.md`)
 
 - The person who opens a PR owns it and must be able to explain every change without AI (REV-03, HUM-09).
-- Agent-made commits carry an `Assisted-by: <tool>/<model>` trailer and a `Spec: specs/<id>` trailer, so `git blame` leads to the spec and its decisions.
+- Commits made for a spec end with a `Spec: specs/<id>` trailer, so `git blame` leads to the spec and its decisions.
 - PRs stay under 600 changed lines; split anything bigger.
 - Each person runs at most 2 or 3 agents in parallel (HUM-06).
 - Juniors use an explain-first mode for learning tasks (HUM-04).
@@ -410,9 +410,9 @@ Estimates assume one engineer working with AI assistance.
 
 | Phase | Scope | Done when | Estimate |
 |---|---|---|---|
-| **P0 Compatibility spike** | Two sample apps (Expo and bare). In each tool, confirm that: `AGENTS.md` loads (Claude Code through `CLAUDE.md`); skills in `.agents/skills` and in the linked folders load and can be invoked; rulesync's output works, with the guard blocking `git reset --hard`, the `.env` read deny holding, and a subagent running; `specs/` is visible; and the `stop` hook can remind or block. | `docs/ai/tool-matrix.md` is written, with a fallback for anything that fails (copies instead of links, hand-written configs instead of rulesync) | 2–3 days |
+| **P0 Compatibility spike** | Two sample apps (Expo and bare). In each tool, confirm that: `AGENTS.md` loads (Claude Code through `CLAUDE.md`); skills in `.agents/skills` and in the linked folders load and can be invoked; rulesync's output works, with the guard blocking `git reset --hard`, the `.env` read deny holding, and a subagent running; `specs/` is visible; and the `stop` hook can remind or block. | `docs/tool-matrix.md` is written, with a fallback for anything that fails (copies instead of links, hand-written configs instead of rulesync) | 2–3 days |
 | **P1 Enforcement** | Git hooks with gitleaks, PR template, CI (`checks`, `android`, `ios`) starting from Callstack's `github-actions` skill, dependency review, branch protection guide | Test PRs containing a secret, a 1,000-line diff, a failing test and a broken iOS build are each blocked | 3–4 days |
-| **P2 Context** | `AGENTS.md` template with version fill-in; `docs/ai` skeleton (product, tech, structure, conventions, decisions); spec templates; RN stack pack (rules, restricted-import lint presets); vendored Callstack, Expo and Android skills pinned in `THIRD_PARTY.md`; rulesync config and drift check | Each tool correctly answers "how do I test, what counts as done, what must I not touch" with no extra prompting | 3–4 days |
+| **P2 Context** | `AGENTS.md` template with version fill-in; `docs/amk` skeleton (product, tech, structure, conventions, decisions); spec templates; RN stack pack (rules, restricted-import lint presets); vendored Callstack, Expo and Android skills pinned in `THIRD_PARTY.md`; rulesync config and drift check | Each tool correctly answers "how do I test, what counts as done, what must I not touch" with no extra prompting | 3–4 days |
 | **P3 Workflows** | `feature`, `bugfix`, `continue`, `pause` and `review`, adapted from the skills in section 3.2; handoff block and `stop` check; subagents; guardrails | A real feature started in Claude Code on one Mac is paused, then finished the next day in Cursor or Kiro on another Mac via `continue`, and its PR passes CI with evidence. A real bug is fixed via `bugfix`, failing test first | 3–4 days |
 | **P4 Mobile verification** | Verify scripts with screenshots, 3 Maestro flows, Android E2E in CI, evaluation of one device MCP | An agent's "done" includes screenshots for both platforms, and CI runs the flows nightly | 4–5 days |
 | **P5 Release, learning, packaging** | Release check with fastlane `precheck`; `release-notes` built on git-cliff; Codemagic signed builds from their React Native sample; `learn` adapted from Superpowers `writing-skills`; public npm package with `init`/`sync`/`doctor`/`uninstall`, published through trusted publishing; team guide and a 1-hour training | A pilot release ships through Codemagic, and a second project installs the kit in under 15 minutes | 4–5 days |
@@ -425,7 +425,7 @@ The total is about 5–6 weeks for one engineer.
 | # | Root cause | Issues | Components | Phase |
 |---|---|---|---|---|
 | 1 | The agent checks its own work | REQ-03, GEN-05, TST-01/02/04/05, DBG-02, ORC-07, GIT-01 | D7 evidence, `verify.sh`, reviewer subagent, CI | P1, P3, P4 |
-| 2 | Missing project knowledge | REQ-01/02, ARC-01/02/03, API-02, CTX-08, HUM-10 | `docs/ai/`, `feature` BA and Architect phases, decision log | P2, P3 |
+| 2 | Missing project knowledge | REQ-01/02, ARC-01/02/03, API-02, CTX-08, HUM-10 | `docs/amk/`, `feature` BA and Architect phases, decision log | P2, P3 |
 | 3 | Long sessions degrade, and context is lost between sessions | CTX-01–06, CTX-08, CTX-10, ARC-05/06, ORC-02 | Small tasks, the handoff block, `pause` and `continue`, the "chat is not memory" rule, rule size limits | P2, P3 |
 | 4 | Outdated platform knowledge | GEN-08–14, ARC-07, BLD-04, UI-05, API-01 | Version fill-in, upstream skills, restricted-import lint presets | P2 |
 | 5 | Rules are advice, not enforcement | CTX-09, GEN-06/07, GIT-04, DBG-07, BLD-02/03 | Git hooks, CI, permissions, guard hook, native-folder deny | P1, P3 |
@@ -476,7 +476,7 @@ The total is about 5–6 weeks for one engineer.
 
 ### 9.1 What a public package changes
 
-- **Generic content only.** The kit holds no company-specific rules, URLs or names. Team-specific content (conventions, task-platform links, team process) lives in each project's `docs/ai/`.
+- **Generic content only.** The kit holds no company-specific rules, URLs or names. Team-specific content (conventions, task-platform links, team process) lives in each project's `docs/amk/`.
 - **License:** MIT for our own content. Vendored MIT and Apache-2.0 skills keep their license and notice files, listed in `THIRD_PARTY.md`.
 - **Safe publishing:** releases are published from GitHub Actions with npm trusted publishing (no long-lived npm token) and provenance, with 2FA on the npm account. The kit must not become the next compromised package (SEC-01, SEC-19).
 - **Install:** `npx agentic-mobile-kit init`, or `npx github:<org>/agentic-mobile-kit init` from the git URL.
