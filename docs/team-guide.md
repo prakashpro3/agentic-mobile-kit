@@ -47,6 +47,7 @@ Every AI tool reads the same rules (`AGENTS.md`), the same project facts (`docs/
 | Fix a bug | `m-bugfix <report>` | Checks known issues → a check that fails on the bug (a test, or a Maestro flow for a device bug) → three to five likely causes, shown to you → root cause → smallest fix → verifies, keeping the check |
 | Stop for now, or switch tool | `m-pause` | Writes the handoff in `progress.md`, moves decisions out of the chat, commits as `wip:` and pushes |
 | Carry on anywhere | `m-continue <id>` | Reads the spec and handoff, tells you the open question, the status and the next step, then waits for you |
+| Test a change or a release | `m-test <id>`, or `m-test release <version>` | The code checks, the device flows of the spec and of the areas it touches, then the read-only `m-tester` gives each scenario a status (passed, failed, flaky, blocked, not run, no check) and the report says Ready or Not ready, in `specs/<id>/test-report.md`. `m-feature`, `m-change`, `m-bugfix` and `m-release` run it |
 | Review a branch | `m-review` | A read-only review for scope, tests, both platforms, error states, security and native changes |
 | Ship a release | `m-release <version>` | Changelog from real commits, store and client notes, version bump, release check, release PR, then the tag. Signed builds come from Codemagic, or from `sh scripts/amk/release-build.sh` run by a person on a Mac. |
 | Stop a mistake from repeating | `m-learn <what went wrong>` | The smallest lasting fix: a check, a known-issues entry, a docs line or a skill step |
@@ -58,6 +59,17 @@ When agents need your decisions, they ask in rounds: every question they can ask
 `specs/current/` is the living spec: one file per area of the app, saying what it does now, requirement by requirement. Each feature's requirements say what they add, change and remove, and `m-feature` merges them in when the feature is done (`node scripts/amk/specs.js merge <id>`). `m-bugfix` corrects it when a fix changes behavior, and `node scripts/amk/specs.js status` shows every feature's progress. `node scripts/amk/specs.js tests <id>` lists what tests the areas a change touches: their specs and flows, tests to change or retire, scenarios nothing checks, and flows no spec links to (from before the app had specs), with the `verify.sh` command that runs them. `specs.js flow <id>` starts a feature's flow with a block for each scenario. It starts empty and grows with each change, so there's no need to write it all up front.
 
 Small changes don't need a skill. Ask the agent directly; the rules in `AGENTS.md` and the git hooks still apply.
+
+## How a change goes
+
+The same steps in every workflow, with the skill that does each:
+1. understand the request, and choose the workflow (`m-feature`, `m-change`, `m-bugfix`);
+2. user stories, use cases and requirements, which you approve;
+3. the design with its test plan, which you approve;
+4. the build, one task at a time, with its tests;
+5. `m-test`: the checks, the devices, and each scenario's status;
+6. fix and test again until the report says Ready;
+7. the report and the PR.
 
 ## Switching tool or machine in the middle of a task
 
@@ -72,7 +84,8 @@ An agent's work is done only when:
 1. lint, typecheck and tests pass, and `rn-check` finds no React Native problem in the lines the branch changed, with the command output from that session;
 2. UI changes were checked on both platforms with `sh scripts/amk/verify.sh all --spec <id>`, and the screenshots were looked at (they're in `.amk/evidence/<id>/`). On Windows or Linux, `verify.sh` checks Android only; a teammate with a Mac runs `verify.sh ios` before the PR is merged;
 3. the diff stays inside the task;
-4. `specs/<id>/progress.md` is updated.
+4. `specs/<id>/progress.md` is updated;
+5. tests are assessed (added, changed or retired, or why none), the flows of the areas it touches ran, and what didn't run is listed with its reason, in the test report.
 
 If an agent says "done" without these, it isn't done. Open the screenshots yourself before you approve a UI PR.
 
@@ -128,6 +141,8 @@ From `docs/amk/team-process.md`:
 | Checking a few flows quickly | Tag them in their header (`tags: [smoke]`) and run `sh scripts/amk/verify.sh all --tags smoke`; the full set before the PR. Steps several flows share (logging in, test data) go in `.maestro/subflows/` (`specs/_templates/subflow.yaml`) |
 | `verify.sh quick` reports a React Native problem (✗) | `rn-check` reads only the lines your branch adds or changes, for mistakes the React Native rules list: removed or private APIs, the old `SafeAreaView`, tokens in AsyncStorage, secrets and base64 images in code. The agent asks you, for each one: fix it, or keep the line with `// amk-ok <date>: <your reason>`; it never adds one by itself. A line kept over two weeks ago is asked about again when its file changes. Warnings (!), such as a button without a label or an empty `catch`, don't fail it |
 | CI's "Tool configs match .rulesync/" step fails, or `doctor` says the tool configs are out of date | Something in `.claude/`, `.codex/` or `.agents/` differs from what `.rulesync/` generates. Run `npx -y rulesync@27.0.0 generate && node scripts/amk/tool-configs.js` and commit. Before 0.8.0 this step failed in every app set up for Antigravity, as the kit fixes the hooks file rulesync writes for it: update the kit |
+| `coverage.js check` fails | A coverage measure of the Jest tests dropped more than the slack under its floor in `.amk-coverage`: tests were deleted or weakened, or new code has none. Add the tests. After a real refactor, `node scripts/amk/coverage.js lower --reason "<why>"` lowers the floors and keeps the reason; when coverage grows, `coverage.js raise`. Without `.amk-coverage` there's no check: `coverage.js write` makes one |
+| `verify.sh` lists screenshots that changed | Each device check compares its screenshots with the approved ones, in `.amk/approved/` on your machine, leaving out the status bar's clock. Open the ones it lists; when they look right, `sh scripts/amk/verify.sh approve --label <id>` makes them the approved ones |
 | `rn-check` warns about a file's size or a function's complexity | A source file over 400 lines that's new or grows, and a function more complex than 20 (as ESLint's `complexity` rule counts it, through the app's own ESLint) that's new or got more complex. Split them. Files already over the limit don't warn until they grow: `node scripts/amk/rn-check.js --write-caps` writes `.amk-size-caps` with each one's size as its cap, and later lowers the caps as files shrink. Change the limits in that file (`limit`, `complexity`), and commit it |
 | A flow is reported as flaky | It failed, then passed when `verify.sh` ran it once more. That doesn't fail the check, but it's a bug to fix (a race, or a wait too short): the first try's log and screen are in `.amk/evidence/<id>/maestro-logs/<screen>-<flow>-first-try/`, and `report.md` lists it |
 | `verify.sh` stops because the disk is nearly full | A build needs about 5 GB free, and a first iOS build about 8 (pods, Hermes and a simulator). One that runs out halfway wastes the run, so it stops first (not in CI). Free some: Xcode's DerivedData, simulators and emulators you don't use, Gradle's caches |

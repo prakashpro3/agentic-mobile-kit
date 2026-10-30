@@ -5,6 +5,7 @@ const fs = require('fs');
 const path = require('path');
 const { spawnSync } = require('child_process');
 const tmpDir = require('./tmp');
+const png = require('./png');
 
 const TEMPLATE = path.join(__dirname, '../stacks/react-native/template');
 const write = (dir, f, text, mode) => { fs.mkdirSync(path.dirname(path.join(dir, f)), { recursive: true }); fs.writeFileSync(path.join(dir, f), text, { mode }); };
@@ -474,6 +475,28 @@ echo "Launch app... COMPLETED"; touch "$out/shot.png"`;
   const r = verifyAndroid({ connected: ['emulator-5556 P35'], build: true, maestro: driverOnce });
   assert.match(r.out, /android: Maestro stopped before flow smoke started; running it once more\nandroid: flows 1\/1 passed, 1 screenshots/);
   assert.doesNotMatch(r.out, /flaky/);
+});
+
+test('verify.sh: each check compares its screenshots with the approved ones; verify.sh approve makes them the approved ones', { skip }, () => {
+  const src = tmpDir('amk-shot-src-');
+  const [green, red] = [[0, 200, 0], [200, 0, 0]].map((c, i) => {
+    const f = path.join(src, `${i}.png`);
+    fs.writeFileSync(f, png(30, 60, 3, png.solid(30, 60, 3, c)));
+    return f;
+  });
+  // Maestro's stand-in saves the picture SHOT_SRC names as the flow's screenshot
+  const copy = String.raw`out=$(echo "$@" | sed 's/.*--test-output-dir \([^ ]*\).*/\1/'); cp "$SHOT_SRC" "$out/shot.png"`;
+  const check = (shot, approved) => verifyAndroid({ connected: ['emulator-5556 P35'], build: true, maestro: copy, args: ['android', '--flavor', 'x', '--label', 'run', '--screens', 'phone-portrait'],
+    env: { SHOT_SRC: shot, AMK_A11Y: '0' }, prepare: approved && (app => { fs.mkdirSync(path.join(app, '.amk/approved/android'), { recursive: true }); fs.copyFileSync(approved, path.join(app, '.amk/approved/android/shot.png')); }) });
+  const first = check(green);
+  assert.match(first.out, /^screenshots: none approved yet\. Once these look right: sh scripts\/amk\/verify\.sh approve --label run$/m);
+  const approve = spawnSync('sh', ['scripts/amk/verify.sh', 'approve', '--label', 'run'], { cwd: first.app, encoding: 'utf8' });
+  assert.match(approve.stdout, /^approved: 1 screenshots of run are the approved ones now/m);
+  assert.ok(fs.readFileSync(path.join(first.app, '.amk/approved/android/shot.png')).equals(fs.readFileSync(green)));
+  assert.match(check(green, green).out, /^screenshots: 0 changed since the approved ones, 0 new, 1 the same$/m);
+  const changed = check(red, green);
+  assert.match(changed.out, /^screenshots: 1 changed since the approved ones, 0 new, 0 the same\n {2}changed: \.amk\/evidence\/run\/android\/shot\.png \(100% differs\)/m);
+  assert.match(fs.readFileSync(path.join(changed.app, '.amk/evidence/run/report.md'), 'utf8'), /^Screenshots to look at, as they differ from the approved ones: android\/shot\.png \(changed, 100% differs\)$/m);
 });
 
 test('verify.sh --spec a,b: the flows of each spec, or of a flow-name prefix, once each; several need --label', { skip }, () => {

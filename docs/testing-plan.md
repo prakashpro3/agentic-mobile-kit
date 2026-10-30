@@ -1,6 +1,6 @@
 # Plan: tests that grow with each change, a tester, user stories, planning all features before building, and hands-off running
 
-Status: 0.8.0 built on 2026-10-30, not released yet; 0.9.0 to 0.14.0 planned.
+Status: 0.8.0 tagged and staged on npm on 2026-10-30 (live once approved); 0.9.0 built; 0.10.0 to 0.14.0 planned.
 
 ## In one page
 
@@ -727,6 +727,12 @@ Each release ships on its own and keeps its own docs current: both `AGENTS.md` f
 - **The question tool in the eval suite:** `claude -p` has no `AskUserQuestion`, so the suite checks the numbered fallback; the tool itself waits for a case run through the Agent SDK.
 - **Codex's switch** ships: Codex reads it from the project's config once the folder is trusted (checked with `codex features list`).
 - **Moved to 0.9.0, with the tester that writes the test report:** the definition of done's fifth item, and the PR template's link to the test report. The PR template's test lines and "what wasn't tested" are in 0.8.0.
+
+**What building 0.9.0 settled:**
+- **Screenshots are compared by `verify.sh`, not Maestro's `assertScreenshot`,** which fails a flow on a mismatch and keeps its reference images beside the flows, in git. `scripts/amk/shots.js` compares each screenshot with the approved one in `.amk/approved/<screen>/` (on the machine), with a small PNG reader and no dependency. It leaves out the status bar (the top 6%, with the clock) rather than fixing it on the device, so a check changes nothing on a user's simulator or emulator. A screenshot changed when over 1% of the rest differs.
+- **Coverage floors live in `.amk-coverage`** at the project root. `coverage.js check` runs Jest with its own `--coverageThreshold`, but judges by the coverage numbers alone: failing tests are `verify.sh quick`'s to judge against the base branch, and many apps' base branches already fail some.
+- **The design review stays in `m-feature`**, after `m-test`, on the screenshots `verify.sh` lists as changed.
+- **"passed (mock API)"** waits for the mock mode in 0.13.0; until then `m-tester` uses the other six statuses.
 
 ## Compatibility with apps that sync
 

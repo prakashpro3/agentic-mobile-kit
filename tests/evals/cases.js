@@ -54,6 +54,34 @@ const questionsIn = run => numbered(run).filter(l => /\?/.test(l) && !approval(l
 // an approval asked in the same numbered round as other questions, not as a question of its own
 const approvalInRound = run => questionsIn(run).length > 0 && numbered(run).some(approval);
 
+// a stand-in for Jest that verify.sh quick can compare with the base branch: the test named in FAIL fails
+const fakeJest = fail => `const fs = require('fs'), path = require('path');
+const out = (process.argv.find(a => a.startsWith('--outputFile=')) || '').slice(13);
+const results = [{ name: path.resolve('__tests__/home.test.js'), status: ${fail ? "'failed'" : "'passed'"}, assertionResults: [{ fullName: 'Shows the welcome screen', status: ${fail ? "'failed'" : "'passed'"} }] }];
+if (out) fs.writeFileSync(out, JSON.stringify({ testResults: results }));
+console.log(${fail ? "'FAIL __tests__/home.test.js\\n  ✕ Shows the welcome screen\\n    expected the welcome screen, got a blank one'" : "'PASS __tests__/home.test.js'"});
+process.exit(${fail ? 1 : 0});
+`;
+const SPEC_EV2 = `# EV-2: Welcome screen
+
+## Goal
+
+The app opens on its welcome screen, with its version.
+
+## ADDED Requirements: start
+
+### Requirement: Opens on the welcome screen
+The app SHALL open on its welcome screen and show its version.
+
+#### Scenario: Shows the welcome screen
+- WHEN the user opens the app
+- THEN the welcome screen shows
+
+#### Scenario: Shows the version
+- WHEN the welcome screen shows
+- THEN it shows the app's version
+`;
+
 module.exports = [
   {
     name: 'guard-after-cd', skill: 'guard (hook)',
@@ -136,6 +164,34 @@ module.exports = [
         !git(dir, 'log', '--format=%s').split('\n').includes(`docs(spec): ${id} approved`) && `no approval commit "docs(spec): ${id} approved"`,
         !testRows(dir, id).length && 'no scenario in design.md\'s Tests',
         codeChanged(dir, base).length && `it changed code before the design was approved: ${codeChanged(dir, base).join(', ')}`,
+      ].filter(Boolean);
+    },
+  },
+  {
+    name: 'm-test-not-ready', skill: 'm-test',
+    about: 'a failing Jest test named after a scenario, and a scenario nothing checks: the report says failed, no check and Not ready',
+    setup: dir => {
+      const pkg = JSON.parse(read(dir, 'package.json'));
+      write(dir, 'package.json', JSON.stringify({ ...pkg, scripts: { ...pkg.scripts, test: 'node fake-jest.js' } }, null, 2));
+      write(dir, 'fake-jest.js', fakeJest(false));
+      write(dir, '__tests__/home.test.js', "it('Shows the welcome screen', () => {});\n");
+      commit(dir, 'tests');
+      git(dir, 'switch', '-q', '-c', 'feature/EV-2');
+      write(dir, 'specs/EV-2/requirements.md', SPEC_EV2);
+      write(dir, 'specs/EV-2/progress.md', 'Status:        in progress — task 1 of 1\n');
+      write(dir, 'fake-jest.js', fakeJest(true));
+      commit(dir, 'EV-2');
+    },
+    runs: [{ prompt: '/m-test EV-2 (no simulator or emulator on this machine: skip the device step, and say so in the report)',
+      tools: ['Read', 'Glob', 'Grep', 'Write', 'Edit', 'Agent', 'Task', 'Bash(sh scripts/amk/verify.sh *)', 'Bash(node scripts/amk/*)', 'Bash(git diff*)', 'Bash(git log*)', 'Bash(git status*)'], maxTurns: 40, budget: 2 }],
+    check: (dir, [r]) => {
+      const report = read(dir, 'specs/EV-2/test-report.md') || '';
+      return [
+        !bash(r, 'verify.sh quick').length && 'it never ran verify.sh quick',
+        !report && 'no specs/EV-2/test-report.md',
+        report && !/Not ready/i.test(report) && 'the report doesn\'t say Not ready',
+        report && !/Shows the welcome screen[^\n]*\bfailed\b/i.test(report) && '"Shows the welcome screen" isn\'t failed',
+        report && !/Shows the version[^\n]*\bno check\b/i.test(report) && '"Shows the version" isn\'t no check',
       ].filter(Boolean);
     },
   },

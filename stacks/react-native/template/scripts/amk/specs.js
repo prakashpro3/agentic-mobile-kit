@@ -443,7 +443,7 @@ if (require.main === module) {
   } else if (cmd === 'status') {
     process.exitCode = status();
   } else {
-    const head = fs.readFileSync(__filename, 'utf8').split('\n').slice(1);
+    const head = fs.readFileSync(process.argv[1], 'utf8').split('\n').slice(1);
     console.log(head.slice(0, head.findIndex(l => !l.startsWith('//'))).map(l => l.replace(/^\/\/ ?/, '')).join('\n'));
     process.exitCode = 1;
   }

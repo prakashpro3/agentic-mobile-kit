@@ -52,9 +52,10 @@ test('fresh install: files, filled AGENTS.md, links, hooks, scripts; no CI unles
   if (process.platform === 'win32') assert.match(git(dir, 'ls-files', '-s', '.githooks/pre-commit'), /^100755 /, 'staged as executable');
   else assert.ok(fs.statSync(path.join(dir, '.githooks/pre-commit')).mode & 0o111, 'pre-commit is executable');
   assert.strictEqual(fs.readlinkSync(path.join(dir, '.claude/skills')).replace(/\\/g, '/'), '../.agents/skills');
-  for (const skill of ['m-feature', 'm-change', 'm-onboard', 'm-prototype']) assert.ok(fs.existsSync(path.join(dir, `.agents/skills/${skill}/SKILL.md`)), skill);
+  for (const skill of ['m-feature', 'm-change', 'm-onboard', 'm-prototype', 'm-test']) assert.ok(fs.existsSync(path.join(dir, `.agents/skills/${skill}/SKILL.md`)), skill);
   // the app's words, and the questions for someone else to answer
-  for (const f of ['docs/amk/glossary.md', 'specs/_templates/questions.md', 'docs/amk/design-system.md', '.rulesync/subagents/m-design-reviewer.md']) assert.ok(fs.existsSync(path.join(dir, f)), f);
+  for (const f of ['docs/amk/glossary.md', 'specs/_templates/questions.md', 'docs/amk/design-system.md', '.rulesync/subagents/m-design-reviewer.md',
+    '.rulesync/subagents/m-tester.md', 'specs/_templates/test-report.md', 'scripts/amk/coverage.js', 'scripts/amk/shots.js', 'scripts/amk/redact.js']) assert.ok(fs.existsSync(path.join(dir, f)), f);
   assert.match(read(dir, '.gitignore'), /^\.env$/m);
   assert.match(read(dir, '.gitignore'), /^\.amk\/$/m);
   assert.match(read(dir, '.gitignore'), /^\.maestro\/\.amk-\*$/m, 'the flow copies verify.sh runs for a moment');

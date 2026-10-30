@@ -36,6 +36,7 @@ Each choice prints the command it runs, for scripts and CI: `init` (with `--ci g
 | Fix a bug | `m-bugfix` | Makes the bug fail on demand (a test, or a Maestro flow on the device), lists the likely causes, finds the root cause, then makes the smallest fix |
 | Stop, or switch tool or machine | `m-pause` | Writes a handoff in the spec, commits and pushes |
 | Carry on anywhere | `m-continue` | Reads the spec and handoff, then picks up at the next step |
+| Test a change or a release | `m-test` | Runs the checks and the device flows of the change and the areas it touches; a read-only tester gives each scenario a status, and the report says Ready or Not ready |
 | Review a branch | `m-review` | Checks the work against the spec (complete, correct, coherent) and covers both platforms, error states, security and native changes |
 | Ship a release | `m-release` | Changelog from real commits, store and client notes, versions, release check, release PR, tag, signed builds |
 | Stop a mistake repeating | `m-learn` | Turns a correction into a lasting check, a known-issues entry or a rule |

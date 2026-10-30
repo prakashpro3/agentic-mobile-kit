@@ -6,6 +6,7 @@
 
 - [ ] Tests: <!-- command you ran and its result -->
 - [ ] Tests added, changed or retired: <!-- which ones, or none and why (the spec's design.md, ## Tests) -->
+- [ ] Test report: <!-- specs/<id>/test-report.md, from m-test, with its verdict -->
 - [ ] iOS: <!-- screenshot, or why it isn't needed -->
 - [ ] Android: <!-- screenshot, or why it isn't needed -->
 

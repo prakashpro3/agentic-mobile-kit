@@ -36,7 +36,8 @@ A task is done only when:
 1. `sh scripts/amk/verify.sh quick` passes (lint, typecheck, tests) and you show its output from this session. In an app whose base branch already fails some of them, it passes when your change adds no new failure, and lists the old ones: leave those alone unless the task is to fix them;
 2. UI changes were checked with `sh scripts/amk/verify.sh all --spec <id>` on both iOS and Android, on each screen listed above, and you looked at the screenshots. On Windows or Linux it covers Android only: say in `progress.md` and the PR that iOS still needs a Mac, and don't merge until a teammate has checked it;
 3. the change stays inside the task's scope;
-4. `specs/<id>/progress.md` is updated, when working from a spec.
+4. `specs/<id>/progress.md` is updated, when working from a spec;
+5. tests are assessed (added, changed or retired, or why none), the flows of the areas it touches ran, and what didn't run is listed with its reason, in `specs/<id>/test-report.md` (`m-test`).
 
 Never say a check passed unless you ran it in this session.
 

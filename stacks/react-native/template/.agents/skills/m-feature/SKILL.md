@@ -57,17 +57,11 @@ After the main screen's task, show the user its screenshot and **stop until they
 
 If building shows the plan is wrong: when the intent is the same, update `design.md` or `tasks.md` and tell the user what changed. A requirement that changes gets an entry under `## Changes after approval` in `requirements.md` (before and after, why, and the stories, scenarios, tasks, tests and flows it changes), and you stop for its approval, a question of its own. When the intent itself changed, or the scope grew into different work, stop and suggest finishing this feature small and starting a new one.
 
-## 5. Check against the spec
+## 5. Test it
 
-When all tasks are done:
-1. Run `sh scripts/amk/verify.sh plan` with the options of the regression command in `design.md`'s Tests (`--spec <id>,<the specs of the areas it touches> --label <id>`: the feature's flows and those it could break). It says how many devices this machine's memory can check at the same time, and prints the commands.
-   - **One command** (`verify.sh all` with those options): run it. Then **open the screenshots** in `.amk/evidence/<id>/` and check each one against its scenario, in every screen's folder (phone, landscape, tablet).
-   - **A plan, and your tool has subagents:** run its `quick` and `build` commands as printed (nothing added: the plain commands are the ones people allow), then, round by round, start one `m-device-checker` subagent per device command of the round, all at once, and wait for their reports before the next round; each runs its device (or its part of the flows), checks its screenshots and hands back a report. When all are back, check them yourself: every flow passed, every screen has screenshots in its folder, or in each `part-k/` folder when its flows ran in parts (list them), and open every screenshot a report flags plus at least one per screen. A report alone isn't evidence. Without subagents, run that `verify.sh all` command instead.
+When all tasks are done, run `m-test <id>`: the code checks, the device flows of the feature and of the areas it touches, and the test report, where each scenario gets a status. Fix what fails and run it again until the report says Ready (after two failed attempts at the same fix, stop and report). Where the code and the spec disagree, fix whichever is wrong, asking first if it's the spec: the spec must describe what ships. Off a Mac, record in `progress.md` that iOS still needs checking on a Mac, and say so in the PR.
 
-   Then **the design review**: give the screenshot folders to the `m-design-reviewer` subagent, which sees only them, `docs/amk/design-system.md` and the UI/UX level in `design.md` (without subagents, check the same yourself). Fix what it finds, or tell the user why one stays.
-
-   Off a Mac it checks Android only: record in `progress.md` that iOS still needs `verify.sh ios --spec <id>` on a Mac, and say so in the PR. A turned screen's screenshots are landscape; a portrait one means the app didn't turn. Maestro can report a tap as passed when nothing happened, so the screenshots are the evidence, not the log.
-2. Go through every scenario and note its evidence: a test name, command output, or the screen checked. Where the code and the spec disagree, fix whichever is wrong, asking first if it's the spec. The spec must describe what ships.
+Then **the design review**: give the screenshots `verify.sh` listed as changed (all of them, the first time) to the `m-design-reviewer` subagent, which sees only them, `docs/amk/design-system.md` and the UI/UX level in `design.md` (without subagents, check the same yourself). Fix what it finds, or tell the user why one stays. Once the user accepts the look, `sh scripts/amk/verify.sh approve --label <id>` makes these screenshots the approved ones.
 
 ## 6. Update the living spec and the docs
 

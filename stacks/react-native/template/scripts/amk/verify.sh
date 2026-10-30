@@ -3,7 +3,7 @@
 # and Android emulator, running Maestro flows and saving screenshots as evidence. Apps that support tablets or
 # landscape (scripts/amk/screens.js) are checked on each: an iPad simulator and a tablet emulator, and turned.
 #
-# Usage: sh scripts/amk/verify.sh [quick|ios|android|all|build|plan] [--spec <ids>] [--flow <file>] [--label <name>]
+# Usage: sh scripts/amk/verify.sh [quick|ios|android|all|build|plan|approve] [--spec <ids>] [--flow <file>] [--label <name>]
 #                                [--flavor <name>] [--scheme <name>] [--screens <list>] [--no-build] [--related]
 #   quick           lint, typecheck, tests
 #   --related       quick: only the Jest tests related to the files this branch changed, for each task while building
@@ -13,6 +13,8 @@
 #   build           the release builds only, iOS and Android at the same time, for --no-build checks after it
 #   plan            how many devices this machine's memory can check at the same time, and the commands to run:
 #                   one per device, in rounds when they don't all fit, the flows split into parts when there's room
+#   approve         the last check's screenshots (of --spec or --label) become the approved ones, in .amk/approved/:
+#                   after each device check, the screenshots that differ from them are listed, for a look
 #   --spec <ids>    run .maestro/<id>*.yaml and save evidence in .amk/evidence/<id>/. Several, comma-separated, run the
 #                   flows of each (a flow's name prefix works too: offline-sync runs offline-sync-1.yaml) and need --label
 #   --flow <file>   run only this flow: a path in the project, or anywhere (an absolute path)
@@ -1185,12 +1187,15 @@ case $mode in
   all) quick; ios; android ;;
   build) build ;;
   plan) plan; exit 0 ;;
-  *) echo "verify: unknown mode $mode (quick, ios, android, all, build or plan)"; exit 2 ;;
+  approve) node scripts/amk/shots.js approve "$evidence"; exit $? ;;
+  *) echo "verify: unknown mode $mode (quick, ios, android, all, build, plan or approve)"; exit 2 ;;
 esac
 
-# the run's report, from every screen checked so far: other devices, parts and rounds add theirs
+# the run's report, from every screen checked so far: other devices, parts and rounds add theirs. First, the screenshots
+# that differ from the approved ones, which the report lists too
 case $mode in
-  ios | android | all) if [ -n "$(find "$evidence" -name .flows 2> /dev/null | head -n 1)" ] && node scripts/amk/report.js "$evidence" > /dev/null 2>&1; then
+  ios | android | all) [ -z "$(find "$evidence" -name .flows 2> /dev/null | head -n 1)" ] || node scripts/amk/shots.js compare "$evidence" || true
+    if [ -n "$(find "$evidence" -name .flows 2> /dev/null | head -n 1)" ] && node scripts/amk/report.js "$evidence" > /dev/null 2>&1; then
       echo "Report: ${evidence#"$root"/}/report.md (each flow's result, why one failed, and its screenshots)"
     fi ;;
 esac

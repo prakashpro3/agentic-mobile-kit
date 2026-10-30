@@ -33,6 +33,9 @@ jobs:
           node scripts/amk/baseline.js lint
           node scripts/amk/baseline.js typecheck
           node scripts/amk/baseline.js test
+      - name: Coverage floors (.amk-coverage; tests deleted or weakened fail it)
+        if: hashFiles('.amk-coverage') != ''
+        run: node scripts/amk/coverage.js check
       - name: Tool configs match .rulesync/ (run "npx -y rulesync@27.0.0 generate && node scripts/amk/tool-configs.js" and commit if this fails)
         if: hashFiles('rulesync.jsonc') != ''
         run: npx -y rulesync@27.0.0 generate > /dev/null && node scripts/amk/tool-configs.js && git diff --exit-code -- .claude .codex .agents .antigravity
