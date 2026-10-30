@@ -1,0 +1,13 @@
+{
+  "m-bugfix": 700,
+  "m-change": 700,
+  "m-continue": 300,
+  "m-explore": 450,
+  "m-feature": 2300,
+  "m-learn": 550,
+  "m-onboard": 1200,
+  "m-pause": 250,
+  "m-prototype": 1100,
+  "m-release": 850,
+  "m-review": 1000
+}

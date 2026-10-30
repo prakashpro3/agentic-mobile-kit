@@ -26,6 +26,19 @@
 
 ## Files to change
 
+## Tests
+
+<!-- How each scenario is checked, approved with the design. `node scripts/amk/specs.js tests <id>` lists what tests the
+     areas this touches. A Jest test is named after its scenario; a flow block is "# Scenario <n>: <name>" in .maestro/<id>.yaml;
+     manual steps only for what a flow can't do (a payment sheet, a push notification). -->
+
+| Scenario | Check |
+|---|---|
+| <name> | <Jest: file "it() title", a flow block, or manual: steps> |
+
+- To change or retire: <what checks a requirement this modifies or removes, and what happens to it>, or none
+- Regression: <the command specs.js tests prints, with the flows no spec links to that this touches>
+
 ## Risks
 
 <!-- What could break; anything that needs a native rebuild or pod install. -->

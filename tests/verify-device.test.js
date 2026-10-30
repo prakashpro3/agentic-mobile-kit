@@ -68,7 +68,7 @@ esac
   if (prepare) prepare(path.join(dir, 'app'));
   const r = spawnSync('sh', ['scripts/amk/verify.sh', ...args], {
     cwd: path.join(dir, 'app'), encoding: 'utf8',
-    env: { ...process.env, FAKE_STATE: path.join(dir, 'state'), ANDROID_HOME: path.join(dir, 'sdk'), ANDROID_SDK_ROOT: path.join(dir, 'sdk'), ANDROID_AVD_HOME: path.join(dir, 'avd'), AMK_LOCK_DIR: path.join(dir, 'locks'), PATH: `${path.join(dir, 'bin')}${path.delimiter}${process.env.PATH}`, AMK_ANDROID_DEVICE: '', AMK_ANDROID_AVD: '', ...env },
+    env: { ...process.env, FAKE_STATE: path.join(dir, 'state'), ANDROID_HOME: path.join(dir, 'sdk'), ANDROID_SDK_ROOT: path.join(dir, 'sdk'), ANDROID_AVD_HOME: path.join(dir, 'avd'), AMK_LOCK_DIR: path.join(dir, 'locks'), PATH: `${path.join(dir, 'bin')}${path.delimiter}${process.env.PATH}`, AMK_ANDROID_DEVICE: '', AMK_ANDROID_AVD: '', AMK_DISK_GB: '50', ...env },
   });
   const readIf = f => (fs.existsSync(path.join(dir, f)) ? fs.readFileSync(path.join(dir, f), 'utf8') : '');
   const locks = fs.existsSync(path.join(dir, 'locks')) ? fs.readdirSync(path.join(dir, 'locks')) : [];
@@ -145,7 +145,9 @@ mkdir -p "$f/screenshots"; touch "$f/screenshots/step-002-launch.png" "$f/screen
 touch "$f/screenshots/step-007-assertCondition-amk-view-tree-smoke-launch.png"
 echo "  Launch app... COMPLETED"; echo "    Assert that id: x is visible... FAILED"; echo "  Run login.yaml... FAILED"; echo "Run flows/start.yaml... FAILED"
 echo "Disable airplane mode... COMPLETED"; echo ""; echo "Assertion is false: id: x is visible"; exit 1` });
-  assert.doesNotMatch(failing.out, /once more/, 'other failures aren\'t run again');
+  // a failure of its own runs once more, to tell a flaky flow from a failing one, and nothing more
+  assert.strictEqual((failing.out.match(/once more/g) || []).length, 1, failing.out);
+  assert.match(failing.out, /^ {2}android: flow smoke failed; running it once more, to tell a flaky flow from a failing one$/m);
   assert.deepStrictEqual(fs.readdirSync(path.join(failing.app, '.amk/evidence/run/maestro-logs/android-smoke')).filter(d => d !== 'maestro.log'), ['smoke'], 'the flow\'s own name, not the copy\'s hidden one');
   assert.match(failing.out, /flow smoke failed, see \.amk\/evidence\/run\/android\/smoke\.log and Maestro's own log \.amk\/evidence\/run\/maestro-logs\/android-smoke\/maestro\.log\n {4}failed at "Assert that id: x is visible": Assertion is false: id: x is visible\n {4}the screen when it failed: \.amk\/evidence\/run\/maestro-logs\/android-smoke\/smoke\/screenshots\/step-005-assertVisible\.png\n/);
   // the report: the flow, why it failed, the screen then; and CI's results
@@ -435,6 +437,69 @@ touch "$out/x1-1-home.png"`;
   assert.doesNotMatch(off.out, /accessibility warning/);
 });
 
+test('verify.sh: a flow that fails, then passes when run once more, is flaky: reported with its first try, not a failure', { skip }, () => {
+  // fails the first time at a step, with a screenshot of that screen; passes the second. Each run saves a view tree with
+  // a small icon without a label, as in the accessibility test
+  const flakyOnce = String.raw`for last; do :; done
+debug=$(echo "$@" | sed 's/.*--debug-output \([^ ]*\).*/\1/'); out=$(echo "$@" | sed 's/.*--test-output-dir \([^ ]*\).*/\1/')
+f=$debug/$(basename "$last" .yaml); mkdir -p "$f/screen-hierarchy" "$f/screenshots"
+echo '{"attributes":{"bounds":"[0,0][1080,2400]"},"children":[{"attributes":{"clickable":"true","bounds":"[900,100][963,163]","resource-id":"close"}}]}' > "$f/screen-hierarchy/step-005-assertCondition-amk-view-tree-x1-1-home.json"
+if [ -z "$PASSES" ] && [ ! -f "$out/../tried" ]; then touch "$out/../tried" "$f/screenshots/step-004-tapOn.png"; echo "  Tap on id: save... FAILED"; echo ""; echo "Element not found: id: save"; exit 1; fi
+touch "$out/x1-1-home.png"`;
+  const files = { '.maestro/x1-home.yaml': 'appId: ${APP_ID}\n---\n- launchApp\n- takeScreenshot: x1-1-home\n' };
+  const args = ['android', '--flavor', 'x', '--label', 'run', '--screens', 'phone-portrait'];
+  const r = verifyAndroid({ connected: ['emulator-5556 P35'], build: true, maestro: flakyOnce, files, args });
+  assert.strictEqual(r.status, 0, r.out);
+  assert.match(r.out, /^ {2}android: flow x1-home failed; running it once more, to tell a flaky flow from a failing one\n {2}android: flow x1-home is flaky: it failed at "Tap on id: save": Element not found: id: save, then passed\. Not a failure, but fix it \(a race, or a wait too short\);\n {4}the first try's logs and screen are in \.amk\/evidence\/run\/maestro-logs\/android-x1-home-first-try\/\nandroid: flows 1\/1 passed \(1 flaky\), 1 screenshots in \.amk\/evidence\/run\/android\n {2}android: 2 accessibility warnings/m, 'the first try\'s accessibility lines replaced, not added to');
+  const first = path.join(r.app, '.amk/evidence/run/maestro-logs/android-x1-home-first-try');
+  assert.ok(fs.existsSync(path.join(first, 'flow.log')) && fs.existsSync(path.join(first, 'x1-home/screenshots/step-004-tapOn.png')));
+  const report = fs.readFileSync(path.join(r.app, '.amk/evidence/run/report.md'), 'utf8');
+  assert.match(report, /· 1 of 1 flows passed on 1 screen, 1 flaky, 2 accessibility warnings\n/);
+  assert.match(report, /^### ⚠ x1-home \(flaky\)\n\nFlaky: it failed at "Tap on id: save": Element not found: id: save the first time, then passed\. Not a failure, but fix it \(a race, or a wait too short\)\. The first try's log: \[maestro-logs\/android-x1-home-first-try\/flow\.log\]\(maestro-logs\/android-x1-home-first-try\/flow\.log\) · \[the screen when it failed\]\(maestro-logs\/android-x1-home-first-try\/x1-home\/screenshots\/step-004-tapOn\.png\)$/m);
+  assert.match(fs.readFileSync(path.join(r.app, '.amk/evidence/run/junit.xml'), 'utf8'), /<testcase classname="android" name="x1-home"><system-out>flaky: it failed at &quot;Tap on id: save&quot;: Element not found: id: save the first time, then passed<\/system-out><\/testcase>/);
+  const summary = spawnSync(process.execPath, ['scripts/amk/report.js', '.amk/evidence/run', '--summary'], { cwd: r.app, encoding: 'utf8' }).stdout;
+  assert.match(summary, /^- ⚠ android: x1-home is flaky: it failed at "Tap on id: save"/m);
+  // the next run passes at once: the earlier first try goes
+  const again = verifyAndroid({ connected: ['emulator-5556 P35'], build: true, maestro: flakyOnce, args, env: { PASSES: '1' },
+    files: { ...files, '.amk/evidence/run/maestro-logs/android-x1-home-first-try/flow.log': 'an earlier run' } });
+  assert.match(again.out, /^android: flows 1\/1 passed, 1 screenshots/m);
+  assert.ok(!fs.existsSync(path.join(again.app, '.amk/evidence/run/maestro-logs/android-x1-home-first-try')));
+});
+
+test("verify.sh: Maestro failing before a flow's first step (its driver didn't start) runs the flow once more, and isn't flaky", { skip }, () => {
+  // as Maestro 2.11 did on a simulator just booted: a stack trace from opening its driver, and no step
+  const driverOnce = String.raw`out=$(echo "$@" | sed 's/.*--test-output-dir \([^ ]*\).*/\1/')
+if [ ! -f "$out/../tried" ]; then touch "$out/../tried"; echo "java.lang.IllegalStateException: driver did not start"; echo "	at maestro.drivers.IOSDriver.open(IOSDriver.kt:93)"; exit 1; fi
+echo "Launch app... COMPLETED"; touch "$out/shot.png"`;
+  const r = verifyAndroid({ connected: ['emulator-5556 P35'], build: true, maestro: driverOnce });
+  assert.match(r.out, /android: Maestro stopped before flow smoke started; running it once more\nandroid: flows 1\/1 passed, 1 screenshots/);
+  assert.doesNotMatch(r.out, /flaky/);
+});
+
+test('verify.sh --spec a,b: the flows of each spec, or of a flow-name prefix, once each; several need --label', { skip }, () => {
+  const files = { '.maestro/x1-home.yaml': 'appId: ${APP_ID}\n---\n- launchApp\n', '.maestro/x2-login.yaml': 'appId: ${APP_ID}\n---\n- launchApp\n',
+    '.maestro/offline-sync-1.yaml': 'appId: ${APP_ID}\n---\n- launchApp\n', '.maestro/offline-sync-2.yaml': 'appId: ${APP_ID}\n---\n- launchApp\n' };
+  const run = (...a) => verifyAndroid({ connected: ['emulator-5556 P35'], build: true, maestro: record, files, args: ['android', '--flavor', 'x', '--screens', 'phone-portrait', ...a] });
+  const r = run('--spec', 'x1,offline-sync,x1-home', '--label', 'x1');
+  assert.strictEqual(r.maestro, 'emulator-5556 direct offline-sync-1.yaml\nemulator-5556 direct offline-sync-2.yaml\nemulator-5556 direct x1-home.yaml\n');
+  assert.match(r.out, /^android: flows 3\/3 passed, \d+ screenshots in \.amk\/evidence\/x1\/android$/m);
+  assert.strictEqual(run('--spec', 'x2').maestro, 'emulator-5556 direct x2-login.yaml\n', 'one id as before, its evidence in its own folder');
+  const unlabelled = run('--spec', 'x1,x2');
+  assert.strictEqual(unlabelled.status, 2);
+  assert.match(unlabelled.out, /^verify: --spec x1,x2 runs several specs' flows: name their evidence folder with --label <name>$/m);
+  assert.strictEqual(unlabelled.maestro, '');
+});
+
+test('verify.sh: a build stops first when the disk has under 5 GB free, outside CI', { skip }, () => {
+  const low = verifyAndroid({ connected: ['emulator-5556 P35'], build: true, env: { AMK_DISK_GB: '3', CI: '' } });
+  assert.strictEqual(low.status, 1);
+  assert.match(low.out, /^verify: only 3 GB of disk is free here, and a release build needs about 5\. Free some/m);
+  assert.doesNotMatch(low.calls, /gradlew/, 'nothing built');
+  for (const env of [{ AMK_DISK_GB: '3', CI: 'true' }, { AMK_DISK_GB: '5', CI: '' }]) {
+    assert.match(verifyAndroid({ connected: ['emulator-5556 P35'], build: true, maestro: record, env }).calls, /gradlew/, JSON.stringify(env));
+  }
+});
+
 test('verify.sh --tags: only the flows with one of the tags in their header, inline or one a line', { skip }, () => {
   const files = {
     '.maestro/a-home.yaml': 'appId: ${APP_ID}\ntags: [smoke, home]\n---\n- launchApp\n',
@@ -518,7 +583,7 @@ if [ -n "$FAKE_RUNNER_FAIL" ]; then echo "{\"flows\":[{\"error\":\"$FAKE_RUNNER_
   for (const [f, text] of Object.entries(files)) write(dir, `app/${f}`, text);
   const r = spawnSync('sh', ['scripts/amk/verify.sh', ...args], {
     cwd: path.join(dir, 'app'), encoding: 'utf8',
-    env: { ...process.env, FAKE_STATE: path.join(dir, 'state'), AMK_LOCK_DIR: path.join(dir, 'locks'), PATH: `${path.join(dir, 'bin')}${path.delimiter}${process.env.PATH}`, AMK_IOS_DEVICE: '', AMK_IOS_TABLET: '', AMK_IOS_TEAM: '', ...env },
+    env: { ...process.env, FAKE_STATE: path.join(dir, 'state'), AMK_LOCK_DIR: path.join(dir, 'locks'), PATH: `${path.join(dir, 'bin')}${path.delimiter}${process.env.PATH}`, AMK_IOS_DEVICE: '', AMK_IOS_TABLET: '', AMK_IOS_TEAM: '', AMK_DISK_GB: '50', ...env },
   });
   const readIf = f => (fs.existsSync(path.join(dir, f)) ? fs.readFileSync(path.join(dir, f), 'utf8') : '');
   return { out: r.stdout + r.stderr, calls: readIf('state.calls'), runner: readIf('state.runner'), status: r.status, app: path.join(dir, 'app') };
@@ -634,6 +699,15 @@ test('verify.sh ios --part: a later part on a temporary simulator of the same ty
   // a real iPhone can't be copied for a part
   assert.match(verifyIos({ env: { AMK_IOS_DEVICE: "Tester's iPhone" }, files: threeFlows, args: ['ios', '--label', 'run', '--spec', 'x1', '--part', '2/2'] }).out,
     /^ios: part 2\/2 of the flows runs on a copy of the device, which works only for a simulator, not Tester's iPhone$/m);
+});
+
+test('verify.sh ios: a first iOS build (no pods or no build folder yet) needs 8 GB free; later ones 5', { skip: skipIos }, () => {
+  const first = verifyIos({ env: { AMK_DISK_GB: '6', CI: '' } });
+  assert.strictEqual(first.status, 1);
+  assert.match(first.out, /^verify: only 6 GB of disk is free here, and a first iOS build \(pods, Hermes and a simulator\) needs about 8\. Free some/m);
+  assert.doesNotMatch(first.calls, /xcodebuild/, 'nothing built');
+  const later = verifyIos({ env: { AMK_DISK_GB: '6', CI: '' }, files: { 'ios/DerivedData/.keep': '' } });
+  assert.match(later.calls, /xcodebuild/, 'pods and a build folder there: 5 GB is enough');
 });
 
 test("verify.sh: a screen whose screenshots aren't in its orientation runs once more, then fails; the device didn't turn", { skip }, () => {

@@ -14,9 +14,9 @@ Input: $ARGUMENTS (a spec ID, or empty).
    - If the branch is behind its remote, say so and ask before pulling.
    - If there are uncommitted changes, list them; they may be half-done work.
 2. **Find the spec.** Use the given ID; otherwise run `node scripts/amk/specs.js status` and take the spec in progress that was updated most recently. If unsure, ask.
-3. **Read** `requirements.md`, `design.md`, `tasks.md` and `progress.md` in that spec folder, plus `git log --oneline -15`.
+3. **Read** `requirements.md` (its `## Changes after approval` too), `design.md`, `tasks.md` and `progress.md` in that spec folder, plus `git log --oneline -15`.
 4. **Report back, in this order:**
-   1. any open question or blocker from the handoff;
+   1. any open question or blocker from the handoff, and any change after approval that the user hasn't approved yet;
    2. the status (task N of M) and what's done;
    3. the exact next step.
 

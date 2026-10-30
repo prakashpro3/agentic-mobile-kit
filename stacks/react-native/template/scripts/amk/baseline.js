@@ -9,9 +9,11 @@
 // whose merge base with HEAD has a package.json (a default branch left at an old first commit isn't the app's base).
 // Its merge base is checked out once into a temporary git worktree that shares node_modules, and its results are kept
 // for the next run.
+// `test --related` runs only the Jest tests related to the files changed since the base (Jest's --changedSince, which
+// follows the imports), for each task while building; the whole suite runs before a pull request.
 // `base` prints the base, for reviews of a branch's changes. `staged <files>` is the pre-commit hook's lint: it passes
 // when the files have no ESLint error they didn't have at HEAD, and exits with 3 when it can't find ESLint's CLI.
-// Usage: node scripts/amk/baseline.js lint|typecheck|test|base|staged <files>
+// Usage: node scripts/amk/baseline.js lint|typecheck|test [--related]|base|staged <files>
 'use strict';
 const fs = require('fs');
 const os = require('os');
@@ -20,6 +22,7 @@ const crypto = require('crypto');
 const { spawnSync, execFileSync } = require('child_process');
 
 const check = process.argv[2];
+const related = check === 'test' && process.argv.includes('--related');
 if (!['lint', 'typecheck', 'test', 'base', 'staged'].includes(check)) {
   console.error('usage: node scripts/amk/baseline.js lint|typecheck|test|base|staged <files>');
   process.exit(2);
@@ -49,12 +52,12 @@ const minus = (a, b) => {
   });
 };
 
-// the package.json script, through pm-run.sh, in dir (the app, or the base's worktree)
-function runScript(dir) {
+// the package.json script, through pm-run.sh, in dir (the app, or the base's worktree), with extra arguments for it
+function runScript(dir, extra = []) {
   fs.mkdirSync(scratch, { recursive: true });
   const json = path.join(scratch, `jest-${hash(dir)}.json`);
   fs.rmSync(json, { force: true });
-  const r = spawnSync('sh', [path.join(root, 'scripts/amk/pm-run.sh'), check, ...(jest ? ['--json', `--outputFile=${json}`] : [])],
+  const r = spawnSync('sh', [path.join(root, 'scripts/amk/pm-run.sh'), check, ...extra, ...(jest ? ['--json', `--outputFile=${json}`] : [])],
     { cwd: dir, encoding: 'utf8', env: { ...process.env, CI: 'true' }, maxBuffer: 2 ** 28 });
   return { code: r.status, out: `${r.stdout || ''}${r.stderr || ''}`, json, dir };
 }
@@ -222,8 +225,12 @@ if (check === 'staged') {
   process.exit(1);
 }
 
-const now = runScript(root);
+// --related: the tests of the files changed since where this branch left the base (the whole suite without one)
+const since = related && jest && (() => { const f = baseRef(); return f && git('merge-base', 'HEAD', f.ref); })();
+const now = runScript(root, since ? [`--changedSince=${since}`] : []);
 process.stdout.write(now.out);
+if (related) console.log(since ? `test: only the tests related to the files changed since ${since.slice(0, 7)} (verify.sh quick without --related runs them all)`
+  : `test: every test ran, as ${jest ? 'there\'s no base branch to compare with' : 'the test script isn\'t Jest'}`);
 if (now.code === 0) process.exit(0);
 
 const found = baseRef();

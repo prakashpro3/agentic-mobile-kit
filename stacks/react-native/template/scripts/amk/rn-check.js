@@ -7,11 +7,16 @@
 // the line above, with the user's reason and the day they gave it; it's listed as kept, for review. When a branch changes
 // a file again, a kept line in it that's over two weeks old is reported again, for the user to decide again (the date
 // from git when the comment has none).
-// The base is the one baseline.js uses (AMK_BASE sets it). Usage: node scripts/amk/rn-check.js
+// It warns too about a source file over a size limit that's new or grows, and a function over a complexity limit (as
+// ESLint's complexity rule counts it, through the app's ESLint) that's new or got more complex. .amk-size-caps, which
+// the project owns, holds the limits and a cap for each file already over the limit: `--write-caps` writes it from the
+// code as it is, and later lowers caps as files shrink (never raises one).
+// The base is the one baseline.js uses (AMK_BASE sets it). Usage: node scripts/amk/rn-check.js [--write-caps]
 'use strict';
 const fs = require('fs');
 const path = require('path');
 const { execFileSync, spawnSync } = require('child_process');
+const { stripYamlComments, scenarios, flowBlocks, blockFor, allFlows, flowsOf } = require('./specs.js');
 
 const root = process.cwd();
 const git = (...args) => {
@@ -37,15 +42,56 @@ const source = f => /\.(js|jsx|ts|tsx|mjs|cjs)$/.test(f) && !f.endsWith('.d.ts')
 // Maestro flows: the ones verify.sh runs (.maestro/*.yaml) and the subflows they run (in folders below)
 // (not the copies with view-tree steps verify.sh runs for a moment on Android: .amk-<screen>-<flow>.yaml)
 const flowFile = f => /^\.maestro\/.+\.ya?ml$/.test(f) && !/(^|\/)\.amk-/.test(f);
+
+// ---------- the size limits: .amk-size-caps ----------
+const CAPS = '.amk-size-caps';
+let capsText = null;
+try { capsText = fs.readFileSync(path.join(root, CAPS), 'utf8').replace(/\r\n/g, '\n'); } catch {}
+const limits = { limit: 400, complexity: 20 };
+const caps = new Map(); // file -> the most lines it may have
+for (const l of (capsText || '').split('\n')) {
+  const m = /^\s*([^#\s]\S*)\s+(\d+)\s*$/.exec(l);
+  if (m && m[1] in limits) limits[m[1]] = Number(m[2]); else if (m) caps.set(m[1], Number(m[2]));
+}
+const lineCount = text => text.split('\n').length - (text.endsWith('\n') ? 1 : 0);
+// what the limits count: source files, not generated ones
+const sized = (f, text) => source(f) && !/(^|\/)(__generated__|generated)\/|\.generated\.\w+$/.test(f) && !/@generated\b/.test(text.slice(0, 1000));
+if (process.argv.includes('--write-caps')) {
+  const now = new Map();
+  for (const f of (git('ls-files') || '').split('\n')) {
+    let text;
+    try { text = fs.readFileSync(path.join(root, f), 'utf8'); } catch { continue; }
+    if (f && sized(f, text)) now.set(f, lineCount(text));
+  }
+  // the first time, every file over the limit at its size; later, caps only come down: to a file's size when it
+  // shrank, and away when it's gone or under the limit
+  const entries = capsText === null ? [...now].filter(([, n]) => n > limits.limit)
+    : [...caps].filter(([f]) => (now.get(f) || 0) > limits.limit).map(([f, cap]) => [f, Math.min(cap, now.get(f))]);
+  const head = capsText === null ? [
+    '# rn-check (in verify.sh quick) warns about a source file over the limit, in lines, that\'s new or grows. These files were',
+    '# over it already: each warns when it grows past its cap here. Caps only come down: `node scripts/amk/rn-check.js',
+    '# --write-caps` lowers them as the files shrink. complexity: the most a new function may have (ESLint\'s complexity rule).',
+    `limit ${limits.limit}`, `complexity ${limits.complexity}`,
+  ] : capsText.split('\n').filter(l => { const m = /^\s*([^#\s]\S*)\s+\d+\s*$/.exec(l); return !m || m[1] in limits; });
+  while (head.length && !head[head.length - 1].trim()) head.pop();
+  fs.writeFileSync(path.join(root, CAPS), `${[...head, ...entries.sort().map(([f, n]) => `${f} ${n}`)].join('\n')}\n`);
+  const lowered = capsText === null ? 0 : entries.filter(([f, n]) => n < caps.get(f)).length;
+  console.log(capsText === null ? `${CAPS}: ${entries.length} file(s) over ${limits.limit} lines, each capped at its size now. Commit it.`
+    : `${CAPS}: ${lowered} cap(s) lowered, ${caps.size - entries.length} removed (the file is gone or under the limit)`);
+  process.exit(0);
+}
+
 const changed = new Map(); // file -> Set of line numbers, or 'all'
+const hunks = new Map(); // file -> the diff's [base start, base lines, start, lines], to find a line's place in the base
 if (sha) {
   let file = null;
   for (const line of (git('diff', '-U0', '--no-color', '--no-ext-diff', '--relative', '-M', '--diff-filter=ACMR', sha) || '').split('\n')) {
     if (line.startsWith('+++ ')) { file = line === '+++ /dev/null' ? null : line.slice(6); continue; }
-    const h = /^@@ -\S+ \+(\d+)(?:,(\d+))? @@/.exec(line);
+    const h = /^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@/.exec(line);
     if (!h || !file || !(source(file) || flowFile(file))) continue;
-    if (!changed.has(file)) changed.set(file, new Set());
-    for (let n = Number(h[1]), end = n + Number(h[2] ?? 1); n < end; n++) changed.get(file).add(n);
+    if (!changed.has(file)) { changed.set(file, new Set()); hunks.set(file, []); }
+    hunks.get(file).push([Number(h[1]), Number(h[2] ?? 1), Number(h[3]), Number(h[4] ?? 1)]);
+    for (let n = Number(h[3]), end = n + Number(h[4] ?? 1); n < end; n++) changed.get(file).add(n);
   }
 }
 for (const f of (git('ls-files', '--others', '--exclude-standard') || '').split('\n')) if (f && (source(f) || flowFile(f))) changed.set(f, 'all');
@@ -270,18 +316,6 @@ function lineAt(code, i) {
 }
 
 // ---------- Maestro flows ----------
-// a flow without its comments (each comment character a space, so positions stay): # outside quotes starts one
-function stripYamlComments(text) {
-  return text.split('\n').map(l => {
-    let quote = null;
-    for (let i = 0; i < l.length; i++) {
-      const c = l[i];
-      if (quote) { if (c === quote) quote = null; } else if (c === '"' || c === "'") quote = c;
-      else if (c === '#' && (i === 0 || /\s/.test(l[i - 1]))) return l.slice(0, i) + ' '.repeat(l.length - i);
-    }
-    return l;
-  }).join('\n');
-}
 const TAPS = /^(tapOn|doubleTapOn|longPressOn)$/;
 const SELECTS = /^(tapOn|doubleTapOn|longPressOn|assertVisible|assertNotVisible|scrollUntilVisible|extendedWaitUntil|copyTextFrom)$/;
 const ASSERTS = /^(assertVisible|assertNotVisible|assertTrue|assertWithAI|assertNoDefectsWithAI)$/;
@@ -371,6 +405,93 @@ for (const [file, lines] of changed) {
   }
 }
 
+// ---------- file size and complexity, in the files this branch changed ----------
+// ESLint's complexity rule, run on its own through the app's ESLint, reporting every function (no other rule runs);
+// beside it a rule that reports each function's whole range, to know which function each count is about. TypeScript
+// files need the app's @typescript-eslint/parser. null without ESLint
+const complexity = (() => {
+  const req = name => { try { return require(require.resolve(name, { paths: [root] })); } catch { return null; } };
+  const { Linter } = req('eslint') || {};
+  if (!Linter) return null;
+  const ts = req('@typescript-eslint/parser');
+  const fns = { create: context => { const report = node => context.report({ node, message: 'function' }); return { FunctionDeclaration: report, FunctionExpression: report, ArrowFunctionExpression: report }; } };
+  const parserOptions = { ecmaVersion: 'latest', sourceType: 'module', ecmaFeatures: { jsx: true } };
+  let verify;
+  try {
+    if (Number(String(Linter.version).split('.')[0]) >= 9) {
+      const linter = new Linter({ configType: 'flat' });
+      verify = (text, file, parser) => linter.verify(text, [{ files: ['**/*.{js,jsx,ts,tsx,mjs,cjs}'], plugins: { amk: { rules: { fns } } },
+        languageOptions: { ecmaVersion: 'latest', sourceType: 'module', parserOptions: { ecmaFeatures: { jsx: true } }, ...(parser && { parser }) },
+        rules: { complexity: ['warn', 0], 'amk/fns': 'warn' } }], file);
+    } else {
+      const linter = new Linter();
+      linter.defineRule('amk-fns', fns);
+      if (ts) linter.defineParser('amk-ts', ts);
+      verify = (text, file, parser) => linter.verify(text, { ...(parser && { parser: 'amk-ts' }), parserOptions, rules: { complexity: ['warn', 0], 'amk-fns': 'warn' } }, { filename: file });
+    }
+  } catch { return null; }
+  // the functions of a file: label ("Function 'save'"), complexity and first line; null when it can't be read
+  return Object.assign((file, text) => {
+    const parser = /\.tsx?$/.test(file) ? ts : null;
+    if (/\.tsx?$/.test(file) && !ts) return null;
+    let messages;
+    try { messages = verify(text, file, parser); } catch { return null; }
+    // a message from no rule: the file didn't parse, or the setup didn't take
+    if (messages.some(m => !m.ruleId)) return null;
+    const ranges = messages.filter(m => /^amk[-/]fns$/.test(m.ruleId));
+    const holds = (r, m) => (r.line < m.line || (r.line === m.line && r.column <= m.column)) && (r.endLine > m.line || (r.endLine === m.line && r.endColumn >= m.column));
+    return messages.filter(m => m.ruleId === 'complexity').map(m => {
+      const [, label, n] = /^(.*?) has a complexity of (\d+)/.exec(m.message) || [];
+      const fn = ranges.filter(r => holds(r, m)).sort((a, b) => b.line - a.line || b.column - a.column)[0];
+      return { label, n: Number(n), start: fn ? fn.line : m.line };
+    }).filter(f => f.label);
+  }, { ts: Boolean(ts) });
+})();
+// line n of a file now, in its version on the base: through the diff's hunks (null for a line the branch added)
+function baseLine(hs, n) {
+  let shift = 0;
+  for (const [a, b, c, d] of hs) {
+    if (d && n >= c && n < c + d) return b ? a + Math.min(n - c, b - 1) : null;
+    if (n < (d ? c : c + 1)) break;
+    shift = (b ? a + b - 1 : a) - (d ? c + d - 1 : c);
+  }
+  return n + shift;
+}
+for (const [file, lines] of changed) {
+  if (!source(file)) continue;
+  let text;
+  try { text = fs.readFileSync(path.join(root, file), 'utf8'); } catch { continue; }
+  if (!sized(file, text)) continue;
+  const say = (at, message) => findings.push({ level: '!', message, where: `${file}:${at}` });
+  const before = lines === 'all' || !sha ? null : git('show', `${sha}:${file}`);
+  const n = lineCount(text);
+  if (caps.has(file)) {
+    if (n > caps.get(file)) say(1, `${n} lines, past its cap of ${caps.get(file)} in ${CAPS}: move a part out (a component, a hook, a helper) rather than raise the cap`);
+  } else if (n > limits.limit && before === null) {
+    say(1, `a new file of ${n} lines, over the ${limits.limit}-line limit: split it (components, hooks, helpers in files of their own)`);
+  } else if (n > limits.limit && n > lineCount(before)) {
+    say(1, `${n} lines, over the ${limits.limit}-line limit, and this branch made it longer (it had ${lineCount(before)}): move a part out rather than add to it`);
+  }
+  if (!complexity) continue;
+  const now = complexity(file, text);
+  if (!now) continue;
+  const old = before ? complexity(file, before) : null;
+  for (const f of now.filter(x => x.n > limits.complexity)) {
+    const at = old && baseLine(hunks.get(file) || [], f.start);
+    const was = at && old.find(o => o.start === at && o.label === f.label);
+    if (was && was.n >= f.n) continue;
+    say(f.start, was ? `${f.label} went from a complexity of ${was.n} to ${f.n}, over ${limits.complexity}: move a branch out into a function of its own`
+      : `${f.label} has a complexity of ${f.n}, over ${limits.complexity}: split it into smaller functions`);
+  }
+}
+// caps that can come down: their file shrank, is under the limit, or is gone
+const lower = [...caps].flatMap(([f, cap]) => {
+  let text;
+  try { text = fs.readFileSync(path.join(root, f), 'utf8'); } catch { return [`${f} (gone)`]; }
+  const n = lineCount(text);
+  return n <= limits.limit ? [`${f} (now ${n} lines)`] : n < cap ? [`${f} (${cap} → ${n})`] : [];
+});
+
 // ---------- once for the app: an error boundary somewhere ----------
 let boundary = true;
 if ([...changed.keys()].some(source)) {
@@ -388,38 +509,25 @@ if ([...changed.keys()].some(source)) {
 // "# Scenario <n>: <name>" comment above each one's steps, as specs/_templates/flow.yaml shows
 const touchedPaths = [...(sha ? (git('diff', '--name-only', '--relative', sha) || '').split('\n') : []),
   ...(git('ls-files', '--others', '--exclude-standard') || '').split('\n')].filter(Boolean);
-const norm = s => s.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
 const specIds = fs.existsSync(path.join(root, 'specs')) ? fs.readdirSync(path.join(root, 'specs'), { withFileTypes: true })
   .filter(e => e.isDirectory() && !/^(_|current$)/.test(e.name)).map(e => e.name) : [];
-const flowsDir = fs.existsSync(path.join(root, '.maestro')) ? fs.readdirSync(path.join(root, '.maestro')).filter(f => /\.ya?ml$/.test(f)) : [];
+const flowsDir = allFlows(path.join(root, '.maestro'));
 for (const id of specIds) {
   const req = `specs/${id}/requirements.md`;
   let reqText;
   try { reqText = fs.readFileSync(path.join(root, req), 'utf8'); } catch { continue; }
-  const flows = flowsDir.filter(f => f.toLowerCase().startsWith(id.toLowerCase())).map(f => `.maestro/${f}`);
+  const flows = flowsOf(id, flowsDir).map(f => `.maestro/${f}`);
   if (!flows.length || !touchedPaths.some(p => p.startsWith(`specs/${id}/`) || flows.includes(p))) continue;
-  const blocks = flows.flatMap(f => {
-    const text = fs.readFileSync(path.join(root, f), 'utf8');
-    const code = stripYamlComments(text).split('\n');
-    const out = [];
-    text.split('\n').forEach((l, i) => {
-      const m = /^\s*#\s*Scenario\b\s*(\d+)?\s*[:.)-]?\s*(.*)$/i.exec(l);
-      if (m) out.push({ n: Number(m[1]) || 0, name: norm(m[2]), at: i });
-      else if (out.length) out[out.length - 1].code = `${out[out.length - 1].code || ''}${code[i]}\n`;
-    });
-    return out.map(b => ({ ...b, flow: f }));
-  });
-  [...reqText.matchAll(/^#### Scenario:\s*(.*)$/gm)].forEach((m, i) => {
-    const name = norm(m[1]);
-    const where = `${req}:${reqText.slice(0, m.index).split('\n').length}`;
-    const b = blocks.find(x => x.n === i + 1) || blocks.find(x => name && x.name && (x.name.includes(name) || name.includes(x.name)));
-    const say = message => findings.push({ level: '!', message, where });
-    if (!b) say(`scenario ${i + 1} "${m[1].trim()}" has no block in ${flows.join(', ')}: add "# Scenario ${i + 1}: ${m[1].trim()}" above its steps, with an assertion for its THEN and a screenshot`);
+  const blocks = flows.flatMap(f => flowBlocks(fs.readFileSync(path.join(root, f), 'utf8')).map(b => ({ ...b, flow: f })));
+  for (const s of scenarios(reqText)) {
+    const b = blockFor(blocks, s.n, s.name);
+    const say = message => findings.push({ level: '!', message, where: `${req}:${s.line}` });
+    if (!b) say(`scenario ${s.n} "${s.name}" has no block in ${flows.join(', ')}: add "# Scenario ${s.n}: ${s.name}" above its steps, with an assertion for its THEN and a screenshot`);
     else {
-      if (!/-\s*(assertVisible|assertNotVisible|assertTrue|assertWithAI|extendedWaitUntil)\b/.test(b.code || '')) say(`scenario ${i + 1} "${m[1].trim()}" has no assertion in ${b.flow}: check what its THEN expects`);
-      if (!/-\s*takeScreenshot\b/.test(b.code || '')) say(`scenario ${i + 1} "${m[1].trim()}" has no screenshot in ${b.flow}, so it has no evidence`);
+      if (!/-\s*(assertVisible|assertNotVisible|assertTrue|assertWithAI|extendedWaitUntil)\b/.test(b.code)) say(`scenario ${s.n} "${s.name}" has no assertion in ${b.flow}: check what its THEN expects`);
+      if (!/-\s*takeScreenshot\b/.test(b.code)) say(`scenario ${s.n} "${s.name}" has no screenshot in ${b.flow}, so it has no evidence`);
     }
-  });
+  }
 }
 
 // ---------- report ----------
@@ -434,6 +542,10 @@ else if (!findings.length) console.log(`rn-check: nothing to report in the lines
 else console.log(`rn-check: ${plural(problems.length, 'problem')}, ${plural(warnings.length, 'warning')} in the lines changed since ${since}`);
 for (const f of [...problems, ...warnings]) console.log(`  ${f.level} ${f.where}  ${f.message}`);
 if (noMaestro && [...changed.keys()].some(flowFile)) console.log('  flows not syntax-checked: Maestro isn\'t installed here');
+const sources = [...changed.keys()].filter(source);
+if (sources.length && !complexity) console.log('  complexity not counted: ESLint isn\'t installed here');
+else if (sources.some(f => /\.tsx?$/.test(f)) && complexity && !complexity.ts) console.log('  complexity not counted in TypeScript files: rn-check can\'t find the app\'s @typescript-eslint/parser');
+if (lower.length) console.log(`  size caps that can come down: ${lower.slice(0, 5).join(', ')}${lower.length > 5 ? ` and ${lower.length - 5} more` : ''}. node scripts/amk/rn-check.js --write-caps lowers them`);
 if (!boundary) console.log(`  ! the app has no error boundary: a render error shows a blank screen or closes the app. Wrap the app in one`);
 if (kept.length) console.log(`  kept with amk-ok: ${[...new Set(kept)].join('; ')}`);
 if (problems.length) {

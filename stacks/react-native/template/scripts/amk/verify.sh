@@ -3,15 +3,18 @@
 # and Android emulator, running Maestro flows and saving screenshots as evidence. Apps that support tablets or
 # landscape (scripts/amk/screens.js) are checked on each: an iPad simulator and a tablet emulator, and turned.
 #
-# Usage: sh scripts/amk/verify.sh [quick|ios|android|all|build|plan] [--spec <id>] [--flow <file>] [--label <name>]
-#                                [--flavor <name>] [--scheme <name>] [--screens <list>] [--no-build]
+# Usage: sh scripts/amk/verify.sh [quick|ios|android|all|build|plan] [--spec <ids>] [--flow <file>] [--label <name>]
+#                                [--flavor <name>] [--scheme <name>] [--screens <list>] [--no-build] [--related]
 #   quick           lint, typecheck, tests
+#   --related       quick: only the Jest tests related to the files this branch changed, for each task while building
+#                   (without it, the whole suite)
 #   ios|android     release build, install, run flows, screenshots
 #   all             everything (default)
 #   build           the release builds only, iOS and Android at the same time, for --no-build checks after it
 #   plan            how many devices this machine's memory can check at the same time, and the commands to run:
 #                   one per device, in rounds when they don't all fit, the flows split into parts when there's room
-#   --spec <id>     run .maestro/<id>*.yaml and save evidence in .amk/evidence/<id>/
+#   --spec <ids>    run .maestro/<id>*.yaml and save evidence in .amk/evidence/<id>/. Several, comma-separated, run the
+#                   flows of each (a flow's name prefix works too: offline-sync runs offline-sync-1.yaml) and need --label
 #   --flow <file>   run only this flow: a path in the project, or anywhere (an absolute path)
 #   --tags <list>   only the flows with one of these tags in their header (tags: [smoke]), comma-separated
 #   --label <n>     evidence folder name (default: the spec id, or no-spec)
@@ -24,6 +27,10 @@
 #                   <screen>/part-k/: part 1 on the usual device, the others on a temporary copy of it (the same kind of
 #                   simulator, or an emulator with the same settings), deleted afterwards. plan prints these
 #   (no flows found: a smoke check that launches the app and takes a screenshot)
+#   A flow that fails runs once more: one that passes then is flaky, which doesn't fail the check but is reported, with
+#   the first try's log and screen kept in maestro-logs/<screen>-<flow>-first-try/
+#   Before a build it stops when the disk has under 5 GB free, or 8 GB before a first iOS build (not in CI), as a build that
+#   runs out halfway wastes the run
 #   Evidence per screen: ios/ and android/ (phone, portrait), then -landscape/, -tablet/ and -tablet-landscape/, each
 #   with its latest run only (the device's own log only for a flow that failed); the newest 5 evidence folders stay,
 #   and every prototype's
@@ -58,6 +65,7 @@ label=""
 flavor=${AMK_ANDROID_FLAVOR:-}
 only=${AMK_SCREENS:-}
 no_build=0
+related=0
 build_only=0
 part=""
 while [ $# -gt 0 ]; do
@@ -70,6 +78,7 @@ while [ $# -gt 0 ]; do
     --scheme) AMK_IOS_SCHEME=$2; export AMK_IOS_SCHEME; shift 2 ;;
     --screens) only=$2; shift 2 ;;
     --no-build) no_build=1; shift ;;
+    --related) related=1; shift ;;
     --part) part=$2; shift 2 ;;
     *) echo "verify: unknown option $1"; exit 2 ;;
   esac
@@ -81,6 +90,9 @@ if [ -n "$part" ]; then
   case "$part_k$part_n" in '' | *[!0-9]*) echo "verify: --part takes k/n, such as 2/3"; exit 2 ;; esac
   [ "$part_k" -ge 1 ] && [ "$part_k" -le "$part_n" ] || { echo "verify: --part takes k/n, such as 2/3"; exit 2; }
 fi
+
+# several specs' flows go in one evidence folder, which the cleanup below keeps by its name
+case $spec in *,*) [ -n "$label" ] || { echo "verify: --spec $spec runs several specs' flows: name their evidence folder with --label <name>"; exit 2; } ;; esac
 
 root=$(pwd)
 # --flow: a path in the project, or an absolute one (C:/… on Windows too); a Windows path's backslashes become slashes
@@ -119,7 +131,8 @@ status=0
 flow_files() {
   {
     if [ -n "$flow" ]; then echo "$flow"
-    elif [ -n "$spec" ]; then find "$root/.maestro" -maxdepth 1 -iname "$spec*.yaml" ! -name '.amk-*' 2>/dev/null | sort
+    elif [ -n "$spec" ]; then
+      for s in $(echo "$spec" | tr ',' ' '); do find "$root/.maestro" -maxdepth 1 -iname "$s*.yaml" ! -name '.amk-*' 2>/dev/null; done | sort -u
     else find "$root/.maestro" -maxdepth 1 -name '*.yaml' ! -name '.amk-*' 2>/dev/null | sort
     fi
   } | with_tags | awk -v k="$part_k" -v n="$part_n" '(NR - 1) % n == k - 1'
@@ -129,15 +142,10 @@ with_tags() {
   if [ -z "$tags" ]; then cat; return; fi
   TAGS=$tags node -e '
     const fs = require("fs");
+    const { tagsOf } = require("./scripts/amk/specs.js");
     const want = process.env.TAGS.split(",").map(s => s.trim()).filter(Boolean);
     for (const f of fs.readFileSync(0, "utf8").split("\n").filter(Boolean)) {
-      const head = fs.readFileSync(f, "utf8").split(/^---\s*$/m)[0].split("\n");
-      const at = head.findIndex(l => /^tags\s*:/.test(l));
-      if (at < 0) continue;
-      const inline = head[at].replace(/^tags\s*:/, "").trim();
-      const below = [];
-      for (let i = at + 1; i < head.length && /^\s+-\s*\S/.test(head[i]); i++) below.push(head[i].replace(/^\s+-\s*/, ""));
-      const tags = (inline ? inline.replace(/^\[|\]$/g, "").split(",") : below).map(s => s.trim().replace(/^["\x27]|["\x27]$/g, ""));
+      const tags = tagsOf(fs.readFileSync(f, "utf8"));
       if (tags.some(s => want.includes(s))) console.log(f);
     }'
 }
@@ -286,7 +294,9 @@ run_flow() { # screen device app_id file name orientation
     tree_flow=""
     # Maestro named the flow's folder after the copy, a hidden name: the flow's own, as on iOS
     [ ! -d "$debug/.amk-$1-$5" ] || [ -e "$debug/$5" ] || mv "$debug/.amk-$1-$5" "$debug/$5"
-    node scripts/amk/a11y.js "$debug" "$density" "$5" >> "$out/.a11y" 2> /dev/null || true
+    # a flow run again replaces its lines from the earlier try
+    { awk -F '\t' -v f="$5" '$1 != f' "$out/.a11y"; node scripts/amk/a11y.js "$debug" "$density" "$5" 2> /dev/null || true; } > "$out/.a11y.new"
+    mv "$out/.a11y.new" "$out/.a11y"
   fi
   return $rc
 }
@@ -373,10 +383,13 @@ run_flows() { # screen device app_id orientation (PORTRAIT, or LANDSCAPE_LEFT to
   fi
   passed=0
   total=0
+  flakies=0
   for f in $files; do
     total=$((total + 1))
     name=$(basename "$f" .yaml)
-    ok=0 why="" shot=""
+    ok=0 why="" shot="" first=""
+    # an earlier run's first try, when the flow was flaky then
+    [ ! -d "$evidence/maestro-logs/$1-$name-first-try" ] || rm -r "$evidence/maestro-logs/$1-$name-first-try"
     : > "$out/.flow-started"
     run_flow "$1" "$2" "$3" "$f" "$name" "$4" || ok=$?
     # Maestro now and then stops before a flow starts (it printed nothing), and an emulator sometimes drops its adb
@@ -402,11 +415,35 @@ run_flows() { # screen device app_id orientation (PORTRAIT, or LANDSCAPE_LEFT to
       sleep 15
       ok=0
       run_flow "$1" "$2" "$3" "$f" "$name" "$4" || ok=$?
+    elif [ "$ok" != 0 ] && ! is_real "$2" && ! grep -qE '\.\.\. *(COMPLETED|FAILED|SKIPPED|WARNED)' "$out/$name.log"; then
+      # nor did it get to the flow's first step when its driver didn't start on the device (a stack trace, and no step)
+      echo "  $1: Maestro stopped before flow $name started; running it once more"
+      ok=0
+      run_flow "$1" "$2" "$3" "$f" "$name" "$4" || ok=$?
+    elif [ "$ok" != 0 ]; then
+      # one that failed at one of its steps runs once more, to tell a flaky flow from a failing one. The first try's logs
+      # and screen stay as the evidence of a flaky one
+      why=$(why_failed "$2" "$name" | tr '\t' ' ')
+      shot=$(failure_shot "$2")
+      first=$debug-first-try
+      [ ! -d "$first" ] || rm -r "$first"
+      mv "$debug" "$first"
+      mv "$out/$name.log" "$first/flow.log"
+      [ -z "$shot" ] || shot=$first${shot#"$debug"}
+      echo "  $1: flow $name failed; running it once more, to tell a flaky flow from a failing one"
+      ok=0
+      run_flow "$1" "$2" "$3" "$f" "$name" "$4" || ok=$?
+      if [ "$ok" != 0 ]; then rm -r "$first"; first="" why="" shot=""; fi
     fi
     if [ "$ok" = 0 ]; then
       passed=$((passed + 1))
       # the device's own log (the simulator's or the emulator's, up to 25 MB a run) helps only with a failure
       find "$debug" -path '*/logs/device-*' -type f -exec rm -f {} +
+      if [ -n "$first" ]; then
+        flakies=$((flakies + 1))
+        echo "  $1: flow $name is flaky: it failed${why:+ $why}, then passed. Not a failure, but fix it (a race, or a wait too short);"
+        echo "    the first try's logs and screen are in ${first#"$root"/}/"
+      fi
     elif is_real "$2"; then
       echo "  $1: flow $name failed, see ${out#"$root"/}/$name.log and maestro-runner's own log ${debug#"$root"/}/maestro-runner.log"
       status=1
@@ -423,10 +460,11 @@ run_flows() { # screen device app_id orientation (PORTRAIT, or LANDSCAPE_LEFT to
       [ -z "$why" ] || echo "    failed $why"
       [ -z "$shot" ] || echo "    the screen when it failed: ${shot#"$root"/}"
     fi
-    # for the report: the flow, its result, why it failed, the screenshots it took, and the screen when it failed
-    printf '%s\t%s\t%s\t%s\t%s\n' "$name" "$([ "$ok" = 0 ] && echo passed || echo failed)" "$why" \
+    # for the report: the flow, its result, why it failed, the screenshots it took, the screen when it failed, and a
+    # flaky one's first log
+    printf '%s\t%s\t%s\t%s\t%s\t%s\n' "$name" "$([ "$ok" != 0 ] && echo failed || { [ -n "$first" ] && echo flaky; } || echo passed)" "$why" \
       "$(find "$out" -name '*.png' -newer "$out/.flow-started" | sed "s|^$evidence/||" | sort | tr '\n' ',' | sed 's/,$//')" \
-      "${shot#"$evidence"/}" >> "$out/.flows"
+      "${shot#"$evidence"/}" "${first:+${first#"$evidence"/}/flow.log}" >> "$out/.flows"
   done
   # iOS saves a turned screen's screenshots at the device's upright size, with a tag that tells viewers to turn them,
   # and some viewers ignore it: save them turned (through BMP, which keeps no tag), so every viewer shows the screen
@@ -455,7 +493,7 @@ run_flows() { # screen device app_id orientation (PORTRAIT, or LANDSCAPE_LEFT to
     return
   fi
   shots=$(find "$out" -name '*.png' | wc -l | tr -d ' ')
-  echo "$1: flows $passed/$total passed, $shots screenshots in ${out#"$root"/}"
+  echo "$1: flows $passed/$total passed$([ "$flakies" = 0 ] || echo " ($flakies flaky)"), $shots screenshots in ${out#"$root"/}"
   a11y=$(grep -c . "$out/.a11y" 2> /dev/null || true)
   [ "${a11y:-0}" = 0 ] || echo "  $1: $a11y accessibility warning$([ "$a11y" = 1 ] || echo s) on the flows' screens (controls without a label, tap areas under 48 dp): see the report"
   if [ "$shots" = 0 ]; then
@@ -514,8 +552,8 @@ quick() {
   # each one passes when the app's script passes, or when all its failures were already on the base branch
   if node scripts/amk/baseline.js lint > "$evidence/lint.log" 2>&1 &&
     node scripts/amk/baseline.js typecheck > "$evidence/typecheck.log" 2>&1 &&
-    node scripts/amk/baseline.js test > "$evidence/test.log" 2>&1; then
-    echo "quick: lint, typecheck and tests passed"
+    node scripts/amk/baseline.js test $([ "$related" = 0 ] || echo --related) > "$evidence/test.log" 2>&1; then
+    if [ "$related" = 0 ]; then echo "quick: lint, typecheck and tests passed"; else echo "quick: lint, typecheck and the tests related to this branch's changes passed"; fi
     # what didn't run (no such script, or an Expo app without ESLint yet), and failures the base branch already had
     cat "$evidence/lint.log" "$evidence/typecheck.log" "$evidence/test.log" |
       sed -n -E -e 's/^skip: /  skipped: /p' -e 's/^(lint|typecheck|test): /  \1: /p'
@@ -1121,6 +1159,24 @@ plan() {
 if [ -n "$part" ] && [ -z "$(flow_files)" ]; then
   case $mode in ios | android | all) echo "verify: part $part has no flows: there are fewer flows than parts"; exit 0 ;; esac
 fi
+
+# a build that runs out of disk halfway (Xcode, Gradle and simulators fill disks) wastes the whole run: stop before it.
+# Not in CI, where a machine lasts one run
+case $mode in ios | android | all | build)
+  if [ "$no_build" = 0 ] && [ -z "${CI:-}" ]; then
+    free=$(node -e 'const s = require("fs").statfsSync("."); console.log(Math.floor(s.bavail * s.bsize / 2 ** 30))')
+    case ${AMK_DISK_GB:-x} in *[!0-9]*) ;; *) free=$AMK_DISK_GB ;; esac
+    need=5 what="a release build needs about 5"
+    # a first iOS build (no pods or no build folder yet) downloads pods and Hermes and boots a simulator: about 6 GB measured
+    if [ "$mode" != android ] && [ "$(uname -s)" = Darwin ] && { [ ! -d ios/Pods ] || [ ! -d ios/DerivedData ]; }; then
+      need=8 what="a first iOS build (pods, Hermes and a simulator) needs about 8"
+    fi
+    if [ "$free" -lt "$need" ]; then
+      echo "verify: only $free GB of disk is free here, and $what. Free some (Xcode's DerivedData, simulators and emulators you don't use, Gradle's caches), then run it again"
+      exit 1
+    fi
+  fi ;;
+esac
 
 case $mode in
   quick) quick ;;

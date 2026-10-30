@@ -169,3 +169,18 @@ test('no base branch to compare with: a failure stays a failure', () => {
   assert.match(r.out, /no base branch to compare with \(set AMK_BASE\)/);
   assert.strictEqual(check(dir, 'typecheck', { AMK_BASE: 'trunk' }).code, 0, 'AMK_BASE picks it');
 });
+
+test('test --related: only the Jest tests related to the files changed since the base, and failures compared as before', () => {
+  const dir = app();
+  write(dir, 'fake-jest.js', `require('fs').appendFileSync('args.txt', process.argv.slice(2).join(' ') + '\\n');\n${fs.readFileSync(path.join(dir, 'fake-jest.js'), 'utf8')}`);
+  const run = (...a) => { const r = spawnSync(process.execPath, [path.join(KIT, 'baseline.js'), 'test', ...a], { cwd: dir, encoding: 'utf8', env: { ...process.env, TMPDIR: temp, TEMP: temp, TMP: temp } }); return { code: r.status, out: `${r.stdout}${r.stderr}` }; };
+  const sha = git(dir, 'merge-base', 'HEAD', 'main');
+  const related = run('--related');
+  assert.strictEqual(related.code, 0, related.out);
+  assert.match(related.out, /test: only the tests related to the files changed since [0-9a-f]{7} \(verify\.sh quick without --related runs them all\)/);
+  assert.match(related.out, /test: 2 problem\(s\), all already on main/, 'the base\'s failures still pass');
+  assert.strictEqual(run().code, 0);
+  const calls = fs.readFileSync(path.join(dir, 'args.txt'), 'utf8').trim().split('\n');
+  assert.match(calls[0], new RegExp(`^--changedSince=${sha} --json --outputFile=`));
+  assert.doesNotMatch(calls[1], /changedSince/, 'without --related, every test');
+});

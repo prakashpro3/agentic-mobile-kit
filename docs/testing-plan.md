@@ -1,6 +1,6 @@
 # Plan: tests that grow with each change, a tester, user stories, planning all features before building, and hands-off running
 
-Status: planned, updated 2026-10-30. Not started.
+Status: 0.8.0 built on 2026-10-30, not released yet; 0.9.0 to 0.14.0 planned.
 
 ## In one page
 
@@ -717,6 +717,16 @@ Each release ships on its own and keeps its own docs current: both `AGENTS.md` f
 | 0.12.0 After the PR | Watching CI and fixing it. Auto-merge, with the team and solo paths (`Reviewers:` in `team-process.md`). Merging `main` forward at the start of each session, settling lockfiles, `Podfile.lock` and the living spec. CI by change scope, with one required summary check. The AI review job and the AI job for dependency PRs, each commenting only, with the trigger rules, auto-pause and the comment rules, and the nightly run's issues, which need no agent. Code owners' review required, so an App's approval never counts; the App's minimal rights | 2–3 |
 | 0.13.0 Fewer blocks | **API contract first:** the contract in the design, the typed client, the mock mode and `verify.sh --mock`, and "passed (mock API)". **`m-bugfix` taking issues and crash reports.** The bug queue with Sentry issues in it, and the review fixes, in one loop: review fixes, then bug fixes, then features | 1–2 |
 | 0.14.0 Test builds, upkeep and reporting | EAS Workflows previews for Expo; Codemagic to Firebase App Distribution or the stores' internal testing for bare apps. `metrics.js` with the merged-PR rate, and review comments that become checks. Docs kept current (`m-onboard check`), kit updates as PRs, `m-report`, and translations for review | 1–1½ |
+
+**What building 0.8.0 settled differently, or more exactly:**
+- **Related tests** use Jest's `--changedSince=<the base>` (the files the branch changed, committed or not, and what imports them), through `verify.sh quick --related`, rather than a list of files for `--findRelatedTests`.
+- **The size-caps file** is `.amk-size-caps` at the project root, beside `.amk-secrets`. The limits default to 400 lines and a complexity of 20 (ESLint's own default), and the team changes them there. `--write-caps` writes it the first time, and after that only lowers caps or drops them.
+- **The free-disk check** stops a build under 5 GB free, or 8 GB before a first iOS build (one measured about 6 GB: pods, Hermes and a simulator), and doesn't run in CI, where the kit's e2e workflow builds on GitHub's runners.
+- **`specs.js tests`** counts a Jest test whose title holds a scenario's name as that scenario's check, as well as a flow block.
+- **`specs.js flow`** leaves each block's steps and assertion as comments, so `rn-check` warns until they're written.
+- **The question tool in the eval suite:** `claude -p` has no `AskUserQuestion`, so the suite checks the numbered fallback; the tool itself waits for a case run through the Agent SDK.
+- **Codex's switch** ships: Codex reads it from the project's config once the folder is trusted (checked with `codex features list`).
+- **Moved to 0.9.0, with the tester that writes the test report:** the definition of done's fifth item, and the PR template's link to the test report. The PR template's test lines and "what wasn't tested" are in 0.8.0.
 
 ## Compatibility with apps that sync
 

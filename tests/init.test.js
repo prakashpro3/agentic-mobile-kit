@@ -621,6 +621,40 @@ test('Antigravity\'s Stop hooks become a plain list of handlers, which is all it
   flattenAntigravityStop(tmpDir('amk-agy-none-')); // no Antigravity hooks: nothing to do
 });
 
+test('Codex asks with options to pick from in every mode: the project\'s config switches it on, once', () => {
+  const { codexQuestions } = require('../lib/init');
+  const dir = tmpDir('amk-codex-');
+  // what rulesync writes, in part
+  const written = 'default_permissions = "rulesync"\n\n[permissions.rulesync.filesystem.":workspace_roots"]\n".env" = "deny"\n';
+  fs.mkdirSync(path.join(dir, '.codex'));
+  fs.writeFileSync(path.join(dir, '.codex/config.toml'), written);
+  codexQuestions(dir);
+  const on = read(dir, '.codex/config.toml');
+  assert.strictEqual(on, `${written}\n# agentic-mobile-kit: questions as options to pick from, in every mode\n[features]\ndefault_mode_request_user_input = true\n`);
+  codexQuestions(dir);
+  assert.strictEqual(read(dir, '.codex/config.toml'), on, 'once');
+  // a [features] table of the team's: the setting goes in it; their own value of it stays
+  fs.writeFileSync(path.join(dir, '.codex/config.toml'), '[features]\nweb_search = true\n');
+  codexQuestions(dir);
+  assert.strictEqual(read(dir, '.codex/config.toml'), '[features]\ndefault_mode_request_user_input = true\nweb_search = true\n');
+  fs.writeFileSync(path.join(dir, '.codex/config.toml'), '[features]\ndefault_mode_request_user_input = false\n');
+  codexQuestions(dir);
+  assert.match(read(dir, '.codex/config.toml'), /= false\n$/);
+  codexQuestions(tmpDir('amk-codex-none-')); // no Codex: nothing to do
+});
+
+test('scripts/amk/tool-configs.js, which CI\'s tool-config check runs after rulesync, finishes both files as init does', () => {
+  const dir = tmpDir('amk-tool-configs-');
+  fs.mkdirSync(path.join(dir, '.agents'));
+  fs.mkdirSync(path.join(dir, '.codex'));
+  fs.writeFileSync(path.join(dir, '.agents/hooks.json'), JSON.stringify({ rulesync: { Stop: [{ hooks: [{ type: 'command', command: 'node stop.js' }] }] } }));
+  fs.writeFileSync(path.join(dir, '.codex/config.toml'), 'default_permissions = "rulesync"\n');
+  const r = require('child_process').spawnSync(process.execPath, [path.join(__dirname, '../stacks/react-native/template/scripts/amk/tool-configs.js')], { cwd: dir, encoding: 'utf8' });
+  assert.strictEqual(r.status, 0, r.stderr);
+  assert.deepStrictEqual(JSON.parse(read(dir, '.agents/hooks.json')).rulesync.Stop, [{ type: 'command', command: 'node stop.js' }]);
+  assert.match(read(dir, '.codex/config.toml'), /\[features\]\ndefault_mode_request_user_input = true\n$/);
+});
+
 test('an earlier kit install next to husky: core.hooksPath goes back to husky and the kit\'s postinstall goes', () => {
   const dir = fakeApp({
     pkg: { devDependencies: { husky: '^9.1.7' }, scripts: { prepare: 'husky', postinstall: 'patch-package && (git config core.hooksPath .githooks || true)' } },

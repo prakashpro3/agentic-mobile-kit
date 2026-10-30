@@ -26,7 +26,7 @@ A prototype answers questions before the real build: what the client wants, how 
 
 1. Work out two or three genuinely different ways it could work: different flows or layouts, not colour variants. For each, note the user flow step by step, the key screens, and the trade-offs: effort, iOS and Android differences, native or backend work.
 2. Make one HTML file per concept in `specs/<id>/concepts/`: the key screens as phone-sized frames side by side, with the app's colours, fonts and spacing taken from `docs/amk/design-system.md` (its theme), real texts where they're known, and links between the frames so it can be clicked through. Each is a single file of plain HTML and CSS, with nothing to install or build and nothing loaded from the internet, so it opens in any browser.
-3. Show the concepts with your recommendation. **Stop until the user picks one or combines them.** Write the choice and why under `## Decisions`, and commit.
+3. Show the concepts, and ask which as options to pick from (`AGENTS.md`), your recommendation first. **Stop until the user picks one or combines them.** Write the choice and why under `## Decisions`, and commit.
 
 ## 3. Build the prototype in the app
 

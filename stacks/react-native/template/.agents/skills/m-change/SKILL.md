@@ -26,6 +26,7 @@ Show in one message:
 - each file to change, and how;
 - the requirement as it is and as it will be, or the new one;
 - the doc lines that change;
+- the tests that change: the Jest tests named after the requirement's scenarios and their blocks in `.maestro/<the spec its Source: line names>*.yaml`, and how each changes;
 - how it will be checked: a test where logic changes, and the screens on both platforms for anything visible.
 
 **Stop until the user approves.** On the main branch, suggest a new branch first.
@@ -37,7 +38,7 @@ If no requirement changes, as with a pure style change, skip the spec files (ste
 1. Pick an ID: the task's ID if it has one, otherwise `YYYYMMDD-<slug>`. Write `specs/<id>/requirements.md` with a title, a one-line goal and only the requirements that change, under `## MODIFIED Requirements: <area>` (or ADDED or REMOVED; the format is in `specs/current/README.md`). Run `node scripts/amk/specs.js check specs/<id>/requirements.md`.
 2. Change the code, and add or update a test where logic changed.
 3. Run `sh scripts/amk/verify.sh quick` and show its output.
-4. For a visible change, write `.maestro/<id>.yaml` from `specs/_templates/flow.yaml`: open the changed screen and take a screenshot. Check it on the devices as `sh scripts/amk/verify.sh plan --spec <id>` says (one command, or devices in rounds, each in its own `m-device-checker` subagent, as in `m-feature`'s step 5), and open the screenshots in `.amk/evidence/<id>/`. Off a Mac it checks Android only: say that iOS still needs checking on a Mac.
+4. For a visible change, write `.maestro/<id>.yaml` (`node scripts/amk/specs.js flow <id>` starts it from `specs/_templates/flow.yaml`): open the changed screen and take a screenshot. Check it on the devices as `sh scripts/amk/verify.sh plan --spec <id>` says (one command, or devices in rounds, each in its own `m-device-checker` subagent, as in `m-feature`'s step 5), and open the screenshots in `.amk/evidence/<id>/`. Off a Mac it checks Android only: say that iOS still needs checking on a Mac.
 5. Run `node scripts/amk/specs.js merge <id>` to update the living spec, and change the doc lines from step 3.
 6. Copy `specs/_templates/progress.md` to `specs/<id>/progress.md`, set `Status: done`, and write down the checks and their results.
 

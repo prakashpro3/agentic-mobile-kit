@@ -23,9 +23,10 @@ This project may also use other AI workflow frameworks (for example Superpowers,
 | Lint, typecheck, test (each skips what the app doesn't have yet) | `sh scripts/amk/pm-run.sh lint`, `sh scripts/amk/pm-run.sh typecheck`, `sh scripts/amk/pm-run.sh test` |
 | Check dependency versions and the app config | `npx expo install --check`, `npx expo-doctor` |
 | Check on devices (release builds, Maestro flows, screenshots) | `sh scripts/amk/verify.sh all --spec <id>`; another iOS scheme: `--scheme <name>`; only some screens: `--screens phone` (or `tablet`, `landscape`, …); only the flows tagged smoke: `--tags smoke`; on a real iPhone or iPad the user names: `AMK_IOS_DEVICE=<its UDID>` (the flows clear the app's data on it) |
-| Check devices at the same time | `sh scripts/amk/verify.sh plan --spec <id>` says how many this machine's memory fits, and prints the commands: one per device (in rounds when they don't all fit; a device's flows in parts when there's room), each for an `m-device-checker` subagent |
-| React Native mistakes and Maestro flow problems in this branch's changed lines (`verify.sh quick` runs it) | `node scripts/amk/rn-check.js` |
-| Specs: progress, format check, fold a finished feature into the living spec | `node scripts/amk/specs.js status`, `node scripts/amk/specs.js check`, `node scripts/amk/specs.js merge <id>` |
+| Check devices at the same time | `sh scripts/amk/verify.sh plan --spec <id>` prints a command per device that fits in memory (in rounds, or a device's flows in parts), each for an `m-device-checker` subagent |
+| After each task: lint, typecheck and the tests of the changed files | `sh scripts/amk/verify.sh quick --related` |
+| React Native mistakes, flow problems, and files or functions over the size limits, in this branch's changes (`verify.sh quick` runs it) | `node scripts/amk/rn-check.js` |
+| Specs: progress, format, the tests of the areas a spec touches, a flow to start from, merging into the living spec | `node scripts/amk/specs.js status` (or `check`, `tests <id>`, `flow <id>`, `merge <id>`) |
 | Check a release before tagging it (versions, permission texts, store review rules, debug leftovers) | `node scripts/amk/release-check.js` |
 | Signed release builds (a person runs them: they use the signing keys) | `sh scripts/amk/release-build.sh android`, `sh scripts/amk/release-build.sh ios` |
 
@@ -33,7 +34,7 @@ This project may also use other AI workflow frameworks (for example Superpowers,
 
 A task is done only when:
 1. `sh scripts/amk/verify.sh quick` passes (lint, typecheck, tests) and you show its output from this session. In an app whose base branch already fails some of them, it passes when your change adds no new failure, and lists the old ones: leave those alone unless the task is to fix them;
-2. UI changes were checked with `sh scripts/amk/verify.sh all --spec <id>` on both iOS and Android, on each screen listed above, and you looked at the screenshots. On Windows or Linux, that covers Android only: write in `progress.md` and the PR that iOS still needs checking on a Mac, and the PR isn't merged until a teammate with a Mac has done it;
+2. UI changes were checked with `sh scripts/amk/verify.sh all --spec <id>` on both iOS and Android, on each screen listed above, and you looked at the screenshots. On Windows or Linux it covers Android only: say in `progress.md` and the PR that iOS still needs a Mac, and don't merge until a teammate has checked it;
 3. the change stays inside the task's scope;
 4. `specs/<id>/progress.md` is updated, when working from a spec.
 
@@ -42,17 +43,25 @@ Never say a check passed unless you ran it in this session.
 ## Rules
 
 - Stay inside the task. Ask before touching unrelated files.
-- Ask the user in rounds: every question you can ask now (its answer doesn't wait on another open question), numbered, each with the answer you recommend and worded so "yes" takes it. A "yes" answers that round and nothing more: an approval is asked for on its own. The answers can open the next round. Look facts up in the code yourself; ask only for decisions. A question only someone else can answer (the client, a designer, the backend team) goes into `specs/<id>/questions-<who>.md`, from `specs/_templates/questions.md`, for the user to send; go on with the rest.
+- Ask the user in rounds: every question you can ask now, each with the answer you recommend. With a question tool (`AskUserQuestion`, `request_user_input`, `question`), give each 2 to 4 options, the recommended one first and marked "(Recommended)", multiple choice where several can apply; suggestions too. Without one, number them, each worded so "yes" takes it. An approval is always a question of its own, never part of a round. The answers can open the next round. Look facts up in the code yourself; ask only for decisions. A question only someone else can answer (the client, a designer, the backend team) goes into `specs/<id>/questions-<who>.md` for the user to send; go on with the rest.
 - Before designing a feature's screens, ask the user which UI/UX level they want: Simple (the default), Mixed or Premium (`specs/_templates/design.md` describes each). Build them to it.
 - Ask before adding or upgrading dependencies, and before editing `package.json`, lockfiles, `app.json`, `app.config.*`, `eas.json` or `.github/workflows/`.
 - Never edit `ios/` or `android/`: the next prebuild overwrites them. Native settings go in `app.json` or `app.config.*`, through config plugins; native code goes in an Expo module (`expo-module` skill). Ask before adding a config plugin.
 - Never run `eas build`, `eas submit` or `eas update`: they build, ship or publish with the team's accounts, so a person runs them.
 - Never read, print or commit `.env` files, keystores, signing files or the files `.amk-secrets` lists. Secrets don't belong in this repo.
 - Never use `git commit --no-verify`, `git push --force`, `git reset --hard` or `rm -rf`, and never throw away work that can't be brought back (uncommitted changes with `git checkout .` or `git restore .`, stashes with `git stash drop` or `clear`, unmerged commits with `git branch -D`): ask first. To undo your own edit to a file, `git checkout -- <that file>`.
-- When `rn-check` (in `verify.sh quick`) reports a problem (✗), show it to the user and let them choose, for each one: fix it, or keep the line with `// amk-ok <today's date>: <their reason>`. Never add an `amk-ok` on your own. One kept over two weeks ago comes back when its file changes again: ask again. Fix the warnings (!) in code the task changed, or tell the user why one stays.
+- When `rn-check` (in `verify.sh quick`) reports a problem (✗), show it to the user and let them choose, for each one: fix it, or keep the line with `// amk-ok <today's date>: <their reason>`. Never add an `amk-ok`, or a cap in `.amk-size-caps`, on your own. One kept over two weeks ago comes back when its file changes: ask again. Fix the warnings (!) in code the task changed, or tell the user why one stays.
 - After 2 failed attempts at the same fix, stop and report what you found.
 - Chat is not memory: write decisions into the spec or `docs/amk/decisions.md` straight away.
 - Follow `docs/amk/expo.md`. Before fixing a build error, check `docs/amk/known-issues.md`.
+
+## Review guidelines
+
+Reviews, AI reviewers' too, check these first (more in `m-review`):
+- No secrets or personal data in code, logs or analytics; tokens only in `expo-secure-store`.
+- Nothing lost: older saved data still loads, and typed input survives errors, going offline and a restart.
+- The code does what its spec says, on both platforms and each screen listed above, and its tests changed with it.
+<!-- This app's own, a line each. -->
 
 ## Skills
 

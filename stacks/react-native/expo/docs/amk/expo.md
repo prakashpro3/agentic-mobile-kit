@@ -42,7 +42,7 @@ Rules for things AI agents commonly get wrong in Expo apps. Each one comes from 
 
 ## Tablets and landscape
 
-`AGENTS.md` lists the screens this app supports: phones and tablets, portrait and landscape. Build every screen for each of them, and skip what isn't listed. `verify.sh` checks each one.
+`AGENTS.md` lists which screens this app supports, out of phones and tablets, portrait and landscape. Build every screen for each one it lists, and skip the others. `verify.sh` checks each one.
 
 - One set of screens for every device: layouts adapt to the window. No separate tablet copies of screens, and no phone-width column centered on a tablet.
 - Read the window size with `useWindowDimensions()`, which updates on rotation, split view and resizable windows. `Dimensions.get` read once at startup goes stale.
@@ -80,6 +80,7 @@ These changed after most AI training data was written: check them instead of wri
 - Mock only what the app doesn't own: the network, storage, native modules, time and randomness. Not the app's own components, hooks or modules: a test of mocks passes whatever the code does.
 - Expected values come from the spec or a worked example (`expect(total([10, 5])).toBe(15)`), never computed the way the code computes them, or the test can't fail.
 - A bug fix comes with a test that failed before the fix.
+- A test that checks a spec's scenario is named after it, word for word (`it('Rejects an expired code', …)`), so `specs.js tests` and reviews can tell what checks each scenario.
 
 ## Platform guidelines and accessibility
 

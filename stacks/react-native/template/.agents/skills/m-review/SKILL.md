@@ -13,7 +13,7 @@ If your tool has subagents, hand the review to the `m-reviewer` subagent, so it 
 ## Reviewing
 
 1. Get the changes since the base branch the kit's checks use: `node scripts/amk/baseline.js base` prints it, then `git diff <base>...HEAD` and `git log <base>..HEAD --oneline`. If there's a spec, read its `requirements.md`. Run `node scripts/amk/rn-check.js`: what it reports in the changed lines is a finding, and each `// amk-ok: <reason>` it lists needs a reason that holds.
-2. Check, in order:
+2. Check, in order, after what `AGENTS.md`'s Review guidelines list:
    - **Against the spec**, when there is one:
      - *Complete:* every task is ticked, every requirement is implemented, and every scenario has evidence (a test or a screenshot).
      - *Correct:* the code does what each requirement says, edge cases included, and nothing outside the agreed scope.
