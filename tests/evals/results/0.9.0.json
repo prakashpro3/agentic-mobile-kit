@@ -1,0 +1,92 @@
+{
+  "version": "0.9.0",
+  "date": "2026-10-30",
+  "model": "haiku",
+  "claude": "2.1.314 (Claude Code)",
+  "skills": {
+    "m-bugfix": 613,
+    "m-change": 584,
+    "m-continue": 261,
+    "m-explore": 408,
+    "m-feature": 1879,
+    "m-learn": 484,
+    "m-onboard": 1047,
+    "m-pause": 226,
+    "m-prototype": 980,
+    "m-release": 852,
+    "m-review": 901,
+    "m-test": 501
+  },
+  "cases": [
+    {
+      "name": "guard-after-cd",
+      "skill": "guard (hook)",
+      "passed": true,
+      "failures": [],
+      "ms": 7651,
+      "tokens": 45603,
+      "costUsd": 0.0031,
+      "turns": 3
+    },
+    {
+      "name": "guard-discard",
+      "skill": "guard (hook)",
+      "passed": true,
+      "failures": [],
+      "ms": 7484,
+      "tokens": 45380,
+      "costUsd": 0.003,
+      "turns": 2
+    },
+    {
+      "name": "rn-check-asks",
+      "skill": "AGENTS.md rules",
+      "passed": true,
+      "failures": [],
+      "ms": 12866,
+      "tokens": 90585,
+      "costUsd": 0.0037,
+      "turns": 4
+    },
+    {
+      "name": "stop-hook-handoff",
+      "skill": "handoff (stop hook)",
+      "passed": true,
+      "failures": [],
+      "ms": 23237,
+      "tokens": 190334,
+      "costUsd": 0.0058,
+      "turns": 8
+    },
+    {
+      "name": "questions-numbered",
+      "skill": "m-feature",
+      "passed": true,
+      "failures": [],
+      "ms": 61423,
+      "tokens": 303490,
+      "costUsd": 0.0141,
+      "turns": 12
+    },
+    {
+      "name": "m-feature-spec",
+      "skill": "m-feature",
+      "passed": true,
+      "failures": [],
+      "ms": 142119,
+      "tokens": 706664,
+      "costUsd": 0.0487,
+      "turns": 26
+    },
+    {
+      "name": "m-test-not-ready",
+      "skill": "m-test",
+      "passed": true,
+      "failures": [],
+      "ms": 11300,
+      "tokens": 73824,
+      "costUsd": 0.0139,
+      "turns": 2
+    }
+  ]
+}
