@@ -6,6 +6,8 @@
     // isn't found there, which turns the guard off (or, in Antigravity, blocks every command). No shell variables,
     // so it also runs in PowerShell. No matcher: runs for every tool call; guard.js decides from the payload
     "preToolUse": [{ "command": "node -e \"require(require('child_process').execSync('git rev-parse --show-toplevel').toString().trim() + '/scripts/amk/guard.js')\"" }],
-    "stop": [{ "command": "node -e \"require(require('child_process').execSync('git rev-parse --show-toplevel').toString().trim() + '/scripts/amk/handoff-check.js')\"" }]
+    "stop": [{ "command": "node -e \"require(require('child_process').execSync('git rev-parse --show-toplevel').toString().trim() + '/scripts/amk/handoff-check.js')\"" }],
+    // after a compaction (Claude Code, and Codex where it calls it), the spec's handoff, next task and definition of done
+    "sessionStart": [{ "matcher": "compact", "command": "node -e \"require(require('child_process').execSync('git rev-parse --show-toplevel').toString().trim() + '/scripts/amk/handoff-check.js')\"" }]
   }
 }

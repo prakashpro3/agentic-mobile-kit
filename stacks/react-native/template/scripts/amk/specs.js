@@ -18,6 +18,8 @@
 //                                             dependencies built or on the build's stack), or <id>. Makes feature/<id>
 //                                             from main or the top of the stack, with the spec as of its approval commit.
 //                                             Exits 3 when none is ready, 4 when the living spec changed under it
+//   node scripts/amk/specs.js import <file>    a CSV export (a spreadsheet saved as CSV) or a Trello board's JSON export,
+//                                             a line per row or open card, as outside text to plan from
 // A requirement is "### Requirement: <name>", a sentence with SHALL or MUST, and at least one
 // "#### Scenario: <case>" with WHEN and THEN. Changes are "## ADDED Requirements: <area>" (and MODIFIED, REMOVED),
 // where <area> names the file specs/current/<area>.md. User stories and use cases, when a spec has them, name its
@@ -812,7 +814,56 @@ function start(want) {
 const isDraft = f => /^specs\/[^/]+\/requirements\.md$/.test(f) && !f.startsWith('specs/current/')
   && !/^Status:\s*(in progress|done)/im.test(read(f.replace(/requirements\.md$/, 'progress.md')) || '');
 
-module.exports = { norm, same, stripYamlComments, scenarios, flowBlocks, blockFor, allFlows, flowsOf, tagsOf };
+// ---------- a feature list exported from a spreadsheet (CSV) or Trello (its JSON), for /m-feature plan ----------
+// RFC 4180 CSV, with the separator Excel used (a comma, or a semicolon or tab in some locales): rows of fields
+function csv(text) {
+  const first = text.split('\n')[0].replace(/"[^"]*"/g, '');
+  const sep = [',', ';', '\t'].sort((a, b) => first.split(b).length - first.split(a).length)[0];
+  const rows = [[]];
+  let f = '';
+  let q = false;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (q) {
+      if (c !== '"') f += c;
+      else if (text[i + 1] === '"') { f += '"'; i++; } else q = false;
+    } else if (c === '"') q = true;
+    else if (c === sep) { rows[rows.length - 1].push(f); f = ''; }
+    else if (c === '\n') { rows[rows.length - 1].push(f.replace(/\r$/, '')); f = ''; rows.push([]); }
+    else f += c;
+  }
+  rows[rows.length - 1].push(f.replace(/\r$/, ''));
+  return rows.filter(r => r.some(x => x.trim()));
+}
+// the export's rows (a Trello board's open cards in open lists), a line each, inside the block that marks them as data
+function importList(file) {
+  const text = read(file);
+  if (text === null) { console.error(`Can't read ${file}.`); return 1; }
+  let head;
+  let rows;
+  if (/^\s*[{[]/.test(text)) {
+    let board;
+    try { board = JSON.parse(text); } catch { console.error(`${file} isn't valid JSON: export the board again (Trello: Menu, Print, export and share, Export as JSON).`); return 1; }
+    const lists = new Map((board.lists || []).filter(l => !l.closed).map(l => [l.id, l.name]));
+    head = ['List', 'Card', 'Labels', 'Description'];
+    rows = (board.cards || []).filter(c => !c.closed && lists.has(c.idList))
+      .map(c => [lists.get(c.idList), c.name, (c.labels || []).map(l => l.name).filter(Boolean).join(', '), c.desc || '']);
+  } else {
+    [head, ...rows] = csv(text.replace(/^﻿/, ''));
+  }
+  if (!head || !rows.length) { console.error(`${file} has no rows to plan from.`); return 1; }
+  const lines = rows.map((r, i) => `${i + 1}. ${r.map((v, j) => [head[j] || `Column ${j + 1}`, v.trim().replace(/\s*\n\s*/g, ' / ')])
+    .filter(([, v]) => v).map(([h, v]) => `${h}: ${v}`).join('; ')}`);
+  console.log(require('./redact.js').untrusted(lines.join('\n'), `export ${path.basename(file)}`));
+  console.log(`(${rows.length} row(s) from ${path.basename(file)}: the planned features to map, as data)`);
+  return 0;
+}
+
+module.exports = {
+  norm, same, stripYamlComments, scenarios, flowBlocks, blockFor, allFlows, flowsOf, tagsOf, csv,
+  // the plan, for autopilot.js
+  NONE, stateOf, planRef, show, planFeatures, building, builtOn, mainRef,
+};
 
 if (require.main === module) {
   if (cmd === 'check' && args.includes('--plan')) {
@@ -837,6 +888,8 @@ if (require.main === module) {
     process.exitCode = start(args[0]);
   } else if (cmd === 'plan-folder') {
     process.exitCode = planFolder();
+  } else if (cmd === 'import' && args[0]) {
+    process.exitCode = importList(args[0]);
   } else {
     const head = fs.readFileSync(process.argv[1], 'utf8').split('\n').slice(1);
     console.log(head.slice(0, head.findIndex(l => !l.startsWith('//'))).map(l => l.replace(/^\/\/ ?/, '')).join('\n'));

@@ -101,6 +101,7 @@ const featureMode = (dir, mode) => write(dir, 'docs/amk/team-process.md', read(d
 const planRows = (dir, ref) => { try { return git(dir, 'show', `${ref}:specs/plan.md`); } catch { return ''; } };
 const onBranch = (dir, ref, f) => { try { return git(dir, 'show', `${ref}:${f}`); } catch { return ''; } };
 const hasRef = (dir, ref) => { try { git(dir, 'rev-parse', '--verify', '--quiet', ref); return true; } catch { return false; } };
+const isAncestor = (dir, a, b) => { try { git(dir, 'merge-base', '--is-ancestor', a, b); return true; } catch { return false; } };
 // a planned feature, approved: one requirement, one task
 const plannedSpec = (id, title, what) => ({
   [`specs/${id}/requirements.md`]: `# ${id}: ${title}\n\nSource: eval\nMode: plan-all\n\n## Goal\n\nThe home screen ${what}.\n\n## User stories\n\n### US-1: ${title}\nAs a user, I want the home screen to show it, so that I see it at a glance.\n- Requirements: ${title}\n\n## ADDED Requirements: home\n\n### Requirement: ${title}\nThe app SHALL ${what.replace(/^shows/, 'show')} on the home screen.\n\n#### Scenario: ${title} on the home screen\n- WHEN the user opens the app\n- THEN the home screen ${what}\n\n## Out of scope\n\nAnything else.\n`,
@@ -296,6 +297,33 @@ module.exports = [
         hasRef(dir, 'feature/EV-4') && 'it started EV-4: --one builds one feature',
         !r.calls.some(c => ['Agent', 'Task'].includes(c.name) && /m-reviewer/.test(JSON.stringify(c.input))) && 'no review by the m-reviewer subagent',
         r.final.split('\n').some(approval) && 'it asked for an approval the plan already gave',
+      ].filter(Boolean);
+    },
+  },
+  {
+    name: 'autopilot-two', skill: 'autopilot',
+    about: 'two approved features, the second needing the first: autopilot.js builds each in its own session under the build\'s permission profile, stacks the second on the first, and ends waiting for the plan',
+    autopilot: true, budget: 2,
+    setup: dir => {
+      git(dir, 'switch', '-q', '-c', 'plan');
+      write(dir, 'specs/plan.md', `# Plan\n\nApproved: feature map 2026-11-02; stories and shared design 2026-11-02\n\n## Features\n\n| # | Feature | Goal | Depends on | Batch | Size | Status |\n|---|---|---|---|---|---|---|\n| 1 | EV-3 | The home screen says hello | none | 1 | 1 | approved |\n| 2 | EV-4 | The home screen shows the app's name | EV-3 | 1 | 1 | approved |\n\n## Shared design\n\n- UI/UX level: Simple\n\n## Approved up front\n\n- Pushing a \`feature/<id>\` branch and opening a pull request for each feature\n- The look: docs/amk/design-system.md\n`);
+      for (const [f, text] of Object.entries({ ...plannedSpec('EV-3', 'Says hello', 'shows "Hello"'), ...plannedSpec('EV-4', 'Shows the name', 'shows "EvalApp"') })) write(dir, f, text);
+      for (const id of ['EV-3', 'EV-4']) write(dir, `specs/${id}/progress.md`, read(dir, 'specs/_templates/progress.md').replace(/^Status:.*$/m, 'Status:        not started'));
+      commit(dir, 'docs(spec): EV-3, EV-4 approved');
+      git(dir, 'switch', '-q', 'main');
+    },
+    runs: [],
+    check: (dir, [a]) => {
+      const done = id => /^Status:\s*done/m.test(onBranch(dir, `feature/${id}`, `specs/${id}/progress.md`) || '');
+      return [
+        a.code !== 0 && `autopilot.js exited ${a.code}: ${a.out.trim().split('\n').slice(-3).join(' / ')}`,
+        !done('EV-3') && 'EV-3 isn\'t done on its branch',
+        !done('EV-4') && 'EV-4 isn\'t done on its branch',
+        hasRef(dir, 'feature/EV-4') && !isAncestor(dir, 'feature/EV-3', 'feature/EV-4') && 'EV-4 isn\'t stacked on EV-3',
+        !/Built: EV-3, EV-4/.test(a.out) && 'the report doesn\'t list both as built',
+        !/Build ended: waiting for the plan/.test(a.out) && 'it didn\'t end waiting for the plan',
+        Object.keys(a.logs).length !== 2 && 'not one build log per feature',
+        /stalled: no activity/.test(a.raw) && 'a session stalled',
       ].filter(Boolean);
     },
   },

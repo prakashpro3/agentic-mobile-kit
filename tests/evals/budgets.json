@@ -1,7 +1,7 @@
 {
   "m-bugfix": 700,
   "m-change": 650,
-  "m-continue": 350,
+  "m-continue": 400,
   "m-explore": 450,
   "m-feature": 2100,
   "m-feature/build": 640,

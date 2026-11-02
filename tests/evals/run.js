@@ -120,12 +120,36 @@ function claude(dir, token, run, model, resume) {
   const r = spawnSync('claude', args, { cwd: dir, env: cleanEnv(), encoding: 'utf8', timeout: 20 * 60e3, maxBuffer: 2 ** 28 });
   return { ...parseStream(r.stdout || ''), raw: r.stdout || '', stderr: r.stderr || '' };
 }
+// A case run through autopilot.js, which starts the sessions itself. No device is reachable: Maestro is off the PATH
+// (verify.sh stops before taking a device), and every device setting names one that doesn't exist
+function autopilot(dir, token, c, model) {
+  assertScratch(dir, token);
+  const env = { ...cleanEnv(), PATH: process.env.PATH.split(path.delimiter).filter(p => !/maestro/i.test(p)).join(path.delimiter),
+    AMK_IOS_DEVICE: '00000000-0000-0000-0000-0000000e0001', AMK_IOS_TABLET: '00000000-0000-0000-0000-0000000e0002',
+    AMK_ANDROID_DEVICE: 'emulator-5598', AMK_ANDROID_TABLET: 'emulator-5596', AMK_ANDROID_AVD: 'amk-eval-none', AMK_ANDROID_TABLET_AVD: 'amk-eval-none' };
+  const started = Date.now();
+  const r = spawnSync(process.execPath, ['scripts/amk/autopilot.js', '--model', model, '--budget', String(c.budget || 2), '--stall', '10'],
+    { cwd: dir, env, encoding: 'utf8', timeout: 60 * 60e3 });
+  const logs = Object.fromEntries((fs.existsSync(path.join(dir, '.amk/build')) ? fs.readdirSync(path.join(dir, '.amk/build')) : [])
+    .filter(id => fs.existsSync(path.join(dir, '.amk/build', id, 'build.log'))).map(id => [id, fs.readFileSync(path.join(dir, '.amk/build', id, 'build.log'), 'utf8')]));
+  // each session's totals, from its log's last line
+  const totals = [...Object.values(logs).join('\n').matchAll(/■ session: \d+ min, (\d+) tokens(?:, \$([\d.]+))?/g)];
+  return { out: `${r.stdout || ''}${r.stderr || ''}`, code: r.status, logs, calls: [], final: r.stdout || '', raw: Object.values(logs).join('\n'), stderr: r.stderr || '',
+    ms: Date.now() - started, turns: totals.length, tokens: totals.reduce((n, m) => n + Number(m[1]), 0), costUsd: totals.reduce((n, m) => n + Number(m[2] || 0), 0) };
+}
 function runCase(c, app, token, model, logs) {
   const dir = path.join(path.dirname(app), c.name);
   fs.cpSync(app, dir, { recursive: true, verbatimSymlinks: true });
   assertScratch(dir, token);
   if (c.setup) c.setup(dir);
   const base = git(dir, 'rev-parse', 'HEAD').trim();
+  if (c.autopilot) {
+    const a = autopilot(dir, token, c, model);
+    fs.writeFileSync(path.join(logs, `${c.name}.log`), redact(`${a.out}\n${a.raw}`));
+    let failures;
+    try { failures = c.check(dir, [a], base); } catch (e) { failures = [`its check failed: ${e.message}`]; }
+    return { name: c.name, skill: c.skill, passed: !failures.length, failures, ms: a.ms, tokens: a.tokens, costUsd: Math.round(a.costUsd * 1e4) / 1e4, turns: a.turns };
+  }
   // the runs it lists, then, for a case that answers as a person would, each one its next() asks for
   const runs = [];
   const go = r => runs.push({ ...claude(dir, token, r, model, runs.length ? runs[runs.length - 1].sessionId : null), prompt: r.prompt });

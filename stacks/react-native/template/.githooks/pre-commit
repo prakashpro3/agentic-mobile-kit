@@ -3,6 +3,14 @@
 # Blocks secrets, broken Xcode project files and case-only renames git missed, and lints the staged JS/TS files.
 set -eu
 
+# 0. an unattended build (scripts/amk/autopilot.js) never changes the kit's guardrails: its scripts, hooks and tool
+#    settings, the workflows, the agents' instructions, the coverage floors and size caps, and the code owners (the same
+#    list as autopilot.js and guard.js). A person changes them, in a reviewed pull request
+if [ -n "${AMK_AUTOPILOT:-}" ]; then
+  kept=$(git diff --cached --name-only | grep -E '^(scripts/amk/|\.rulesync/|\.githooks/|\.github/workflows/|\.agents/|\.claude/|\.codex/|((\.github|docs)/)?CODEOWNERS$|AGENTS\.md$|CLAUDE\.md$|rulesync\.jsonc$|\.amk-(coverage|size-caps|secrets)$)' || true)
+  [ -z "$kept" ] || { echo "pre-commit: an unattended build doesn't change these (a person does, in a reviewed pull request): $(echo $kept)" >&2; exit 1; }
+fi
+
 staged=$(git diff --cached --name-only --diff-filter=ACMR)
 [ -n "$staged" ] || exit 0
 

@@ -1,6 +1,6 @@
 # m-feature build: build the planned features
 
-The features approved in `specs/plan.md` (on the `plan` branch) are built one after another, without approval stops: the plan approved their requirements, design and what's approved up front. Only the stops that stay, below, end a feature early. `build --one` builds one feature, then stops. Work in the app's folder, not the planning one.
+The features approved in `specs/plan.md` (on the `plan` branch) are built one after another, without approval stops: the plan approved their requirements, design and what's approved up front. Only the stops that stay, below, end a feature early. `build --one` builds one feature, then stops; `node scripts/amk/autopilot.js` runs the build unattended, a fresh session per feature. Work in the app's folder, not the planning one.
 
 ## For each feature
 

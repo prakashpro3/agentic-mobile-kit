@@ -20,3 +20,14 @@ test('scripts/amk uses no Node global that React Native\'s ESLint config leaves 
   }
   assert.deepStrictEqual(found, []);
 });
+
+test('scripts/amk parses as plain scripts: an app whose own ESLint lints the folder (a pretest of eslint .) can parse each', () => {
+  // Node accepts a return at a CommonJS file's top level, but ESLint's parser doesn't: a 0.11.0 build's autopilot.js
+  // had one, and an app's pretest (eslint over the whole project) then failed every test run
+  const vm = require('vm');
+  const bad = [];
+  for (const f of fs.readdirSync(DIR).filter(n => n.endsWith('.js'))) {
+    try { new vm.Script(fs.readFileSync(path.join(DIR, f), 'utf8').replace(/^#!.*/, ''), { filename: f }); } catch (e) { bad.push(`${f}: ${e.message}`); }
+  }
+  assert.deepStrictEqual(bad, []);
+});

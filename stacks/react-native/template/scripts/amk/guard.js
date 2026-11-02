@@ -64,4 +64,46 @@ for (const c of commands) {
 for (const p of paths) {
   if (secret(p)) block(`access to a secret file: ${p}`);
 }
+
+// An unattended build (scripts/amk/autopilot.js sets AMK_AUTOPILOT) works under your GitHub login, so it never does what
+// only a person should: call GitHub's API directly, approve a pull request or request changes, merge without
+// auto-merge, touch the trigger labels, push anything but a feature/ or fix/ branch by name, or change the guardrails
+// (autopilot.js and the pre-commit hook hold the same list)
+if (process.env.AMK_AUTOPILOT) {
+  const GUARDRAILS = /^(?:scripts\/amk\/|\.rulesync\/|\.githooks\/|\.github\/workflows\/|\.agents\/|\.claude\/|\.codex\/|(?:\.github\/|docs\/)?CODEOWNERS$|AGENTS\.md$|CLAUDE\.md$|rulesync\.jsonc$|\.amk-(?:coverage|size-caps|secrets)$)/;
+  const roots = [root, fs.realpathSync(root)];
+  const rel = p => roots.map(r => path.relative(r, path.resolve(r, p)).replace(/\\/g, '/')).find(x => !x.startsWith('..')) || '';
+  // relative to the project, or as written without leading ../ (after a cd the guard doesn't follow)
+  const kept = p => { const f = String(p).replace(/^['"]|['"]$/g, ''); return GUARDRAILS.test(rel(f)) || GUARDRAILS.test(f.replace(/^(?:\.{1,2}\/)+/, '')); };
+  const refuse = (what, c) => block(`an unattended build ${what}: ${c.trim()}`);
+  const writes = /^\s*(?:cp|mv|rm|rmdir|ln|chmod|chown|truncate|touch|mkdir|install|tee|dd|patch|sed\s+(?:-[a-zA-Z]*i|--in-place)|perl\s+-[a-zA-Z]*i|git\s+(?:apply|checkout|restore|rm|mv))\b/;
+  const edits = /^(Edit|Write|MultiEdit|NotebookEdit|apply_patch|write_to_file|replace_file_content|multi_replace_file_content|sed_file|notebook_edit)$/;
+  if (edits.test(payload.tool_name || '') && paths.some(kept)) refuse('doesn\'t change the kit\'s guardrails (its scripts, hooks and tool settings, the workflows, the agents\' instructions)', paths.join(' '));
+  for (const c of commands) {
+    for (const f of c.matchAll(/^\*\*\* (?:Add|Update|Delete) File: (.+)$|^\*\*\* Move to: (.+)$/gm)) {
+      if (kept((f[1] || f[2]).trim())) refuse('doesn\'t change the kit\'s guardrails (its scripts, hooks and tool settings, the workflows, the agents\' instructions)', f[0]);
+    }
+    // a redirection such as 2>&1 isn't a command separator
+    for (const s of c.replace(/\d*>&\d*-?/g, ' ').split(/&&|\|\||[;&|\n]/)) {
+      if (/\bgh\s+api\b/.test(s)) refuse('doesn\'t call GitHub\'s API directly', s);
+      if (/\bgh\s+pr\s+review\b/.test(s)) refuse('doesn\'t approve pull requests or request changes: a person does', s);
+      if (/\bgh\s+pr\s+merge\b/.test(s) && !/\s--auto\b/.test(s)) refuse('merges only through auto-merge, after a person approves', s);
+      if (/\bgh\b/.test(s) && /\bamk-(?:ready|fix)\b/.test(s)) refuse('doesn\'t add or remove the amk-ready or amk-fix labels: a person does', s);
+      const push = /\bgit\s+push\b(.*)/.exec(s);
+      if (push) {
+        // its words, without redirections (2>/dev/null, > out.txt)
+        const words = push[1].replace(/\d*>{1,2}\s*\S+|<\s*\S+/g, ' ').trim().split(/\s+/).filter(Boolean);
+        const refs = words.filter(w => !w.startsWith('-')).slice(1);
+        if (words.some(w => w.startsWith('-') && !/^(-u|--set-upstream|-q|--quiet|-v|--verbose|--progress|--no-progress|--porcelain)$/.test(w))
+          || !refs.length || refs.some(r => !/^(?:feature|fix)\/[A-Za-z0-9._/-]+$/.test(r))) {
+          refuse('pushes only its own feature/ or fix/ branch, named (git push -u origin feature/<id>)', s);
+        }
+      }
+      const targets = [...s.matchAll(/>{1,2}\s*([^\s;&|<>]+)/g)].map(m => m[1]);
+      if (targets.some(kept) || (writes.test(s) && s.trim().split(/\s+/).slice(1).some(kept))) {
+        refuse('doesn\'t change the kit\'s guardrails (its scripts, hooks and tool settings, the workflows, the agents\' instructions)', s);
+      }
+    }
+  }
+}
 process.exit(0);
