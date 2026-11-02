@@ -459,3 +459,27 @@ test('verify.sh quick: rn-check runs after lint, typecheck and tests, and its pr
   const related = spawnSync('sh', ['scripts/amk/verify.sh', 'quick', '--related'], { cwd: dir, encoding: 'utf8', env: { ...process.env, AMK_BASE: 'main' } });
   assert.match(related.stdout, /^quick: lint, typecheck and the tests related to this branch's changes passed\n {2}test: every test ran, as the test script isn't Jest$/m);
 });
+
+test('rn-check: an API a React Native version removed is a problem from that version on, and a warning in an app still below it', () => {
+  const code = `InteractionManager.runAfterInteractions(go);
+const s = StyleSheet.absoluteFillObject;
+<StatusBar backgroundColor="#fff" />;
+StatusBar.setTranslucent(true);
+`;
+  const old = app({ dependencies: { react: '19.2.3', 'react-native': '^0.84.1' } });
+  write(old, 'src/a.tsx', code);
+  const r = check(old);
+  assert.strictEqual(r.status, 0, `nothing fails on 0.84, where these still work\n${r.out}`);
+  for (const [line, re] of [[1, /! src\/a\.tsx:1 {2}InteractionManager was removed in React Native 0\.87: use requestIdleCallback \(this app is on 0\.84: change it before upgrading\)/],
+    [2, /! src\/a\.tsx:2 {2}StyleSheet\.absoluteFillObject was removed in React Native 0\.85: use StyleSheet\.absoluteFill \(this app is on 0\.84/],
+    [3, /! src\/a\.tsx:3 {2}StatusBar's backgroundColor was removed in React Native 0\.87: edge to edge, it did nothing \(this app is on 0\.84/],
+    [4, /! src\/a\.tsx:4 {2}StatusBar\.setTranslucent was removed in React Native 0\.87 \(edge to edge, it did nothing\) \(this app is on 0\.84/]]) {
+    assert.match(r.out, re, `line ${line}\n${r.out}`);
+  }
+  const mid = app({ dependencies: { react: '19.2.3', 'react-native': '0.85.2' } });
+  write(mid, 'src/a.tsx', code);
+  const m = check(mid);
+  assert.strictEqual(m.status, 1, `on 0.85, absoluteFillObject is gone\n${m.out}`);
+  assert.match(m.out, /✗ src\/a\.tsx:2 {2}StyleSheet\.absoluteFillObject was removed in React Native 0\.85: use StyleSheet\.absoluteFill$/m);
+  assert.match(m.out, /! src\/a\.tsx:1 {2}InteractionManager was removed in React Native 0\.87: use requestIdleCallback \(this app is on 0\.85/);
+});

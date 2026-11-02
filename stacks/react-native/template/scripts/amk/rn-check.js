@@ -2,7 +2,8 @@
 // Checks the lines this branch adds or changes for React Native mistakes that the app's rules (docs/amk/react-native.md
 // or expo.md) list, and its Maestro flows (.maestro/): Maestro's own syntax check, files they run that aren't there,
 // taps by text, and each scenario of a spec the branch touched with its steps, an assertion and a screenshot.
-// Problems (✗) fail it, and so verify.sh quick; warnings (!) don't. Only changed lines: code already
+// Problems (✗) fail it, and so verify.sh quick; warnings (!) don't. An API a React Native version removed is a problem
+// from that version on, and a warning in an app still below it, where it works. Only changed lines: code already
 // on the base branch is never reported. A line that's right as it is carries `// amk-ok <date>: <reason>`, on it or on
 // the line above, with the user's reason and the day they gave it; it's listed as kept, for review. When a branch changes
 // a file again, a kept line in it that's over two weeks old is reported again, for the user to decide again (the date
@@ -102,6 +103,11 @@ try { pkg = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'))
 const deps = { ...pkg.dependencies, ...pkg.devDependencies };
 const major = name => Number((/\d+/.exec(deps[name] || '') || [0])[0]);
 const expoSdk = deps.expo ? major('expo') : 0;
+// React Native's minor version (0.84.1 is 84; a 1.x is past every 0.x). An API a version removed is a problem from that
+// version on; in an app still below it, it works, so it's a warning to change it before upgrading. Unknown: a problem
+const rnMinor = (m => (!m ? null : Number(m[1]) > 0 ? Infinity : Number(m[2])))(/(\d+)\.(\d+)/.exec(deps['react-native'] || ''));
+const removedIn = minor => (rnMinor !== null && rnMinor < minor ? '!' : '✗');
+const beforeUpgrade = minor => (rnMinor !== null && rnMinor < minor ? ` (this app is on 0.${rnMinor}: change it before upgrading)` : '');
 
 // the code without its comments (each comment character a space, so positions and lines stay). A quote opened in
 // JSX text (Don't) ends with its line, so it can't hide the rest of the file; a template string can span lines
@@ -181,9 +187,9 @@ function check(file, text) {
   const each = (re, fn, src = code) => { for (const m of src.matchAll(re)) fn(m); };
 
   // problems: removed or private APIs, secrets and tokens in the open, images in code
-  each(/\bInteractionManager\b/g, m => add('✗', m.index, null, 'InteractionManager was removed in React Native 0.87: use requestIdleCallback'));
-  each(/\babsoluteFillObject\b/g, m => add('✗', m.index, null, 'StyleSheet.absoluteFillObject was removed in React Native 0.85: use StyleSheet.absoluteFill'));
-  each(/\bStatusBar\s*\.\s*set(BackgroundColor|Translucent)\s*\(/g, m => add('✗', m.index, null, `StatusBar.set${m[1]} was removed in React Native 0.87 (edge to edge, it did nothing)`));
+  each(/\bInteractionManager\b/g, m => add(removedIn(87), m.index, null, `InteractionManager was removed in React Native 0.87: use requestIdleCallback${beforeUpgrade(87)}`));
+  each(/\babsoluteFillObject\b/g, m => add(removedIn(85), m.index, null, `StyleSheet.absoluteFillObject was removed in React Native 0.85: use StyleSheet.absoluteFill${beforeUpgrade(85)}`));
+  each(/\bStatusBar\s*\.\s*set(BackgroundColor|Translucent)\s*\(/g, m => add(removedIn(87), m.index, null, `StatusBar.set${m[1]} was removed in React Native 0.87 (edge to edge, it did nothing)${beforeUpgrade(87)}`));
   each(/<\s*(StatusBar|Modal|ScrollView|FlatList|SectionList|KeyboardAwareScrollView)\b/g, m => {
     const end = endOf(code, m.index);
     const tag = code.slice(m.index, end + 1);
@@ -192,9 +198,9 @@ function check(file, text) {
         : /\s(keyboardShouldPersistTaps)(\s*=\s*\{\s*(true|false)\s*\}|(?=[\s/>]))/.exec(tag);
     if (!prop) return;
     const instead = { backgroundColor: 'edge to edge, it did nothing', translucent: 'edge to edge, it did nothing', animated: 'use animationType', keyboardShouldPersistTaps: 'use "handled"' }[prop[1]];
-    add('✗', m.index + prop.index + 1, null, `${m[1]}'s ${prop[1] === 'keyboardShouldPersistTaps' ? 'boolean keyboardShouldPersistTaps' : prop[1]} was removed in React Native 0.87: ${instead}`);
+    add(removedIn(87), m.index + prop.index + 1, null, `${m[1]}'s ${prop[1] === 'keyboardShouldPersistTaps' ? 'boolean keyboardShouldPersistTaps' : prop[1]} was removed in React Native 0.87: ${instead}${beforeUpgrade(87)}`);
   });
-  each(/(['"])react-native\/Libraries\/[^'"\n]*\1/g, m => add('✗', m.index, null, `${m[0]} is React Native's private code (a type error from 0.87): import from 'react-native'`));
+  each(/(['"])react-native\/Libraries\/[^'"\n]*\1/g, m => add(removedIn(87), m.index, null, `${m[0]} is React Native's private code (a type error from 0.87): import from 'react-native'${beforeUpgrade(87)}`));
   // at the name itself: a branch that adds another name to an old import statement didn't add this one
   for (const m of importsFrom(code, 'react-native')) {
     const name = n => { const i = m[0].search(new RegExp(`\\b${n}\\b`)); return i < 0 ? null : m.index + i; };
