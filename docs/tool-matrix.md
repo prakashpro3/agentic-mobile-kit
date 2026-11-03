@@ -619,3 +619,17 @@ On the public test repository (a bare React Native 0.87 app), updated from kit 0
 - **Updating seven clones** (five apps from kit 0.7.19 or a fresh install, the test repository from 0.4.0, and one app given `--ci github`): no conflicts but the test repository's own `codemagic.yaml`, every commit through the app's hooks, `verify.sh quick` passing where it passed before, `pr.js forward` doing nothing without a plan, and the guard refusing the `amk-ready` label only in an unattended run.
 - **Not run live:** the AI jobs, which need a team's API key and GitHub App; the nightly issue, which only a failing scheduled run opens; `pr.js forward` against GitHub (its git side is unit-tested; GitHub moves a stacked pull request onto `main` by itself only when the parent's branch is deleted).
 
+## Fewer blocks: the mock API and the overnight bug queue (2026-11-03)
+
+**`verify.sh --mock` on an Android emulator,** with a scratch copy of the test app (React Native 0.87.1) whose label reads `process.env.AMK_TEST_MOCK`, inlined by a Babel plugin at bundle time, the case where a stale bundle or cache would show the other API:
+- **The first run found a wrong path.** The bundle reset removed `createBundle<Variant>JsAndAssets/`, where React Native's Gradle plugin kept the JavaScript before 0.71; 0.87 keeps it in `generated/assets/react/<variant>/`, so nothing was removed, and the mock build's flow failed. The reset now removes both, and the unit test uses the current path too.
+- **Then, real, mock and real again:** each build's bundle held its own label, and the flows passed in portrait and landscape; the mock run's report says "API: mock", in `live-mock/`. `--mock --no-build` right after a real build was refused.
+- **The control:** the same Gradle command run twice, the variable off then on, with nothing reset, kept the real bundle. Gradle counts it as up to date when only a variable changed, so without the reset a mock check would have checked the real app.
+
+**`autopilot.js --bugs` on the public test repository** (Claude Code, Haiku 5.5), with the 0.13.0 kit on a local `main` (`AMK_BASE=main`) and two issues labelled `amk-fix` by the owner:
+- **The queue** found both through GitHub's REST API (who labelled each: a writer), and `issue.js` printed each as untrusted text.
+- **A real bug** (hours rounded instead of floored): `m-bugfix` wrote two failing tests named after the cases, fixed the cause, and opened a pull request into `main` starting with `Fixes #10`, with the cause and the evidence: one minute, $0.01 API-equivalent.
+- **A report with too little to go on:** no code changed; `needs-info.md` became a comment on the issue (redacted, without paths), and `autopilot.js` added `amk-needs-info`. Six tool calls.
+- **One refusal:** `gh pr create` with a multi-line `--body` full of backticks was refused, as an unattended session refuses such a command line; the agent opened the pull request another way. Every unattended session is now told to write a description or comment to a file and pass `--body-file`.
+- The pull request, the issues and the two labels were removed afterwards. The review queue (`--reviews`) isn't run live: it needs a second account or an AI reviewer's app to ask for changes on one's own pull request.
+

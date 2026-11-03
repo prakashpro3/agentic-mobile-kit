@@ -80,7 +80,9 @@ const link = p => p.split('/').map(encodeURIComponent).join('/');
 // the screenshots that differ from the approved ones (shots.js compare): screen, name, changed or new, how, path
 const looks = (read(path.join(dir, '.shots')) || '').split('\n').filter(Boolean).map(l => l.split('\t')).filter(r => r[2] !== 'same');
 const lookLine = looks.length ? [`Screenshots to look at, as they differ from the approved ones: ${looks.map(r => `${r[4]} (${r[2]}${r[3] ? `, ${r[3]}` : ''})`).join(', ')}`, ''] : [];
-const md = [`# Device checks: ${label}`, '', `${new Date().toISOString().slice(0, 16).replace('T', ' ')} UTC · ${headline}`, '', ...lookLine, ...table];
+// a run with verify.sh --mock: the app's mock API answered, not the backend
+const apiLine = fs.existsSync(path.join(dir, '.mock')) ? ['API: mock. The app\'s mock mode answered (.amk-mock), not the backend: a pass here is "passed (mock API)".', ''] : [];
+const md = [`# Device checks: ${label}`, '', `${new Date().toISOString().slice(0, 16).replace('T', ' ')} UTC · ${headline}`, '', ...apiLine, ...lookLine, ...table];
 for (const s of screens) {
   md.push('', `## ${s.name}`);
   for (const f of s.flows) {

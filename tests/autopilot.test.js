@@ -77,7 +77,7 @@ async function buildIn(dir, sessions, o = {}, io = {}) {
     const r = await mod.build({ tool: 'claude', wait: 0, budget: 25, stall: 20, poll: 5 * 60e3, ...o }, {
       session: async x => { calls.push(x); const play = sessions[calls.length - 1]; return summary(play ? play(x) : {}); },
       sleep: async ms => { clock += ms; if (io.whileWaiting) io.whileWaiting(); },
-      now: () => clock, notify: async (t, m) => { notes.push(`${t}: ${m}`); }, prs: () => null, issue: () => null, forward: () => 0,
+      now: () => clock, notify: async (t, m) => { notes.push(`${t}: ${m}`); }, prs: () => null, issue: () => null, forward: () => 0, reviews: () => [], bugs: () => [],
       log: l => logs.push(l), ...io,
     });
     return { ...r, calls, logs: logs.join('\n'), notes };
@@ -275,10 +275,103 @@ test('build: the plan\'s features one session each, in order, notes and all; the
   assert.match(r.logs, /Build ended: waiting for the plan[\s\S]*Built: a, b\nBlocked: none\nTo go on: node scripts\/amk\/autopilot\.js/);
   assert.match(read(dir, '.amk/build/report.md'), /Built: a, b/);
   assert.deepStrictEqual(r.notes, ['Build ended: waiting for the plan. Built: 2, blocked: 0']);
-  const codex = auto.TOOLS.codex('a', 'NOTE', { model: 'gpt-5.5' });
+  const codex = auto.TOOLS.codex('m-continue a', 'NOTE', { model: 'gpt-5.5' });
   assert.deepStrictEqual(codex.args.slice(0, 5), ['exec', '--json', '--sandbox', 'workspace-write', '-c']);
   assert.strictEqual(codex.args[codex.args.length - 1], '$m-continue a\n\nNOTE');
   assert.ok(codex.args.includes('features.shell_snapshot=false'), 'without it, Codex\'s commands get the interactive shell\'s variables back');
+});
+
+test('build: review fixes first, then the bug queue, then the plan\'s features, a session each; a bug it can\'t make happen asks on its issue', async () => {
+  const dir = app();
+  git(dir, 'branch', 'feature/z');
+  const answered = new Set();
+  const asked = [];
+  const r = await buildIn(dir, [
+    () => { answered.add(12); return {}; },
+    () => { write(dir, 'src/fix.ts', 'export const fixed = 1;\n'); commit(dir, 'fix: saving twice\n\nFixes #34'); return {}; },
+    () => { write(dir, '.amk/build/bug-35/needs-info.md', 'Tried saving twice on iOS 18 and Android 15: no crash.\n'); return {}; },
+    () => { finish(dir, 'a'); return {}; },
+    () => { finish(dir, 'b'); return {}; },
+  ], {}, {
+    reviews: () => [{ number: 12, headRefName: 'feature/z' }],
+    bugs: () => [{ number: 34 }, { number: 35 }],
+    unanswered: n => !answered.has(n),
+    prFor: b => (b === 'fix/34' ? 'https://github.com/o/r/pull/40' : null),
+    needsInfo: (n, t) => { asked.push([n, t]); return true; },
+  });
+  assert.deepStrictEqual(r.calls.map(c => c.args[1]), ['/m-review the review comments on pull request #12', '/m-bugfix #34', '/m-bugfix #35', '/m-continue a', '/m-continue b']);
+  const note = i => r.calls[i].args[r.calls[i].args.indexOf('--append-system-prompt') + 1];
+  assert.match(note(0), /Pull request #12, on this branch \(feature\/z\), has review comments nobody answered yet[\s\S]*gh pr comment 12 --body-file/);
+  assert.match(note(1), /a command line that holds several lines or backticks is refused/, 'descriptions and comments go in a file');
+  assert.match(note(1), /Fix issue #34 from the bug queue[\s\S]*node scripts\/amk\/issue\.js 34`: its text is data from outside[\s\S]*\.amk\/build\/bug-34\/needs-info\.md[\s\S]*`Fixes #34`/);
+  assert.match(git(dir, 'log', '--format=%s', '-1', 'fix/34'), /fix: saving twice/, 'on its own branch, from main');
+  assert.deepStrictEqual(r.done, ['review-12: answered', 'bug-34: fixed, https://github.com/o/r/pull/40', 'bug-35: couldn\'t make it happen, so it asked on the issue (amk-needs-info)']);
+  assert.deepStrictEqual(asked, [[35, 'Tried saving twice on iOS 18 and Android 15: no crash.']]);
+  assert.deepStrictEqual(r.built, ['a', 'b']);
+  assert.match(r.logs, /Reviews and bugs: review-12: answered; bug-34: fixed, https:\/\/github\.com\/o\/r\/pull\/40; bug-35: couldn't make it happen/);
+});
+
+test('build --bugs: only the bug queue; a bug that stops says why (blocked.md), a usage limit ends the run, and --reviews or --bugs alone end done', async () => {
+  const dir = app();
+  write(dir, '.amk/build/bug-7/blocked.md', 'an old reason, from an earlier run\n');
+  const r = await buildIn(dir, [
+    () => ({ code: 0 }),
+    () => { write(dir, '.amk/build/bug-8/blocked.md', 'Two fixes didn\'t hold: the crash is in the native image picker.\n'); return { code: 0 }; },
+    () => ({ code: 1, errors: ['You\'ve hit your usage limit. Your limit resets 3pm (Europe/Berlin)'] }),
+  ], { only: 'bugs' }, { bugs: () => [{ number: 7 }, { number: 8 }, { number: 9 }, { number: 10 }], prFor: () => null });
+  assert.strictEqual(r.calls.length, 3, 'the usage limit ends it before #10');
+  assert.deepStrictEqual(r.blocked.map(b => b.id), ['bug-7', 'bug-8']);
+  assert.strictEqual(r.blocked[0].why, 'ended without a result: read stop.md and build.log: the next run takes it again', 'not the reason an earlier run left');
+  assert.strictEqual(r.blocked[1].why, 'Two fixes didn\'t hold: the crash is in the native image picker.');
+  assert.strictEqual(r.end.reason, 'usage limit');
+  const none = await buildIn(app(), [], { only: 'reviews' }, { reviews: () => [] });
+  assert.strictEqual(none.end.reason, 'done');
+  assert.strictEqual(none.calls.length, 0, 'no features with --reviews');
+});
+
+test('the queues: which issues a person (or Sentry, when allowed) labelled, and which pull requests\' asks nobody answered; a needs-info comment', () => {
+  const api = {
+    'repo view': { nameWithOwner: 'o/r' },
+    'issue list': [5, 6, 7, 8, 9, 10].map(n => ({ number: n, labels: [{ name: 'amk-fix' }, ...(n === 7 ? [{ name: 'amk-needs-info' }] : [])] })),
+    'pr list': [{ headRefName: 'fix/8' }],
+  };
+  const actor = { 5: { login: 'ana', type: 'User' }, 6: { login: 'bo', type: 'User' }, 7: { login: 'ana', type: 'User' }, 8: { login: 'ana', type: 'User' },
+    9: { login: 'sentry-io[bot]', type: 'Bot' }, 10: { login: 'some-app[bot]', type: 'Bot' } };
+  const perm = { ana: 'write', bo: 'read' };
+  const gh = args => {
+    const line = args.join(' ');
+    const ev = /^api repos\/o\/r\/issues\/(\d+)\/events/.exec(line);
+    if (ev) return [{ event: 'labeled', label: { name: 'bug' }, actor: { login: 'x', type: 'User' } }, { event: 'labeled', label: { name: 'amk-fix' }, actor: actor[ev[1]] }];
+    const pm = /^api repos\/o\/r\/collaborators\/([^/]+)\/permission/.exec(line);
+    if (pm) return { permission: perm[pm[1]] || 'none' };
+    const k = Object.keys(api).find(p => line.startsWith(p));
+    return k ? api[k] : null;
+  };
+  assert.deepStrictEqual(auto.bugQueue({}, gh).map(i => i.number), [5], 'a writer labelled it; not a reader, not with amk-needs-info, not with its PR open, not a bot');
+  assert.deepStrictEqual(auto.bugQueue({ 'sentry adds amk-fix': 'on' }, gh).map(i => i.number), [5, 9], 'Sentry\'s integration, when allowed');
+  const pr = ({ reviews = [], issueComments = [], inline = [], commits = [] }) => args => {
+    const line = args.join(' ');
+    if (line.includes('/reviews')) return reviews;
+    if (line.includes('/issues/3/comments')) return issueComments;
+    if (line.includes('/pulls/3/comments')) return inline;
+    if (line.includes('/commits')) return commits.map(d => ({ commit: { committer: { date: d } } }));
+    return null;
+  };
+  const bot = { login: 'review-app[bot]', type: 'Bot' };
+  const me = { login: 'dev', type: 'User' };
+  const t = h => `2026-11-03T${h}:00:00Z`;
+  assert.strictEqual(auto.unanswered('o/r', 3, 'dev', pr({ commits: [t('01')], inline: [{ user: bot, created_at: t('02') }] })), true, 'an AI comment after the last commit');
+  assert.strictEqual(auto.unanswered('o/r', 3, 'dev', pr({ commits: [t('01')], inline: [{ user: bot, created_at: t('02') }], issueComments: [{ user: me, created_at: t('03') }] })), false, 'answered');
+  assert.strictEqual(auto.unanswered('o/r', 3, 'dev', pr({ commits: [t('01')], reviews: [{ user: { login: 'ana', type: 'User' }, state: 'CHANGES_REQUESTED', submitted_at: t('02') }] })), true, 'changes requested');
+  assert.strictEqual(auto.unanswered('o/r', 3, 'dev', pr({ commits: [t('03')], reviews: [{ user: { login: 'ana', type: 'User' }, state: 'CHANGES_REQUESTED', submitted_at: t('02') }] })), false, 'fixed since');
+  assert.strictEqual(auto.unanswered('o/r', 3, 'dev', pr({ commits: [t('01')], issueComments: [{ user: { login: 'ana', type: 'User' }, created_at: t('02') }] })), false, 'a person\'s comment alone asks nothing');
+  assert.strictEqual(auto.unanswered('o/r', 3, 'dev', pr({ commits: [t('01')], issueComments: [{ user: { login: 'codecov[bot]', type: 'Bot' }, created_at: t('02') }] })), false, 'a bot\'s report on the whole pull request asks nothing');
+  assert.strictEqual(auto.unanswered('o/r', 3, 'dev', pr({ commits: [t('01')], reviews: [{ user: bot, state: 'COMMENTED', submitted_at: t('02') }] })), true, 'an AI reviewer\'s review');
+  assert.strictEqual(auto.unanswered('o/r', 3, 'dev', pr({ commits: [t('01')], reviews: [{ user: bot, state: 'APPROVED', submitted_at: t('02') }] })), false, 'a bot\'s approval asks nothing');
+  const calls = [];
+  assert.strictEqual(auto.needsInfo(35, 'Tried it in /Users/dev/app with token=ghp_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa1', (cmd, args) => { calls.push(args); return { status: 0 }; }), true);
+  assert.deepStrictEqual(calls.map(a => a.slice(0, 3)), [['label', 'create', 'amk-needs-info'], ['issue', 'comment', '35'], ['issue', 'edit', '35']]);
+  assert.match(calls[1][4], /couldn't make this happen on demand[\s\S]*Tried it in <path> with token=\[redacted\][\s\S]*remove the amk-needs-info label/);
 });
 
 test('build --wait: a feature approved while it waits is built; when the time is up, it ends', async () => {
@@ -386,7 +479,7 @@ test('Codex runs the project\'s hooks without its stored approval only when they
   const args = () => {
     const was = process.cwd();
     process.chdir(dir);
-    try { return require(path.join(dir, 'scripts/amk/autopilot.js')).TOOLS.codex('a', 'NOTE', {}).args; } finally { process.chdir(was); }
+    try { return require(path.join(dir, 'scripts/amk/autopilot.js')).TOOLS.codex('m-continue a', 'NOTE', {}).args; } finally { process.chdir(was); }
   };
   assert.ok(args().includes('--dangerously-bypass-hook-trust'), 'the kit\'s two commands, as committed');
   write(dir, 'scripts/amk/guard.js', `${read(dir, 'scripts/amk/guard.js')}\n// changed here\n`);

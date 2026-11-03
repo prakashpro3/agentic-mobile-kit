@@ -22,6 +22,20 @@ set -eu
 platform=${1:-}
 target=${2:-}
 out=.amk/release
+
+# a store build reaches the backend: not while this shell still has a variable that switches the mock API on (.amk-mock)
+if [ -f .amk-mock ]; then
+  while IFS= read -r line || [ -n "$line" ]; do
+    line=$(printf '%s' "$line" | tr -d '\r')
+    case $line in '' | '#'*) continue ;; esac
+    name=${line%%=*}
+    case $name in "$line" | '' | [!A-Za-z_]* | *[!A-Za-z0-9_]*) continue ;; esac
+    if [ "$(eval "printf '%s' \"\${$name-}\"")" = "${line#*=}" ]; then
+      echo "release-build: $name is set in this shell as .amk-mock sets it, which switches the app's mock API on. Unset it (unset $name), then build again." >&2
+      exit 1
+    fi
+  done < .amk-mock
+fi
 mkdir -p "$out"
 
 # secret VAR "question": read it without echo, unless it's already set

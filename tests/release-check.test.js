@@ -370,3 +370,16 @@ test('a release build\'s merged manifest counts when it\'s newer than the manife
   fs.utimesSync(path.join(dir, mergedPath), earlier, earlier);
   assert.doesNotMatch(check(dir).out, /READ_MEDIA_VIDEO/);
 });
+
+test('release-build.sh refuses a store build while the shell switches the mock API on (.amk-mock)', { skip: process.platform === 'win32' && 'sh' }, () => {
+  const dir = require('./tmp')('amk-release-mock-');
+  fs.mkdirSync(path.join(dir, 'scripts/amk'), { recursive: true });
+  fs.copyFileSync(path.join(__dirname, '../stacks/react-native/template/scripts/amk/release-build.sh'), path.join(dir, 'scripts/amk/release-build.sh'));
+  fs.writeFileSync(path.join(dir, '.amk-mock'), '# the mock API\nMOCK_API=on\n');
+  const run = env => require('child_process').spawnSync('sh', ['scripts/amk/release-build.sh', 'nowhere'], { cwd: dir, encoding: 'utf8', env: { ...process.env, ...env } });
+  const on = run({ MOCK_API: 'on' });
+  assert.strictEqual(on.status, 1);
+  assert.match(on.stderr, /MOCK_API is set in this shell as \.amk-mock sets it, which switches the app's mock API on/);
+  assert.doesNotMatch(run({ MOCK_API: 'off' }).stderr, /mock API/, 'another value builds as usual');
+});
+

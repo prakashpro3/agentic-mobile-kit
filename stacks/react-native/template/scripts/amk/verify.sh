@@ -4,7 +4,7 @@
 # landscape (scripts/amk/screens.js) are checked on each: an iPad simulator and a tablet emulator, and turned.
 #
 # Usage: sh scripts/amk/verify.sh [quick|ios|android|all|build|plan|approve] [--spec <ids>] [--flow <file>] [--label <name>]
-#                                [--flavor <name>] [--scheme <name>] [--screens <list>] [--no-build] [--related]
+#                                [--flavor <name>] [--scheme <name>] [--screens <list>] [--no-build] [--related] [--mock]
 #   quick           lint, typecheck, tests
 #   --related       quick: only the Jest tests related to the files this branch changed, for each task while building
 #                   (without it, the whole suite)
@@ -24,7 +24,9 @@
 #   --scheme <name> iOS scheme to check (default: the one named like the workspace)
 #   --screens <l>   only these of the screens the app supports, comma-separated: phone, tablet, portrait,
 #                   landscape, or one such as tablet-landscape
-#   --no-build      check the last build instead of building again (after `build`)
+#   --no-build      check the last build instead of building again (after `build`), when it has the same API (--mock)
+#   --mock          build with the app's mock API on: the variables in .amk-mock (a NAME=value line each) switch it on, the
+#                   way the app reads its other settings. Its evidence goes in <label>-mock/, and its report says so
 #   --part <k/n>    only part k of the flows split in n (every n-th, from the k-th), with its evidence in
 #                   <screen>/part-k/: part 1 on the usual device, the others on a temporary copy of it (the same kind of
 #                   simulator, or an emulator with the same settings), deleted afterwards. plan prints these
@@ -67,6 +69,7 @@ label=""
 flavor=${AMK_ANDROID_FLAVOR:-}
 only=${AMK_SCREENS:-}
 no_build=0
+mock=0
 related=0
 build_only=0
 part=""
@@ -80,6 +83,7 @@ while [ $# -gt 0 ]; do
     --scheme) AMK_IOS_SCHEME=$2; export AMK_IOS_SCHEME; shift 2 ;;
     --screens) only=$2; shift 2 ;;
     --no-build) no_build=1; shift ;;
+    --mock) mock=1; shift ;;
     --related) related=1; shift ;;
     --part) part=$2; shift 2 ;;
     *) echo "verify: unknown option $1"; exit 2 ;;
@@ -102,9 +106,28 @@ case $flow in *\\*) flow=$(printf '%s' "$flow" | tr '\\' /) ;; esac
 case $flow in "" | /* | [A-Za-z]:/*) ;; *) flow=$root/$flow ;; esac
 [ -z "$flow" ] || [ -f "$flow" ] || { echo "verify: no flow file $flow"; exit 2; }
 . scripts/amk/maestro-env.sh
+# --mock: the app's mock API, switched on by the variables .amk-mock lists, with its evidence apart and Metro's cache
+# apart from the real builds', so neither build reuses the other's JavaScript
+api=real
+if [ "$mock" = 1 ]; then
+  [ -f .amk-mock ] || { echo "verify: --mock needs .amk-mock: the variables that switch this app's mock API on, a NAME=value line each (m-feature adds them with the mock mode)"; exit 2; }
+  while IFS= read -r line || [ -n "$line" ]; do
+    line=$(printf '%s' "$line" | tr -d '\r')
+    case $line in '' | '#'*) continue ;; esac
+    name=${line%%=*}
+    case $name in "$line" | '' | [!A-Za-z_]* | *[!A-Za-z0-9_]*) echo "verify: .amk-mock: not a NAME=value line: $line"; exit 2 ;; esac
+    export "$name=${line#*=}"
+  done < .amk-mock
+  api=mock
+  label="${label:-${spec:-no-spec}}-mock"
+  TMPDIR="$root/.amk/metro-mock"
+  export TMPDIR
+  mkdir -p "$TMPDIR"
+fi
 # runs without a spec or a label (verify.sh quick, mostly) share one folder, so they don't push out a feature's
 evidence="$root/.amk/evidence/${label:-${spec:-no-spec}}"
 mkdir -p "$evidence"
+if [ "$mock" = 1 ]; then : > "$evidence/.mock"; fi
 # Evidence stays on this machine (.amk/ is out of git): the newest AMK_EVIDENCE_KEEP folders stay, this one among
 # them, and older ones go (5; 0 keeps them all). A prototype's folder (<id>-prototype, material for a demo) and those
 # of a spec in progress (its progress.md isn't done: its evidence table points there) always stay and aren't counted.
@@ -129,6 +152,16 @@ if [ "$keep" -gt 0 ] 2> /dev/null; then
   fi
 fi
 status=0
+
+# a check of the last build (--no-build) needs one with the same API, mock or real; each build records its own
+same_api() {
+  [ "$no_build" = 1 ] || return 0
+  last=$(cat "$root/.amk/last-build-$1" 2> /dev/null || echo real)
+  [ "$last" = "$api" ] && return 0
+  echo "$1: the last build has the $last API, and this check is for the $api one: build again, without --no-build"
+  return 1
+}
+built_api() { echo "$api" > "$root/.amk/last-build-$1"; }
 
 flow_files() {
   {
@@ -579,6 +612,7 @@ ios() {
     return
   fi
   [ "$build_only" = 1 ] || command -v maestro > /dev/null || { echo "ios: Maestro isn't installed (https://maestro.dev)"; status=1; return; }
+  same_api ios || { status=1; return; }
   if [ "$no_build" = 0 ]; then
     # Expo apps without native folders in git: generate ios/ first
     if ! sh scripts/amk/prebuild.sh ios > "$evidence/prebuild-ios.log" 2>&1; then
@@ -640,6 +674,7 @@ ios() {
         echo "ios: release build for $d FAILED, see ${evidence#"$root"/}/ios-device-build.log"; status=1; return
       fi
     done
+    built_api ios
   fi
   unclaim "build-ios-$project"
   [ "$build_only" = 0 ] || { echo "ios: release build done"; return; }
@@ -929,6 +964,7 @@ android_ready() {
 
 android() {
   [ "$build_only" = 1 ] || command -v maestro > /dev/null || { echo "android: Maestro isn't installed (https://maestro.dev)"; status=1; return; }
+  same_api android || { status=1; return; }
   case $(uname -s) in # where Android Studio puts the SDK by default
     Darwin) default_sdk=$HOME/Library/Android/sdk ;;
     MINGW* | MSYS* | CYGWIN*) default_sdk=${LOCALAPPDATA:-$HOME/AppData/Local}/Android/Sdk ;;
@@ -1015,9 +1051,16 @@ android() {
     fi
     # a check build isn't a release: its mapping files and debug symbols stay off the crash reporters
     set -- "$@" --init-script "$(cd scripts/amk && { pwd -W 2> /dev/null || pwd; })/no-symbol-upload.gradle"
+    # Gradle would count the JavaScript bundled for the other API (mock or real) as up to date: it's bundled again
+    # (React Native's Gradle plugin puts it in generated/*/react/<variant>/, before 0.71 in createBundle<Variant>JsAndAssets/)
+    if [ "$(cat "$root/.amk/last-build-android" 2> /dev/null || echo real)" != "$api" ]; then
+      rm -rf android/app/build/generated/assets/react android/app/build/generated/res/react \
+        android/app/build/generated/assets/createBundle* android/app/build/generated/res/createBundle*
+    fi
     if ! (cd android && SENTRY_DISABLE_AUTO_UPLOAD=true ./gradlew "assemble${variant}Release" --no-daemon -q "$@") > "$evidence/android-build.log" 2>&1; then
       echo "android: release build FAILED, see ${evidence#"$root"/}/android-build.log"; status=1; return
     fi
+    built_api android
   fi
   unclaim "build-android-$project"
   [ "$build_only" = 0 ] || { echo "android: release build done"; return; }

@@ -8,7 +8,7 @@ Run: <date> · branch <branch> at <commit> · evidence in `.amk/evidence/<label>
 
 | Area › requirement › scenario | Status | Evidence |
 |---|---|---|
-| <area> › <requirement> › <scenario> | <passed, failed, flaky, blocked, not run or no check> | <the test's name, the flow block and its screenshot, or why> |
+| <area> › <requirement> › <scenario> | <passed, passed (mock API), failed, flaky, blocked, not run or no check> | <the test's name, the flow block and its screenshot, or why> |
 
 ## Failures
 

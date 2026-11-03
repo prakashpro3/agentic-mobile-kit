@@ -109,6 +109,27 @@ test('verify.sh android: hides "isn\'t responding" pop-ups on an emulator only, 
   assert.doesNotMatch(phone.calls, /settings put/);
 });
 
+test('verify.sh --mock: builds with .amk-mock\'s variables and its own Metro cache, keeps its evidence apart, and never checks a build of the other API', { skip }, () => {
+  const shot = 'touch "$(echo "$@" | sed \'s/.*--test-output-dir \\([^ ]*\\).*/\\1/\')/shot.png"';
+  const gradlew = app => fs.writeFileSync(path.join(app, 'android/gradlew'), '#!/bin/sh\necho "gradlew mock=${MOCK_API:-none} tmp=${TMPDIR##*/}" >> "$FAKE_STATE.calls"\n', { mode: 0o755 });
+  const files = { '.amk-mock': '# the mock API, for verify.sh --mock\nMOCK_API=on\n', 'android/app/build/generated/assets/react/xRelease/index.android.bundle': 'real',
+    'android/app/build/generated/assets/createBundleXReleaseJsAndAssets/index.android.bundle': 'real, before React Native 0.71' };
+  const r = verifyAndroid({ connected: ['emulator-5556 P35'], build: true, maestro: shot, files, prepare: gradlew, args: ['android', '--flavor', 'x', '--label', 'run', '--mock'] });
+  assert.match(r.out, /android: flows 1\/1 passed/);
+  assert.match(r.calls, /gradlew mock=on tmp=metro-mock/, 'the variables, and Metro\'s cache apart');
+  assert.ok(!fs.existsSync(path.join(r.app, 'android/app/build/generated/assets/react/xRelease')), 'the real build\'s bundle is made again');
+  assert.ok(!fs.existsSync(path.join(r.app, 'android/app/build/generated/assets/createBundleXReleaseJsAndAssets')), 'and where React Native before 0.71 put it');
+  assert.match(fs.readFileSync(path.join(r.app, '.amk/evidence/run-mock/report.md'), 'utf8'), /^API: mock\. The app's mock mode answered/m);
+  assert.strictEqual(fs.readFileSync(path.join(r.app, '.amk/last-build-android'), 'utf8').trim(), 'mock');
+  const reuse = verifyAndroid({ connected: ['emulator-5556 P35'], build: true, maestro: shot, files: { ...files, '.amk/last-build-android': 'real\n' }, args: ['android', '--flavor', 'x', '--no-build', '--mock'] });
+  assert.match(reuse.out, /android: the last build has the real API, and this check is for the mock one: build again, without --no-build/);
+  assert.strictEqual(reuse.status, 1);
+  const none = verifyAndroid({ connected: ['emulator-5556 P35'], args: ['android', '--mock'] });
+  assert.match(none.out, /verify: --mock needs \.amk-mock/);
+  const bad = verifyAndroid({ connected: ['emulator-5556 P35'], files: { '.amk-mock': 'MOCK API=on\n' }, args: ['android', '--mock'] });
+  assert.match(bad.out, /verify: \.amk-mock: not a NAME=value line: MOCK API=on/);
+});
+
 test('verify.sh android: runs a flow once more when the emulator went offline, and only then', { skip }, () => {
   // Maestro writes "device offline" only to its own log (--debug-output); the first run fails that way
   const offlineOnce = `debug=$(echo "$@" | sed 's/.*--debug-output \\([^ ]*\\).*/\\1/'); out=$(echo "$@" | sed 's/.*--test-output-dir \\([^ ]*\\).*/\\1/')

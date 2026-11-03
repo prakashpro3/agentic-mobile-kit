@@ -24,6 +24,15 @@
 
 <!-- Screens, components, state, API calls, native changes (if any). Keep it to what the task needs. -->
 
+## API contract
+
+<!-- Only for calls this feature needs that the backend doesn't have yet (n/a otherwise): the backend's OpenAPI file (its
+     path), or for each call its method, path and an example response (status and JSON). The typed client comes from it
+     (the project's generator, or types written from the examples), and the app's mock mode answers with the examples:
+     the variables in `.amk-mock` switch it on, the way the app reads its other settings, and `verify.sh --mock` builds
+     with them. An app without a mock mode gets one, approved with this design. A scenario checked only that way is
+     "passed (mock API)" until it runs against the backend. -->
+
 ## Files to change
 
 ## Tests

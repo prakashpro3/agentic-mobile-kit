@@ -1,6 +1,6 @@
 # Plan: tests that grow with each change, a tester, user stories, planning all features before building, and hands-off running
 
-Status: 0.9.0 released on 2026-10-30, with 0.8.0's changes, which never reached npm (live once approved there); 0.10.0 to 0.12.0 built; 0.13.0 and 0.14.0 planned.
+Status: 0.9.0 released on 2026-10-30, with 0.8.0's changes, which never reached npm (live once approved there); 0.10.0 to 0.13.0 built; 0.14.0 planned.
 
 ## In one page
 
@@ -779,6 +779,16 @@ Each release ships on its own and keeps its own docs current: both `AGENTS.md` f
 - **Long commands stay in the foreground:** Claude Code gives a command 2 minutes, then moves it to the background, so `autopilot.js` gives its sessions an hour (`BASH_DEFAULT_TIMEOUT_MS`, `BASH_MAX_TIMEOUT_MS`) for device checks and waits for CI. `pr.js checks` writes where its wait stands to `.amk/pr-checks.txt` at each look, which the stall watchdog counts as activity, as it does a device check's evidence.
 - **`CODEOWNERS` stays a snippet** in `docs/branch-protection.md`: the kit can't know a team's owners, and a developer working alone can't approve their own pull request, so code owners' review is for teams.
 - **Not run live:** the AI jobs, which need a team's API key and GitHub App.
+
+**What building 0.13.0 settled:**
+- **The mock API's switch is a file of variables,** `.amk-mock`, a `NAME=value` line each, read strictly (no shell). `verify.sh --mock` exports them for the build, so it needs no knowledge of how the app reads its settings (react-native-config's `ENVFILE`, Expo's `EXPO_PUBLIC_*`, a Babel plugin), and the app's own mock mode does the rest.
+- **A mock build never passes for a real one, or the other way round:** its evidence goes in `<label>-mock/` with "API: mock" in its report; Metro's cache for it lives apart (`TMPDIR` in `.amk/metro-mock`), as a cached transform would keep an inlined value; on Android, the JavaScript Gradle bundled for the other API is removed so it's bundled again (React Native's Gradle plugin keeps it in `generated/assets/react/<variant>/`, and before 0.71 in `createBundle<Variant>JsAndAssets/`: the first live run found the older path only, which removed nothing on 0.87); and `--no-build` refuses a build made for the other API (`.amk/last-build-<platform>`). `release-build.sh` refuses a store build while the shell still has `.amk-mock`'s variables set.
+- **"passed (mock API)"** comes from that report line, and `m-release` lists the scenarios whose only pass, in the release's report or a feature's, is one.
+- **`m-bugfix` reads issues through `issue.js`** (the issue and its comments in the untrusted-text block, secrets out) and crash reports through the project's Sentry MCP server or `sentry-cli`, else pasted. Sentry Seer's analysis needs nothing of its own: it's part of what the agent reads.
+- **The overnight order is reviews, then bugs, then features,** each kind also on its own (`--reviews`, `--bugs`, `--features`). A full run in a project without a plan ends after the bugs, as done.
+- **What asks for an answer** is a "changes requested" review, or an AI reviewer's review that comments or comment on a line. A bot's comment on the pull request as a whole (a coverage or preview report, or the `amk-ready` workflow's) or its approval asks nothing: counting those would start sessions for nothing. `gh pr view` names a bot like a person (`github-actions`), so the queue reads GitHub's REST API, where an author has a type. The session answers in one comment on the pull request, as replying on each line would need GitHub's API, which an unattended session never calls.
+- **The bug queue checks who labelled each issue** (its events): someone with triage rights or more, or Sentry's integration when `Sentry adds amk-fix` is on. One session per bug per run, on `fix/<number>`. `autopilot.js` itself posts the needs-info comment (redacted, without paths) and adds `amk-needs-info`, so the agent touches no labels. Notes an earlier run left (`needs-info.md`, `blocked.md`) are removed before a session.
+- **`AGENTS.md` stays under the 8 KB that `doctor` checks:** rows were shortened to make room. Expo's was already over before this release (8,585 bytes installed); it's shorter now, but not yet under.
 
 ## Compatibility with apps that sync
 

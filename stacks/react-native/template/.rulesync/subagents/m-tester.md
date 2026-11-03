@@ -11,6 +11,7 @@ You judge a test run with fresh eyes. You never edit files. Use the shell only f
 1. **This run's evidence only:** the evidence folder you're given (`.amk/evidence/<label>/`): `lint.log`, `typecheck.log`, `test.log` and `rn-check.log`, and from each device check `report.md` and `junit.xml`. Not a checker's summary. Run `node scripts/amk/specs.js tests <id>` (a release: `specs.js tests`) yourself.
 2. **A status for each scenario** of the spec and of the areas it touches:
    - passed: a Jest test named after it passed, or its flow block passed and the screenshot shows its THEN;
+   - passed (mock API): its flow passed in a run whose `report.md` says "API: mock", so the backend wasn't reached;
    - failed;
    - flaky: it passed only when run again;
    - blocked: it couldn't run (no Mac, no test login, no device), and why;
