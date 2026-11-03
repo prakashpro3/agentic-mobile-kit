@@ -5,12 +5,32 @@
 // so devices and parts checked at the same time all end up in it: each screen's flows are in <screen>/.flows (or
 // <screen>/part-<k>/.flows), a line each: name, passed, failed or flaky (it passed when run again), why it failed, its
 // screenshots, the screen when it failed, and a flaky one's first log.
-// Usage: node scripts/amk/report.js <evidence folder> [--summary]
+// --issue <run URL> (the nightly e2e run, in CI): an issue for the flows that failed twice (flaky ones passed the second
+// time), or a comment on the one still open, with what failed and the run's link (its screenshots are an artifact
+// there): no agent, no paths on the machine or device IDs. --issue-text prints that issue instead of opening it.
+// Usage: node scripts/amk/report.js <evidence folder> [--summary | --issue <run URL> | --issue-text <run URL>]
 'use strict';
 const fs = require('fs');
 const path = require('path');
+const { spawnSync } = require('child_process');
 
-const [dir, mode] = process.argv.slice(2);
+const [dir, mode, runUrl] = process.argv.slice(2);
+const ISSUE = 'Nightly e2e: flows fail';
+// the nightly issue: its text, then opened, or a comment on the one already open
+function issue(lines) {
+  const { redact } = require('./redact.js');
+  const body = redact([...lines, '', runUrl ? `The run, with each flow's screenshots and logs as an artifact: ${runUrl}` : '',
+    '', 'A flow that failed once and then passed is flaky: it\'s in the run\'s summary, not here.'].join('\n'))
+    .replace(/(?:\/(?:Users|home|private|var|tmp|opt)\/|[A-Za-z]:\\)[^\s'"`)]*/g, '<path>').replace(/\bemulator-\d+\b|\b[0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{12}\b/gi, '<device>');
+  if (mode === '--issue-text') { console.log(`${ISSUE}\n\n${body}`); process.exit(0); }
+  const gh = (...a) => spawnSync('gh', a, { encoding: 'utf8' });
+  let open = [];
+  try { open = JSON.parse(gh('issue', 'list', '--state', 'open', '--search', `"${ISSUE}" in:title`, '--json', 'number,title').stdout).filter(i => i.title === ISSUE); } catch {}
+  const r = open.length ? gh('issue', 'comment', String(open[0].number), '--body', body) : gh('issue', 'create', '--title', ISSUE, '--body', body);
+  console.log(r.status === 0 ? `${open.length ? 'commented on' : 'opened'} the issue "${ISSUE}"` : `couldn't open the issue: ${(r.stderr || '').trim()}`);
+  process.exit(r.status === 0 ? 0 : 1);
+}
+if (/^--issue/.test(mode || '') && (!dir || !fs.existsSync(dir))) issue(['The nightly e2e run failed before any flow ran: the build, or the emulator. Its log says why.']);
 if (!dir || !fs.existsSync(dir)) {
   console.error('usage: node scripts/amk/report.js <evidence folder> [--summary]');
   process.exit(2);
@@ -45,6 +65,9 @@ const headline = `${all.length - failed.length} of ${all.length} flows passed on
 const screenOf = f => screens.find(s => s.flows.includes(f));
 const flakyLine = f => `it failed${f.why ? ` ${f.why}` : ''} the first time, then passed`;
 
+if (/^--issue/.test(mode || '')) {
+  issue([`${headline}. These failed twice:`, '', ...failed.map(f => `- ${screenOf(f).name}: ${f.name}${f.why ? `, failed ${f.why}` : ''}`)]);
+}
 if (mode === '--summary') {
   console.log([`### Device checks: ${label}`, '', headline, '', ...table, '',
     ...failed.map(f => `- ✗ ${screenOf(f).name}: ${f.name}${f.why ? `, failed ${f.why}` : ''}`),

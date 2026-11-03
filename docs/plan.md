@@ -50,6 +50,7 @@ Build one kit that any React Native repo installs with a single command. It make
 | D14 | **A tester, apart from the builder.** `m-test` runs the checks; the read-only `m-tester` gives each scenario a status from this run's evidence only and ends with Ready or Not ready. Coverage floors and approved screenshots make "tests were weakened" and "this screen changed" checks a script answers, not a reviewer's impression. | A builder grading its own work reports what it hoped for (TST-02, GEN-05); evidence from another run, or a summary, isn't evidence (D7). |
 | D15 | **Plan all, then build, as a mode per feature.** Next to feature by feature, a team can approve every planned feature first (the feature map, then stories, use cases and the shared design, then the detail in batches), on a `plan` branch that's never merged, then have them built one after another without approvals. An approval is a commit, and the build copies each spec as of it; `specs.js start` picks the next ready feature and stacks it on the build's branch that holds its dependencies; `specs.js check --plan` checks the specs against each other; each feature's detail is drafted in a fresh context (`m-spec-writer`). The build stops a feature only where it would guess, records why and goes on. | Approving a settled product once beats a stop per feature, but specs written apart drift (CTX-01, REQ-05), so the cross-checks are scripts and each draft gets a fresh context; drafts must never reach the build, and work outside the plan must not be undone by it. |
 | D16 | **Unattended runs: a fresh session per feature, under an allow list.** `autopilot.js` starts the tool without a chat window for each planned feature, with only the variables a build needs, the build's commands allowed and everything else refused (never skipped permission prompts), a stall watchdog, and stop reasons that end the build only when every feature would hit them. The guard and the pre-commit hook keep it away from the GitHub API, approvals, merges, trigger labels, pushes other than its own branches, and the kit's guardrail files. | Long sessions drift and fill their context (ORC-10, CTX-01), usage limits stop work (XTL-08), and an agent waiting at a prompt overnight does nothing; under your login, an agent looks like you to GitHub, so the limits are enforced by the tools, not asked of the model. |
+| D17 | **After the PR, the build follows it to the merge, and a person still approves.** It waits for the checks and fixes a failure from its log, fixes the review comments that hold up, turns on auto-merge for a team (a solo developer's `amk-ready` label does it after their review), and merges `main` into stacked branches instead of rebasing them. CI runs what a change calls for, summed up in one required `checks` job. The optional AI jobs in CI only comment or fix a dependency update, start only for people with write access, and pause themselves after three failures in a row. | Most of a feature's wait is after its PR opens: red CI, comments and stacked branches gone stale each need a person's turn today. Merging forward never needs the force push the guard denies, and auto-merge keeps the merge itself a person's approval plus green checks. |
 
 ### 3.1 Alternatives considered
 
@@ -313,14 +314,17 @@ CI is the backstop when someone bypasses the hooks.
 
 | Job | Runner | What it runs | When |
 |---|---|---|---|
-| `checks` | Linux | Install from lockfile; lint; typecheck; unit tests; gitleaks; PR size (fails over 600 changed lines, excluding lockfiles and snapshots, unless labelled `large-pr`); rulesync drift; PR has an Evidence section | Every PR |
-| `android` | Linux | `expo prebuild` if CNG, then `./gradlew assembleDebug`, with Gradle cache | Every PR |
-| `ios` | macOS | `pod install`, then a simulator build with no signing | PRs that touch native files, dependencies or app config (path filter, because macOS minutes cost several times more than Linux) |
+| `scope` | Linux | `ci-scope.js`: what the change calls for, from its files | Every PR |
+| `basics` | Linux | gitleaks; PR size (fails over 600 changed lines, excluding lockfiles and snapshots, unless labelled `large-pr`); rulesync drift | Every PR |
+| `tests` | Linux | Install from lockfile; lint; typecheck; unit tests (failures already on the base don't count); coverage floors | PRs that change code (not only specs or docs) |
+| `android` | Linux | `expo prebuild` if CNG, then `./gradlew assembleDebug`, with Gradle cache | PRs that change code |
+| `ios` | macOS | `pod install`, then a simulator build with no signing | PRs that touch native files, dependencies or app config (macOS minutes cost several times more than Linux) |
+| `checks` | Linux | Sums up: fails when a job the change calls for failed, was cancelled or was skipped. The one required check | Every PR |
 | `e2e` (Phase 4) | Linux + Android emulator | Maestro flows for the critical user journeys | Nightly, and on PRs with an `e2e` label |
 
 Also set up:
-- branch protection: required checks plus one human approval;
-- CODEOWNERS for native folders and release config.
+- branch protection: the `checks` job plus one human approval, and auto-merge (`docs/branch-protection.md`);
+- CODEOWNERS for the kit's guardrail files, with the team's own owners.
 
 ### 5.7 Codemagic (Phase 5)
 

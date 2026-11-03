@@ -8,6 +8,10 @@ set -eu
 #    list as autopilot.js and guard.js). A person changes them, in a reviewed pull request
 if [ -n "${AMK_AUTOPILOT:-}" ]; then
   kept=$(git diff --cached --name-only | grep -E '^(scripts/amk/|\.rulesync/|\.githooks/|\.github/workflows/|\.agents/|\.claude/|\.codex/|((\.github|docs)/)?CODEOWNERS$|AGENTS\.md$|CLAUDE\.md$|rulesync\.jsonc$|\.amk-(coverage|size-caps|secrets)$)' || true)
+  # merging main in brings its versions (a kit update there): only a file that differs from the merged branch's is a change
+  if [ -n "$kept" ] && git rev-parse -q --verify MERGE_HEAD > /dev/null; then
+    kept=$(for f in $kept; do [ "$(git rev-parse -q ":$f" 2> /dev/null)" = "$(git rev-parse -q "MERGE_HEAD:$f" 2> /dev/null)" ] || echo "$f"; done)
+  fi
   [ -z "$kept" ] || { echo "pre-commit: an unattended build doesn't change these (a person does, in a reviewed pull request): $(echo $kept)" >&2; exit 1; }
 fi
 

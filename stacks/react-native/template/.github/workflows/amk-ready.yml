@@ -1,0 +1,39 @@
+# agentic-mobile-kit, for a developer who works alone (Reviewers: solo in docs/amk/team-process.md): GitHub doesn't let
+# you approve your own pull request, so once you've reviewed one, add the "amk-ready" label. That turns on auto-merge,
+# and it merges as soon as its checks pass. A new commit takes the label off, and auto-merge with it, so nothing you
+# haven't seen merges. AI tools never add or remove the label (the kit's guard refuses it).
+# It runs on the label and on new commits only, never runs the pull request's code (it checks out the base branch, for
+# the kit's script), and works for pull requests from this repository only.
+name: amk-ready
+
+on:
+  pull_request_target:
+    types: [labeled, synchronize]
+
+concurrency:
+  group: amk-ready-${{ github.event.pull_request.number }}
+
+permissions:
+  contents: write # auto-merge, once the checks pass
+  pull-requests: write
+
+jobs:
+  label:
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      PR: ${{ github.event.pull_request.html_url }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.base.sha }} # the base branch's scripts, never the pull request's
+      - name: The label turns auto-merge on
+        if: github.event.action == 'labeled' && github.event.label.name == 'amk-ready'
+        run: gh pr merge "$PR" --auto --"$(node scripts/amk/pr.js method)"
+      - name: A new commit takes the label off, and auto-merge with it
+        if: github.event.action == 'synchronize' && contains(github.event.pull_request.labels.*.name, 'amk-ready')
+        run: |
+          gh pr edit "$PR" --remove-label amk-ready
+          gh pr merge "$PR" --disable-auto || true
+          gh pr comment "$PR" --body "A new commit came in after the amk-ready label, so auto-merge is off and the label is removed. Review the new commit, then add the label again."

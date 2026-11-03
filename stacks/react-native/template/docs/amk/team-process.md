@@ -14,6 +14,14 @@
   <!-- What /m-feature does, given no task, when docs/amk/product.md plans several features without a spec: ask (offer
        both), feature-by-feature (each with its own approvals), or plan-all (plan every feature first, approved in
        batches, then /m-feature build). -->
+- Reviewers: team
+  <!-- team: another person approves each pull request, and the build turns on auto-merge (pr.js automerge), so it
+       merges once approved and green. solo: GitHub doesn't let you approve your own pull request, so you review it and
+       add the amk-ready label, which turns on auto-merge (.github/workflows/amk-ready.yml); a new commit takes the
+       label off again. Create the label once: gh label create amk-ready. Branch protection: docs/branch-protection.md in
+       the kit. -->
+- Merge method:
+  <!-- merge, squash or rebase, for auto-merge; empty: the first the repository allows, in that order. -->
 - Open PRs before the build waits: 5
   <!-- node scripts/amk/autopilot.js starts no new planned feature while this many of the plan's pull requests wait for
        review. -->

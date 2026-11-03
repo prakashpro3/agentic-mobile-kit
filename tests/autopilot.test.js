@@ -34,7 +34,7 @@ function app({ c = 'drafting' } = {}) {
   git(dir, 'config', 'user.email', 'amk-test@example.invalid');
   write(dir, 'package.json', '{"name":"app"}\n');
   write(dir, '.gitignore', '.amk/\n');
-  kit(dir, 'autopilot.js', 'specs.js', 'baseline.js', 'redact.js');
+  kit(dir, 'autopilot.js', 'specs.js', 'baseline.js', 'redact.js', 'pr.js');
   write(dir, 'specs/_templates/progress.md', progressTemplate);
   write(dir, 'specs/current/home.md', `# Home\n\n## Requirements\n\n${req('Greeting')}`);
   commit(dir, 'the app');
@@ -77,7 +77,7 @@ async function buildIn(dir, sessions, o = {}, io = {}) {
     const r = await mod.build({ tool: 'claude', wait: 0, budget: 25, stall: 20, poll: 5 * 60e3, ...o }, {
       session: async x => { calls.push(x); const play = sessions[calls.length - 1]; return summary(play ? play(x) : {}); },
       sleep: async ms => { clock += ms; if (io.whileWaiting) io.whileWaiting(); },
-      now: () => clock, notify: async (t, m) => { notes.push(`${t}: ${m}`); }, prs: () => null, issue: () => null,
+      now: () => clock, notify: async (t, m) => { notes.push(`${t}: ${m}`); }, prs: () => null, issue: () => null, forward: () => 0,
       log: l => logs.push(l), ...io,
     });
     return { ...r, calls, logs: logs.join('\n'), notes };
@@ -89,7 +89,8 @@ test('the run\'s environment: only what a build needs, the team\'s listed names,
   assert.deepStrictEqual(cfg, { 'feature mode': 'ask', 'open prs before the build waits': '3', 'variables for unattended runs': 'SENTRY_ORG, MY_FLAG' });
   const env = auto.cleanEnv({ PATH: '/bin', HOME: '/h', ANTHROPIC_API_KEY: 'k', OPENAI_API_KEY: 'k', AWS_SECRET_ACCESS_KEY: 's', GH_TOKEN: 'g',
     JAVA_HOME: '/j', AMK_IOS_DEVICE: 'u', AMK_NOTIFY_URL: 'https://hooks.example/x', SENTRY_ORG: 'o', MY_FLAG: '1', OTHER: 'x', LANG: 'C' }, cfg);
-  assert.deepStrictEqual(Object.keys(env).sort(), ['AMK_AUTOPILOT', 'AMK_IOS_DEVICE', 'GH_TOKEN', 'HOME', 'JAVA_HOME', 'LANG', 'MY_FLAG', 'PATH', 'SENTRY_ORG']);
+  assert.deepStrictEqual(Object.keys(env).sort(), ['AMK_AUTOPILOT', 'AMK_IOS_DEVICE', 'BASH_DEFAULT_TIMEOUT_MS', 'BASH_MAX_TIMEOUT_MS', 'GH_TOKEN', 'HOME', 'JAVA_HOME', 'LANG', 'MY_FLAG', 'PATH', 'SENTRY_ORG']);
+  assert.strictEqual(env.BASH_DEFAULT_TIMEOUT_MS, '3600000', 'a device check or a wait for CI stays in the foreground');
   assert.strictEqual(env.LANG, 'en_US.UTF-8', 'CocoaPods stops without a UTF-8 locale');
   assert.ok('Path' in auto.cleanEnv({ Path: 'C:\\Windows' }, {}), 'Windows writes PATH as Path');
   const p = auto.claudeProfile('yarn');

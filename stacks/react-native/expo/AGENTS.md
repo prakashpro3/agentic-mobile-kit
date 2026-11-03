@@ -28,6 +28,7 @@ This project may also use other AI workflow frameworks (for example Superpowers,
 | React Native mistakes, flow problems, and files or functions over the size limits, in this branch's changes (`verify.sh quick` runs it) | `node scripts/amk/rn-check.js` |
 | Specs: progress (the plan's features too), format, the tests of the areas a spec touches, a flow to start from, merging into the living spec; the plan's check, a second folder to plan in, a CSV or Trello export to plan from, and starting a planned feature | `node scripts/amk/specs.js status` (or `check`, `tests <id>`, `flow <id>`, `merge <id>`, `check --plan`, `plan-folder`, `import <file>`, `start [<id>]`) |
 | Build the approved planned features without anyone watching (a person starts it; it never skips permission prompts) | `node scripts/amk/autopilot.js [--wait <hours>]`; first `node scripts/amk/autopilot.js check` |
+| A feature's pull request: wait for its checks (a failure's log follows), its review comments, auto-merge for a team, and main merged into stacked branches | `node scripts/amk/pr.js checks` (or `comments`, `automerge`, `forward`) |
 | Check a release before tagging it (versions, permission texts, store review rules, debug leftovers) | `node scripts/amk/release-check.js` |
 | Signed release builds (a person runs them: they use the signing keys) | `sh scripts/amk/release-build.sh android`, `sh scripts/amk/release-build.sh ios` |
 

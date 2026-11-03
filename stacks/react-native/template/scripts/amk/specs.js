@@ -741,14 +741,17 @@ function planFolder() {
   return 0;
 }
 
+// the remote's branches as they are now, never waiting on a password or passphrase prompt: offline, it goes on with what's here
+function fetchOrigin() {
+  if (!git('remote')) return;
+  const env = { ...process.env, GIT_TERMINAL_PROMPT: '0', GIT_SSH_COMMAND: process.env.GIT_SSH_COMMAND || 'ssh -o BatchMode=yes' };
+  try { execFileSync('git', ['fetch', '--quiet', 'origin'], { stdio: 'ignore', timeout: 60000, env }); } catch {}
+}
+
 function start(want) {
   if (branch() === 'plan') { console.error('This folder is on the plan branch: build in a folder on main or a feature branch.'); return 1; }
   if (git('status', '--porcelain', '--untracked-files=no')) { console.error('Commit the changes here first (git status): a feature starts from a clean folder.'); return 1; }
-  if (git('remote')) {
-    // never waiting on a password or passphrase prompt: offline, it goes on with what's here
-    const env = { ...process.env, GIT_TERMINAL_PROMPT: '0', GIT_SSH_COMMAND: process.env.GIT_SSH_COMMAND || 'ssh -o BatchMode=yes' };
-    try { execFileSync('git', ['fetch', '--quiet', 'origin'], { stdio: 'ignore', timeout: 60000, env }); } catch {}
-  }
+  fetchOrigin();
   const ref = planRef();
   const plan = ref && show(ref, 'specs/plan.md');
   if (!plan) { console.error('No plan branch with specs/plan.md here: /m-feature plan makes one.'); return 1; }
@@ -862,7 +865,7 @@ function importList(file) {
 module.exports = {
   norm, same, stripYamlComments, scenarios, flowBlocks, blockFor, allFlows, flowsOf, tagsOf, csv,
   // the plan, for autopilot.js
-  NONE, stateOf, planRef, show, planFeatures, building, builtOn, mainRef,
+  NONE, stateOf, planRef, show, planFeatures, building, builtOn, mainRef, fetchOrigin,
 };
 
 if (require.main === module) {

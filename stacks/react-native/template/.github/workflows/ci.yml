@@ -1,4 +1,8 @@
-# agentic-mobile-kit CI: checks every PR, whichever person or AI tool wrote it.
+# agentic-mobile-kit CI: checks every PR, whichever person or AI tool wrote it, by what it changes (scripts/amk/ci-scope.js):
+# only specs or docs skip the tests and builds; native files (and an Expo app's config, config plugins and native
+# dependencies) add the iOS build; anything else runs the tests and the Android build. The "checks" job sums them up:
+# it's the one to require in branch protection. A job skipped because the change doesn't call for it counts as passed,
+# so a protection that also requires "android", as older setups do, keeps working.
 name: ci
 
 on:
@@ -15,12 +19,50 @@ permissions:
   contents: read
 
 jobs:
-  checks:
+  scope:
+    runs-on: ubuntu-latest
+    outputs:
+      code: ${{ steps.scope.outputs.code }}
+      native: ${{ steps.scope.outputs.native }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0 # the base, to see what changed
+      - id: scope
+        env:
+          BASE: ${{ github.event_name == 'pull_request' && format('origin/{0}', github.base_ref) || github.event.before }}
+        run: node scripts/amk/ci-scope.js "$BASE" >> "$GITHUB_OUTPUT"
+
+  # on every change, docs too
+  basics:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0 # full history for the secret scan and PR size
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+      - name: Tool configs match .rulesync/ (run "npx -y rulesync@27.0.0 generate && node scripts/amk/tool-configs.js" and commit if this fails)
+        if: hashFiles('rulesync.jsonc') != ''
+        run: npx -y rulesync@27.0.0 generate > /dev/null && node scripts/amk/tool-configs.js && git diff --exit-code -- .claude .codex .agents .antigravity
+      - name: Secret scan
+        run: docker run --rm -v "$PWD:/repo" ghcr.io/gitleaks/gitleaks:v8.30.1 git /repo --no-banner --redact
+      - name: PR size (max 600 changed lines; label "large-pr" to override)
+        if: github.event_name == 'pull_request' && !contains(github.event.pull_request.labels.*.name, 'large-pr')
+        run: |
+          lines=$(git diff --numstat "origin/${{ github.base_ref }}...HEAD" -- . ':(exclude)*.lock' ':(exclude)package-lock.json' ':(exclude)pnpm-lock.yaml' ':(exclude)*.snap' | awk '{ s += $1 + $2 } END { print s + 0 }')
+          echo "$lines changed lines"
+          [ "$lines" -le 600 ] || { echo "This PR changes more than 600 lines. Split it, or add the 'large-pr' label."; exit 1; }
+
+  tests:
+    needs: scope
+    if: needs.scope.outputs.code == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0 # the base, to compare failures with
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 24
@@ -36,19 +78,10 @@ jobs:
       - name: Coverage floors (.amk-coverage; tests deleted or weakened fail it)
         if: hashFiles('.amk-coverage') != ''
         run: node scripts/amk/coverage.js check
-      - name: Tool configs match .rulesync/ (run "npx -y rulesync@27.0.0 generate && node scripts/amk/tool-configs.js" and commit if this fails)
-        if: hashFiles('rulesync.jsonc') != ''
-        run: npx -y rulesync@27.0.0 generate > /dev/null && node scripts/amk/tool-configs.js && git diff --exit-code -- .claude .codex .agents .antigravity
-      - name: Secret scan
-        run: docker run --rm -v "$PWD:/repo" ghcr.io/gitleaks/gitleaks:v8.30.1 git /repo --no-banner --redact
-      - name: PR size (max 600 changed lines; label "large-pr" to override)
-        if: github.event_name == 'pull_request' && !contains(github.event.pull_request.labels.*.name, 'large-pr')
-        run: |
-          lines=$(git diff --numstat "origin/${{ github.base_ref }}...HEAD" -- . ':(exclude)*.lock' ':(exclude)package-lock.json' ':(exclude)pnpm-lock.yaml' ':(exclude)*.snap' | awk '{ s += $1 + $2 } END { print s + 0 }')
-          echo "$lines changed lines"
-          [ "$lines" -le 600 ] || { echo "This PR changes more than 600 lines. Split it, or add the 'large-pr' label."; exit 1; }
 
   android:
+    needs: scope
+    if: needs.scope.outputs.code == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -67,3 +100,33 @@ jobs:
       - name: Build debug APK
         working-directory: android
         run: ./gradlew assembleDebug --no-daemon
+
+  # macOS runners cost several times more than Linux, so only when native code, dependencies or the app config change
+  ios:
+    needs: scope
+    if: needs.scope.outputs.native == 'true'
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+      - run: sh scripts/amk/install-deps.sh
+      - name: Generate the native project (Expo apps without ios/ in git)
+        run: sh scripts/amk/prebuild.sh ios
+      - name: Install pods
+        run: sh scripts/amk/pod-install.sh
+      - name: Build for the simulator (no signing)
+        run: sh scripts/amk/ios-build.sh
+
+  # the one required check: every job this change calls for passed
+  checks:
+    needs: [scope, basics, tests, android, ios]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Every job this change calls for passed
+        env:
+          NEEDS: ${{ toJSON(needs) }}
+        run: node scripts/amk/ci-scope.js verdict

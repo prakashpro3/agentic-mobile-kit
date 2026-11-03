@@ -350,7 +350,7 @@ test('sync with --from (no recorded version): a file matching neither kit versio
 
 test('sync adds CI files only to projects that chose that CI, or when asked with --ci', () => {
   const old = oldKit();
-  fs.unlinkSync(path.join(old, '.github/workflows/ios.yml'));
+  fs.unlinkSync(path.join(old, '.github/workflows/e2e.yml'));
   fs.unlinkSync(path.join(old, 'docs/amk/codemagic.md'));
   const none = fakeApp();
   init(none, { template: old, skipGenerate: true });
@@ -362,7 +362,7 @@ test('sync adds CI files only to projects that chose that CI, or when asked with
   init(github, { template: old, ci: ['github'], skipGenerate: true });
   commitAll(github);
   const { report } = sync(github, { fromDir: old, skipGenerate: true });
-  assert.ok(report.added.includes('.github/workflows/ios.yml'), 'new CI file for a GitHub CI project');
+  assert.ok(report.added.includes('.github/workflows/e2e.yml'), 'new CI file for a GitHub CI project');
   assert.ok(!fs.existsSync(path.join(github, 'docs/amk/codemagic.md')), 'no Codemagic files');
   git(github, 'checkout', '-q', '.');
   git(github, 'clean', '-qfd');

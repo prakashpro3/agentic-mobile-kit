@@ -1,6 +1,6 @@
 # Plan: tests that grow with each change, a tester, user stories, planning all features before building, and hands-off running
 
-Status: 0.9.0 released on 2026-10-30, with 0.8.0's changes, which never reached npm (live once approved there); 0.10.0 and 0.11.0 built; 0.12.0 to 0.14.0 planned.
+Status: 0.9.0 released on 2026-10-30, with 0.8.0's changes, which never reached npm (live once approved there); 0.10.0 to 0.12.0 built; 0.13.0 and 0.14.0 planned.
 
 ## In one page
 
@@ -764,6 +764,21 @@ Each release ships on its own and keeps its own docs current: both `AGENTS.md` f
 - **Planning from an export:** `specs.js import <file>` turns a CSV (as Excel saves it, a comma, semicolon or tab between fields) or a Trello board's JSON (open cards in open lists) into numbered lines inside the untrusted-text block.
 - **Moved to 0.12.0:** `CODEOWNERS` for the guardrails, and merging `main` forward. The guard already lets `gh pr merge --auto` through.
 
+**What building 0.12.0 settled:**
+- **One required check, `checks`,** a summary job that needs every other job and fails on a failure, a cancel, or a skip the change didn't call for (`ci-scope.js verdict`). The scope is decided by a `scope` job, not by `paths` filters: a job skipped by its `if:` reports success, while a workflow skipped by its path filter leaves a required check waiting forever. `ios.yml` became `ci.yml`'s `ios` job. The summary keeps the old required check's name, and an older protection that also requires `android` keeps working.
+- **What a change calls for** (`ci-scope.js`): specs and docs only, no tests or builds (the secret scan, config drift and PR size still run); code, the tests and the Android build; native files, an Expo app's config and plugins, patches, `package.json` and the lockfiles, the iOS build too. A first push without a base, or a diff that can't be read, runs everything.
+- **Merging `main` forward** (`pr.js forward`), never rebasing: lockfiles, `Podfile.lock` and `specs/current/` take `main`'s version, then are installed or merged again (`specs.js merge <id>`); any other conflict aborts the merge, and a failed `verify.sh quick` undoes it (`git reset --keep`), exit 5, which `autopilot.js` reports. It runs at the start of each build session and between features.
+- **The pre-commit hook lets such a merge bring `main`'s guardrail files** in an unattended run: a staged file equal to `MERGE_HEAD`'s copy came from `main`, not the agent.
+- **Auto-merge only into `main`, and only for a team.** A stacked pull request waits until `forward` moves it onto `main`. The solo path is the `amk-ready` label, through a `pull_request_target` workflow that checks out the base branch (never the pull request's code) and takes the label off on a new commit; the guard refuses the label in an unattended run.
+- **A run a newer one replaced fails its summary:** a label added (a pull request opened with one fires two events) cancels the running CI, and the cancelled run's `checks` job (`if: always()`) fails on its cancelled jobs; `gh pr checks` lists that failure until the newer run's `checks` job starts. It stays fail-closed, as a skipped summary would count as passed, and `pr.js checks` doesn't call a failure the result while a GitHub Actions run on the commit still goes.
+- **The failed steps' log, trimmed:** `gh run view --log-failed` puts the job, the step and a time before every line, with colour codes, and the summary job's lines (its inputs) came last, half of one live log. `pr.js` keeps a heading per job and step and the text, without the summary when another job failed, so the 150-line tail holds the failure.
+- **A fine-grained token can't read checks:** GitHub offers it no Checks permission (still so in August 2026). So `pr.js checks` reads the GitHub Actions runs on the pull request's last commit when `gh pr checks` lists nothing, which the token's `actions: read` covers.
+- **The nightly run's issue needs no agent:** `report.js --issue`, with the workflow's own token, lists the flows that failed twice with paths and device IDs taken out and the run's link, and comments on an open issue rather than opening a second.
+- **The AI jobs use claude-code-action,** pinned by commit, in two workflows added only with `--ci github,ai`. `ai-job.js gate` runs from the base branch's scripts. The work uses a GitHub App's token narrowed to contents and pull requests: an App's push starts CI again, the workflow token's doesn't. The action turns away a run a bot started unless `allowed_bots` names it, so the dependency job names Dependabot and Renovate. The review's tools are `gh pr diff`, `view` and `comment` and inline comments. Three failures in a row (a cancel or a timeout counts; a run that didn't go doesn't) open "AI job paused: <job>", and closing it resumes the job; three fix commits in a row on a branch, six runs in an hour or a second fix for one failed CI run stop it.
+- **Long commands stay in the foreground:** Claude Code gives a command 2 minutes, then moves it to the background, so `autopilot.js` gives its sessions an hour (`BASH_DEFAULT_TIMEOUT_MS`, `BASH_MAX_TIMEOUT_MS`) for device checks and waits for CI. `pr.js checks` writes where its wait stands to `.amk/pr-checks.txt` at each look, which the stall watchdog counts as activity, as it does a device check's evidence.
+- **`CODEOWNERS` stays a snippet** in `docs/branch-protection.md`: the kit can't know a team's owners, and a developer working alone can't approve their own pull request, so code owners' review is for teams.
+- **Not run live:** the AI jobs, which need a team's API key and GitHub App.
+
 ## Compatibility with apps that sync
 
 - `sync` never touches `specs/<id>/` or `specs/current/`.
@@ -777,7 +792,7 @@ Each release ships on its own and keeps its own docs current: both `AGENTS.md` f
 - In apps that had flows before they had specs, those flows are listed as linked to no spec, so a change can still pick them for its regression.
 - The new skill and subagent arrive as new files. The changed skills, templates and `AGENTS.md` merge as in recent releases.
 - Without `Reviewers:` in `team-process.md`, a team is assumed: another person approves, as today.
-- The kit's `CODEOWNERS` lines for the guardrail files merge into an app's own `CODEOWNERS`, the way the kit's section of `AGENTS.md` does.
+- `CODEOWNERS` for the guardrail files is a snippet in the kit's `docs/branch-protection.md`, added by the team with its own owners; `sync` doesn't write it.
 - **What every app gets after `sync`:**
   - related tests while building (item 11) and the flaky rerun (item 12) in `verify.sh`;
   - `rn-check`'s new warnings: missing translation keys (21), file size and complexity (27);

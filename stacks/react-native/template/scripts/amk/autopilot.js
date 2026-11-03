@@ -68,6 +68,8 @@ function cleanEnv(env, cfg) {
   // CocoaPods stops without a UTF-8 locale
   for (const k of ['LANG', 'LC_ALL']) if ((k === 'LANG' || out[k]) && !/utf-?8/i.test(out[k] || '')) out[k] = 'en_US.UTF-8';
   out.AMK_AUTOPILOT = '1';
+  // a device check or a wait for CI outlasts Claude Code's 2 minutes for a command: an hour, so it stays in the foreground
+  out.BASH_DEFAULT_TIMEOUT_MS = out.BASH_MAX_TIMEOUT_MS = String(3600e3);
   return out;
 }
 
@@ -76,7 +78,7 @@ const pmOf = () => (fs.existsSync(path.join(ROOT, 'yarn.lock')) ? 'yarn' : fs.ex
   : ['bun.lock', 'bun.lockb'].some(f => fs.existsSync(path.join(ROOT, f))) ? 'bun' : 'npm');
 // the commands a build runs, as prefixes (a push names its feature/ or fix/ branch: below)
 const COMMANDS = pm => ['sh scripts/amk/verify.sh', 'node scripts/amk/specs.js', 'node scripts/amk/rn-check.js', 'node scripts/amk/coverage.js check',
-  'node scripts/amk/baseline.js base',
+  'node scripts/amk/baseline.js base', 'node scripts/amk/pr.js',
   'node scripts/amk/screens.js', 'node scripts/amk/redact.js', 'node scripts/amk/autopilot.js question', 'sh scripts/amk/install-deps.sh',
   'sh scripts/amk/pod-install.sh', 'git add', 'git commit', 'git switch', 'git fetch', 'git mv', 'git rm', 'git checkout --', 'git restore',
   'gh pr create', 'gh pr view', 'gh pr checks', 'gh pr comment', 'gh pr list', 'gh run view', 'gh issue create', 'gh issue comment',
@@ -467,7 +469,9 @@ const freeGb = () => {
   try { const s = fs.statfsSync(ROOT); return Math.floor((s.bavail * s.bsize) / 2 ** 30); } catch { return Infinity; }
 };
 async function build(o, d = {}) {
-  const io = { session: runSession, sleep: ms => new Promise(r => setTimeout(r, ms)), now: Date.now, notify, prs, issue: questionIssue, log: console.log, ...d };
+  const io = { session: runSession, sleep: ms => new Promise(r => setTimeout(r, ms)), now: Date.now, notify, prs, issue: questionIssue, log: console.log,
+    // main merged into the build's stacked branches whose parent has merged (pr.js forward), at the start of each round
+    forward: log => { const pr = require('./pr.js'); return pr.forward(specs.mainRef(), {}, pr.settings(), { ...pr.IO, log }); }, ...d };
   const cfg = settings();
   const env = cleanEnv(process.env, cfg);
   const built = [];
@@ -494,6 +498,9 @@ async function build(o, d = {}) {
   };
   for (;;) {
     if (fs.existsSync(STOP)) { end = { reason: 'stopped', text: '.amk/build/STOP is there (delete it before the next run)' }; break; }
+    if (!retry && !git('status', '--porcelain', '--untracked-files=no') && io.forward(l => io.log(`${stamp()} ${l}`)) === 5) {
+      await io.notify('Build: a branch needs main merged in by hand', 'see the build\'s log');
+    }
     if (freeGb() < 5) { end = { ...REASONS[0], text: `only ${freeGb()} GB of disk is free: ${REASONS[0].act}` }; break; }
     let id = retry || unfinished(skip);
     retry = null;
