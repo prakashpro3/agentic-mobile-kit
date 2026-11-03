@@ -4,8 +4,9 @@
 //        they pass, 1 when one failed, the failed jobs' last log lines after it as outside text, 2 without gh or a pull
 //        request, 3 when they're still running at the time limit
 //   node scripts/amk/pr.js automerge [<branch>]   turn on auto-merge, so GitHub merges once a person approves and the
-//        checks pass: only with Reviewers: team, and only for a pull request into main (a stacked one waits until GitHub
-//        moves it there). With Reviewers: solo, your amk-ready label turns it on, after your review
+//        checks pass: only with Reviewers: team, only where main requires an approval, and only for a pull request into
+//        main (a stacked one waits until pr.js forward moves it there). With Reviewers: solo, your amk-ready label turns
+//        it on, after your review
 //   node scripts/amk/pr.js comments [<branch>]   its reviews and comments, as outside text
 //   node scripts/amk/pr.js method   the merge method auto-merge uses (Merge method, or the first the repository allows)
 //   node scripts/amk/pr.js forward   merge main into each of the build's branches whose parent pull request has merged:
@@ -111,7 +112,7 @@ function automerge(branch, main, cfg = settings(), io = IO) {
     io.log('Reviewers: solo, so auto-merge waits for your amk-ready label, which you add once you\'ve reviewed the pull request.');
     return 0;
   }
-  const pr = io.gh(['pr', 'view', branch, '--json', 'number,url,state,baseRefName,autoMergeRequest']);
+  const pr = io.gh(['pr', 'view', branch, '--json', 'number,url,state,baseRefName,autoMergeRequest,reviewDecision']);
   if (!pr) { io.log(`No pull request for ${branch} here, or gh isn't signed in.`); return 2; }
   if (pr.state !== 'OPEN') { io.log(`${pr.url} is ${pr.state.toLowerCase()}.`); return 0; }
   if (pr.baseRefName !== mainName(main)) {
@@ -119,6 +120,11 @@ function automerge(branch, main, cfg = settings(), io = IO) {
     return 0;
   }
   if (pr.autoMergeRequest) { io.log(`Auto-merge is on already for ${pr.url}.`); return 0; }
+  // GitHub gives no review decision where main requires no approval: there, auto-merge would merge without a person
+  if (!pr.reviewDecision) {
+    io.log(`${pr.url}: ${mainName(main)} requires no approval here, so auto-merge would merge it without a person's. It's left for a person to merge (to have the build turn auto-merge on, require an approval: docs/branch-protection.md in the kit).`);
+    return 0;
+  }
   const method = mergeMethod(cfg, io);
   const r = io.ghRun(['pr', 'merge', String(pr.number), '--auto', `--${method}`]);
   if (r.status === 0) { io.log(`Auto-merge on for ${pr.url} (${method}): it merges once a person approves and the checks pass.`); return 0; }

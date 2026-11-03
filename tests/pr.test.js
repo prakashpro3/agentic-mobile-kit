@@ -34,7 +34,7 @@ function fakeGh(answers) {
   };
 }
 const queue = (...xs) => Object.assign(xs, { queue: true });
-const PR = { number: 12, url: 'https://github.com/o/r/pull/12', state: 'OPEN', baseRefName: 'main' };
+const PR = { number: 12, url: 'https://github.com/o/r/pull/12', state: 'OPEN', baseRefName: 'main', reviewDecision: 'REVIEW_REQUIRED' };
 
 test('checks: waits while they run, passes when they pass, and says so without a pull request or any checks', async () => {
   const g = fakeGh({ 'pr view': PR, 'pr checks': queue([], [{ name: 'checks', bucket: 'pending' }], [{ name: 'checks', bucket: 'pass' }, { name: 'android', bucket: 'skipping' }]) });
@@ -107,6 +107,10 @@ test('automerge: for a team, a pull request into main, with the team\'s or the r
   const solo = fakeGh({ 'pr view': PR });
   assert.strictEqual(pr.automerge('feature/a', 'main', { reviewers: 'solo' }, solo.io), 0);
   assert.ok(!solo.calls.some(c => c.startsWith('pr merge')));
+  const unprotected = fakeGh({ 'pr view': { ...PR, reviewDecision: '' } });
+  assert.strictEqual(pr.automerge('feature/a', 'main', { reviewers: 'team' }, unprotected.io), 0);
+  assert.ok(!unprotected.calls.some(c => c.startsWith('pr merge')), 'main requires no approval: auto-merge would merge without a person');
+  assert.match(unprotected.lines.join('\n'), /requires no approval here, so auto-merge would merge it without a person's/);
   assert.match(solo.lines[0], /amk-ready label/);
   const stacked = fakeGh({ 'pr view': { ...PR, baseRefName: 'feature/a' } });
   pr.automerge('feature/b', 'main', {}, stacked.io);
@@ -183,7 +187,7 @@ test('forward: main merged into a stacked branch once its parent merged, the loc
   const dir = stacked();
   // GitHub moves the pull request's base when asked
   let base = 'feature/a';
-  const g = fakeGh({ 'pr view': () => ({ number: 13, url: 'https://github.com/o/r/pull/13', state: 'OPEN', baseRefName: base }),
+  const g = fakeGh({ 'pr view': () => ({ number: 13, url: 'https://github.com/o/r/pull/13', state: 'OPEN', baseRefName: base, reviewDecision: 'REVIEW_REQUIRED' }),
     'pr edit': (() => { base = 'main'; return { status: 0, stdout: '', stderr: '' }; }) });
   const run = g.io.ghRun;
   g.io.ghRun = args => { const r = run(args); return typeof r === 'function' ? r() : r; };

@@ -44,7 +44,7 @@ The kit's guardrails (its scripts, hooks and tool settings, the workflows, the a
 
 ## Auto-merge
 
-The build turns on auto-merge for its pull requests into `main` (`node scripts/amk/pr.js automerge`), so each merges once a person approves it and its checks pass. Turn it on for the repository first:
+The build turns on auto-merge for its pull requests into `main` (`node scripts/amk/pr.js automerge`), so each merges once a person approves it and its checks pass. It does so only where `main` requires an approval: elsewhere auto-merge would merge without one, so the pull request waits for a person to merge it. Turn auto-merge on for the repository first:
 
 ```sh
 gh api -X PATCH repos/<owner>/<repo> -f allow_auto_merge=true
@@ -73,7 +73,7 @@ They start only for a person with write access (or, for the dependency job, Depe
 - A PR with all checks green merged normally.
 
 2026-11-03, with 0.12.0, under a protection from before it (`checks` and `android` required, no approvals):
-- The kit's update merged by auto-merge (`pr.js automerge`) once its checks passed, and the merge started CI on `main`.
+- The kit's update merged by auto-merge (`pr.js automerge`) once its checks passed, and the merge started CI on `main`. It merged with no approval, as this repository requires none: `pr.js automerge` now leaves such a pull request for a person.
 - A change to docs only skipped the tests and both builds, and was mergeable: the skipped `android` counted as passed.
 - The `amk-ready` label turned auto-merge on, and the pull request merged once green; that merge started no CI on `main`.
 - On a pull request whose test failed in CI only, `pr.js checks` handed over the failing test's log, and a new commit took the label and auto-merge off, with a comment.

@@ -16,7 +16,7 @@
        batches, then /m-feature build). -->
 - Reviewers: team
   <!-- team: another person approves each pull request, and the build turns on auto-merge (pr.js automerge), so it
-       merges once approved and green. solo: GitHub doesn't let you approve your own pull request, so you review it and
+       merges once approved and green; only where main requires an approval, else a person merges it. solo: GitHub doesn't let you approve your own pull request, so you review it and
        add the amk-ready label, which turns on auto-merge (.github/workflows/amk-ready.yml); a new commit takes the
        label off again. Create the label once: gh label create amk-ready. Branch protection: docs/branch-protection.md in
        the kit. -->
