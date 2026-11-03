@@ -253,7 +253,9 @@ module.exports = [
       const detail = rows.find(c => /detail/i.test(`${c[2]} ${c[3]}`));
       const list = rows.find(c => c !== detail && /list/i.test(`${c[2]} ${c[3]}`));
       const ids = rows.map(c => c[2]);
-      const stories = ids.filter(id => /^### US-1\b[\s\S]*?\bAs an?\b[\s\S]*?\bI want\b/m.test(onBranch(dir, 'plan', `specs/${id}/requirements.md`)));
+      // written, committed as a draft or not yet (the case ends while they wait for their approval)
+      const story = t => /^### US-1\b[\s\S]*?\bAs an?\b[\s\S]*?\bI want\b/m.test(t || '');
+      const stories = ids.filter(id => story(onBranch(dir, 'plan', `specs/${id}/requirements.md`)) || story(read(dir, `specs/${id}/requirements.md`)));
       const check = hasRef(dir, 'plan') && (git(dir, 'switch', '-q', 'plan'), spawnSync(process.execPath, ['scripts/amk/specs.js', 'check', '--plan'], { cwd: dir, encoding: 'utf8' }));
       return [
         !hasRef(dir, 'plan') && 'no plan branch',
@@ -264,7 +266,7 @@ module.exports = [
         runs[0].calls.some(c => c.name === 'Bash' && /git commit[^\n]*approved/.test(String(c.input.command || ''))) && 'it committed an approval before the user approved',
         !git(dir, 'log', '--format=%s', 'plan').includes('docs(plan): feature map approved') && 'no commit "docs(plan): feature map approved"',
         stories.length < 3 && `stories for ${stories.length} of the 3 features`,
-        stories.some(id => !/^Mode: plan-all$/m.test(onBranch(dir, 'plan', `specs/${id}/requirements.md`))) && 'a planned spec without Mode: plan-all',
+        stories.some(id => !/^Mode: plan-all$/m.test(`${onBranch(dir, 'plan', `specs/${id}/requirements.md`)}\n${read(dir, `specs/${id}/requirements.md`) || ''}`)) && 'a planned spec without Mode: plan-all',
         runs.some(approvalInRound) && 'it asked for an approval inside a numbered round, not as a question of its own',
         codeChanged(dir, base).length && `it changed code while planning: ${codeChanged(dir, base).join(', ')}`,
       ].filter(Boolean);

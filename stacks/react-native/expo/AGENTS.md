@@ -53,6 +53,7 @@ Never say a check passed unless you ran it in this session.
 - Never read, print or commit `.env` files, keystores, signing files or the files `.amk-secrets` lists. Secrets don't belong in this repo.
 - Never use `git commit --no-verify`, `git push --force`, `git reset --hard` or `rm -rf`, and never throw away work that can't be brought back (uncommitted changes with `git checkout .` or `git restore .`, stashes with `git stash drop` or `clear`, unmerged commits with `git branch -D`): ask first. To undo your own edit to a file, `git checkout -- <that file>`.
 - When `rn-check` (in `verify.sh quick`) reports a problem (✗), show it to the user and let them choose, for each one: fix it, or keep the line with `// amk-ok <today's date>: <their reason>`. Never add an `amk-ok`, or a cap in `.amk-size-caps`, on your own. One kept over two weeks ago comes back when its file changes: ask again. Fix the warnings (!) in code the task changed, or tell the user why one stays.
+- Run shell commands one at a time, as the skills write them, not joined with `&&` or `;`: a tool asks about a joined line, or refuses it, as a whole. When one is refused, run its parts on their own before deciding anything is blocked.
 - After 2 failed attempts at the same fix, stop and report what you found.
 - Chat is not memory: write decisions into the spec or `docs/amk/decisions.md` straight away.
 - Follow `docs/amk/expo.md`. Before fixing a build error, check `docs/amk/known-issues.md`.

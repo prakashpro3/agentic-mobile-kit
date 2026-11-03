@@ -564,6 +564,22 @@ async function build(o, d = {}) {
 }
 
 // ---------- before a build: the tool runs and is signed in ----------
+// Antigravity's settings, read without starting a turn: what would make an unattended build unsafe there
+function agyProblems(env) {
+  let c = {};
+  try { c = JSON.parse(run('agy', ['-p', '/config', '--output-format', 'json'], { env, timeout: 60000 }).stdout).command.data.config || {}; } catch {}
+  const out = [];
+  if (/^always-proceed$/i.test(c.toolPermission || '') || /^auto$/i.test(c.agentMode || '')) {
+    out.push(`Antigravity is set to skip its permission prompts (${[c.toolPermission && `Tool permission: ${c.toolPermission}`, c.agentMode && `Agent mode: ${c.agentMode}`].filter(Boolean).join(', ')}): an unattended build runs only under an allow list. In agy, /config: set Tool permission to ask for review and Agent mode to Agent`);
+  }
+  const up = d => [d, ...(path.dirname(d) === d ? [] : up(path.dirname(d)))];
+  const trusted = (c.trustedWorkspaces || []).map(w => path.resolve(String(w)));
+  if (!c.trustedWorkspaces) out.push('Antigravity\'s settings couldn\'t be read (agy -p /config)');
+  else if (![ROOT, path.resolve(__dirname, '..', '..')].some(r => up(r).some(d => trusted.includes(d)))) {
+    out.push('Antigravity doesn\'t trust this folder, so its hooks (the guard) wouldn\'t run: open the project in agy once and trust it');
+  }
+  return out;
+}
 function ready(tool, env) {
   const v = run(BIN[tool], ['--version'], { env });
   if (v.status !== 0) return `${BIN[tool]} isn't installed, or isn't on the PATH the run gets`;
@@ -586,14 +602,16 @@ function ready(tool, env) {
       return 'Codex hasn\'t approved this project\'s hooks, and they aren\'t only the kit\'s as committed (git status .codex scripts/amk), so the guard might not run: approve them in Codex, or commit the kit\'s';
     }
   }
+  if (tool === 'antigravity') return agyProblems(env)[0] || null;
   return null;
 }
 async function check(tool) {
   const env = cleanEnv(process.env, settings());
   let bad = 0;
   const say = (ok, text) => { if (ok === false) bad++; console.log(`${ok === true ? '✓' : ok === false ? '✗' : '!'} ${text}`); };
-  const notReady = ready(tool, env);
-  say(!notReady, notReady || `${BIN[tool]} runs and is signed in, in the run's environment`);
+  const notReady = tool === 'antigravity' ? (run('agy', ['--version'], { env }).status === 0 ? null : 'agy isn\'t installed, or isn\'t on the PATH the run gets') : ready(tool, env);
+  say(!notReady, notReady || `${BIN[tool]} runs${tool === 'antigravity' ? ' (its sign-in shows when a session starts)' : ' and is signed in'}, in the run's environment`);
+  if (tool === 'antigravity') for (const p of agyProblems(env)) say(false, p);
   if (tool === 'codex') say(null, 'Codex\'s macOS sandbox blocks the iOS simulator: features are checked on Android, and iOS is left for a person (blocked, not failed)');
   if (tool === 'antigravity') {
     const r = run('agy', ['-p', '/permissions', '--output-format', 'json'], { env, timeout: 60000 });
@@ -602,7 +620,7 @@ async function check(tool) {
     const missing = agyRules().filter(x => !rules.includes(x));
     say(!missing.length, missing.length ? `Antigravity's allow rules lack ${missing.length} of the build's commands. Add them in agy (/permissions, this project's scope):\n${missing.map(x => `    ${x}`).join('\n')}`
       : 'Antigravity allows the build\'s commands');
-    say(null, 'Antigravity reads allow rules from its own settings only, so the ones there that allow more apply to the build too. Its permission mode must ask (not always-proceed or auto): the build stops a session that skips prompts. Its hooks (the guard) run only in a folder it trusts');
+    say(null, 'Antigravity reads allow rules from its own settings only, so the ones there that allow more apply to the build too');
   }
   const ghOk = run('gh', ['auth', 'status'], { env }).status === 0;
   say(ghOk || null, ghOk ? 'gh is signed in, so the build opens pull requests' : 'gh isn\'t signed in for the run: features are pushed, but no pull request is opened (gh auth login, or GH_TOKEN)');
