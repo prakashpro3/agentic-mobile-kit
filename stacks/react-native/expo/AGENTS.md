@@ -27,7 +27,7 @@ This project may also use other AI workflow frameworks (for example Superpowers,
 | After each task: lint, typecheck and the tests of the changed files | `sh scripts/amk/verify.sh quick --related` |
 | React Native mistakes, flow problems, and files or functions over the size limits, in this branch's changes (`verify.sh quick` runs it) | `node scripts/amk/rn-check.js` |
 | Specs and the plan: progress, format, the tests of the areas a spec touches, a flow to start from, the living spec; the plan's check, a second folder to plan in, an export to plan from, starting a planned feature | `node scripts/amk/specs.js status` (or `check`, `tests <id>`, `flow <id>`, `merge <id>`, `check --plan`, `plan-folder`, `import <file>`, `start [<id>]`) |
-| Unattended (a person starts it; it never skips permission prompts): review fixes, `amk-fix` bugs, then approved planned features | `node scripts/amk/autopilot.js [--reviews \| --bugs \| --features]`; first `node scripts/amk/autopilot.js check` |
+| Unattended (a person starts it; it never skips permission prompts): its own PRs' review fixes, `amk-fix` bugs, then approved planned features | `node scripts/amk/autopilot.js [--reviews \| --bugs \| --features]`; first `node scripts/amk/autopilot.js check` |
 | A feature's PR: its checks (with a failure's log), review comments, auto-merge, main merged into stacked branches | `node scripts/amk/pr.js checks` (or `comments`, `automerge`, `forward`) |
 | Check a release before tagging it (versions, permission texts, store review rules, debug leftovers) | `node scripts/amk/release-check.js` |
 | Signed release builds (a person runs them: they use the signing keys) | `sh scripts/amk/release-build.sh android`, `sh scripts/amk/release-build.sh ios` |

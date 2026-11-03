@@ -16,6 +16,8 @@ const git = (dir, ...a) => execFileSync('git', a, { cwd: dir, encoding: 'utf8', 
 const commit = (dir, message) => { git(dir, 'add', '-A'); git(dir, 'commit', '-qm', message); };
 const kit = (dir, ...files) => files.forEach(f => write(dir, `scripts/amk/${f}`, fs.readFileSync(path.join(KIT, 'scripts/amk', f), 'utf8')));
 const auto = require(path.join(KIT, 'scripts/amk/autopilot.js'));
+// the free disk the builds see: this machine's own never decides a test
+process.env.AMK_DISK_GB = '50';
 
 const req = name => `### Requirement: ${name}\nThe app SHALL do ${name.toLowerCase()}.\n\n#### Scenario: ${name} works\n- WHEN the driver asks\n- THEN it happens\n`;
 const progressTemplate = fs.readFileSync(path.join(KIT, 'specs/_templates/progress.md'), 'utf8');
@@ -98,6 +100,7 @@ test('the run\'s environment: only what a build needs, the team\'s listed names,
   assert.ok(!p.allow.some(r => /git push origin \*|Bash\(gh api|Bash\(npm install/.test(r)), 'no push of any branch, no API, no installs');
   assert.ok(p.deny.some(r => /scripts\/amk\/\*\*\)$/.test(r)) && p.deny.includes('Bash(gh api *)') && p.deny.includes('Bash(gh pr review *)'));
   assert.ok(p.deny.includes('ScheduleWakeup') && p.deny.includes('CronCreate'), 'nothing that schedules more work after the session');
+  assert.ok(p.deny.includes('Bash(node scripts/amk/specs.js start*)'), 'one feature a session: autopilot.js starts the next');
   assert.ok(p.allow.includes('Bash(node scripts/amk/baseline.js base *)'), 'the reviewers find the base branch');
 });
 
@@ -268,6 +271,7 @@ test('build: the plan\'s features one session each, in order, notes and all; the
   for (const flag of ['--permission-mode', 'dontAsk', '--setting-sources', 'project', '--strict-mcp-config', '--max-budget-usd', '25']) assert.ok(one.args.includes(flag), flag);
   const note = one.args[one.args.indexOf('--append-system-prompt') + 1];
   assert.match(note, /^This session runs unattended \(scripts\/amk\/autopilot\.js\): nobody is watching/);
+  assert.match(note, /Then end the session, without starting another feature: autopilot\.js starts the next one in a fresh session/);
   assert.match(note, /Notes from the developer for this build \(\.amk\/build\/notes\.md\), to follow where they apply:\nUse the new Button for every action\./);
   assert.strictEqual(one.env.AMK_AUTOPILOT, '1');
   assert.ok(!('ANTHROPIC_API_KEY' in one.env) && !('AMK_NOTIFY_URL' in one.env));
@@ -368,6 +372,16 @@ test('the queues: which issues a person (or Sentry, when allowed) labelled, and 
   assert.strictEqual(auto.unanswered('o/r', 3, 'dev', pr({ commits: [t('01')], issueComments: [{ user: { login: 'codecov[bot]', type: 'Bot' }, created_at: t('02') }] })), false, 'a bot\'s report on the whole pull request asks nothing');
   assert.strictEqual(auto.unanswered('o/r', 3, 'dev', pr({ commits: [t('01')], reviews: [{ user: bot, state: 'COMMENTED', submitted_at: t('02') }] })), true, 'an AI reviewer\'s review');
   assert.strictEqual(auto.unanswered('o/r', 3, 'dev', pr({ commits: [t('01')], reviews: [{ user: bot, state: 'APPROVED', submitted_at: t('02') }] })), false, 'a bot\'s approval asks nothing');
+  const prs = [{ number: 1, headRefName: 'feature/a' }, { number: 2, headRefName: 'feature/by-hand' }, { number: 3, headRefName: 'fix/12' }, { number: 4, headRefName: 'fix/login-crash' }];
+  const asked = args => {
+    const line = args.join(' ');
+    if (line === 'api user') return { login: 'dev' };
+    if (line.startsWith('repo view')) return { nameWithOwner: 'o/r' };
+    if (line.startsWith('pr list')) return prs;
+    if (line.includes('/reviews')) return [{ user: { login: 'ana', type: 'User' }, state: 'CHANGES_REQUESTED', submitted_at: t('02') }];
+    return [];
+  };
+  assert.deepStrictEqual(auto.reviewQueue(new Set(['a']), asked).map(p => p.number), [1, 3], 'a planned feature\'s and a queued bug\'s, never one opened by hand');
   const calls = [];
   assert.strictEqual(auto.needsInfo(35, 'Tried it in /Users/dev/app with token=ghp_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa1', (cmd, args) => { calls.push(args); return { status: 0 }; }), true);
   assert.deepStrictEqual(calls.map(a => a.slice(0, 3)), [['label', 'create', 'amk-needs-info'], ['issue', 'comment', '35'], ['issue', 'edit', '35']]);
@@ -426,7 +440,7 @@ test('build: a feature the agent blocked is skipped, its question can go to an i
     const full = await buildIn(dir, []);
     assert.strictEqual(full.end.reason, 'disk full');
     assert.strictEqual(full.calls.length, 0);
-  } finally { delete process.env.AMK_DISK_GB; }
+  } finally { process.env.AMK_DISK_GB = '50'; }
   const held = await buildIn(dir, [() => { finish(dir, 'b'); return {}; }], {}, { prs: () => [1, 2, 3, 4, 5].map(() => ({ headRefName: 'feature/c', state: 'OPEN', reviewDecision: '' })) });
   assert.strictEqual(held.end.reason, 'waiting for review', 'b, left unfinished, goes on; nothing new starts');
   assert.deepStrictEqual(held.calls.map(c => c.args[1]), ['/m-continue b']);

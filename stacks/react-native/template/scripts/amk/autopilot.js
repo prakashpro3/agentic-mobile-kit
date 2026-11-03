@@ -10,7 +10,8 @@
 // .amk/build/notes.md reaches each new session; .amk/build/STOP ends the build once the current task is committed.
 // It notifies on the Mac (notify-send on Linux) and through a chat webhook in AMK_NOTIFY_URL, when set.
 // Before the features, the work that unblocks merges, a session each: review fixes (its open pull requests whose review
-// asked for changes, or with an AI reviewer's comments, that nobody answered yet: m-review on the pull request's branch),
+// asked for changes, or with an AI reviewer's comments, that nobody answered yet: the plan's features' and the bug
+// queue's own, never one opened by hand; m-review on the pull request's branch),
 // then the bug queue (open issues labelled amk-fix by someone who can label them, or by Sentry's integration with
 // "Sentry adds amk-fix: on": m-bugfix on fix/<issue>, to a pull request that fixes the issue). A bug it can't make
 // happen gets a comment saying what it tried, and the label amk-needs-info; removing that label queues it again.
@@ -106,7 +107,8 @@ function claudeProfile(pm = pmOf()) {
       ...['feature', 'fix'].flatMap(b => [`Bash(git push origin ${b}/*)`, `Bash(git push -u origin ${b}/*)`])],
     // and no tools that schedule more work after the session (a wake-up, a cron job, a remote trigger): one feature, then it ends
     deny: [...GUARDRAILS.map(p => `Edit(${root}/${p}${p.endsWith('/') ? '**' : ''})`), 'Bash(gh api *)', 'Bash(gh pr review *)', 'Bash(gh pr merge *)',
-      'ScheduleWakeup', 'CronCreate', 'RemoteTrigger'],
+      // one feature a session: autopilot.js starts the next one, in a fresh session
+      'Bash(node scripts/amk/specs.js start*)', 'ScheduleWakeup', 'CronCreate', 'RemoteTrigger'],
   };
 }
 // Antigravity's allow rules for the same commands: only its own settings hold them (/permissions), so check lists them
@@ -115,7 +117,7 @@ const agyRules = (pm = pmOf()) => [...COMMANDS(pm).map(c => `command(${c})`), 'c
 const NOBODY = 'This session runs unattended (scripts/amk/autopilot.js): nobody is watching, and nobody will answer.';
 function unattended(id, notes) {
   return [
-    `${NOBODY} Build ${id} as .agents/skills/m-feature/build.md says, from where it stopped, to its end: marked done in specs/${id}/progress.md, with its pull request.`,
+    `${NOBODY} Build ${id} as .agents/skills/m-feature/build.md says, from where it stopped, to its end: marked done in specs/${id}/progress.md, with its pull request. Then end the session, without starting another feature: autopilot.js starts the next one in a fresh session (specs.js start isn't yours to run).`,
     `Never wait for a confirmation or ask a question. Where you would ask or stop, record it under Blocked: in specs/${id}/progress.md (what happened, why, and what would unblock it), commit, push its branch, and end the session.`,
     ...common(notes),
   ].join('\n');
@@ -498,14 +500,18 @@ function unanswered(repo, n, me, ghx = gh) {
     ...[...api(`issues/${n}/comments`), ...inline].filter(c => (c.user || {}).login === me).map(c => c.created_at)]);
   return Boolean(ask) && ask > answer;
 }
-// its open pull requests (feature/ or fix/ branches) with an ask nobody answered, oldest first
-function reviewQueue(ghx = gh) {
+// the build's own open pull requests (a planned feature's, feature/<id>, or a queued bug's fix, fix/<number>) with an
+// ask nobody answered, oldest first: never a pull request someone opened by hand
+function reviewQueue(ids = new Set(), ghx = gh) {
   const me = (ghx(['api', 'user']) || {}).login;
   const repo = repoName(ghx);
   if (!me || !repo) return [];
+  const ours = b => /^fix\/\d+$/.test(b) || (/^feature\//.test(b) && ids.has(b.slice(8)));
   return (ghx(['pr', 'list', '--state', 'open', '--author', '@me', '--limit', '50', '--json', 'number,headRefName']) || [])
-    .filter(p => /^(feature|fix)\//.test(p.headRefName) && unanswered(repo, p.number, me, ghx)).sort((a, b) => a.number - b.number);
+    .filter(p => ours(p.headRefName) && unanswered(repo, p.number, me, ghx)).sort((a, b) => a.number - b.number);
 }
+// the plan's features, by id
+const planIds = () => { const ref = specs.planRef(); const plan = ref && specs.show(ref, 'specs/plan.md'); return new Set(plan ? specs.planFeatures(plan).rows.map(r => r.id) : []); };
 // open issues labelled amk-fix, oldest first: labelled by someone who can label them, or by Sentry's integration with
 // "Sentry adds amk-fix: on"; without amk-needs-info, and without an open pull request from fix/<n> yet
 function bugQueue(cfg, ghx = gh) {
@@ -564,7 +570,7 @@ async function build(o, d = {}) {
   const io = { session: runSession, sleep: ms => new Promise(r => setTimeout(r, ms)), now: Date.now, notify, prs, issue: questionIssue, log: console.log,
     // main merged into the build's stacked branches whose parent has merged (pr.js forward), at the start of each round
     forward: log => { const pr = require('./pr.js'); return pr.forward(specs.mainRef(), {}, pr.settings(), { ...pr.IO, log }); },
-    reviews: () => reviewQueue(), bugs: () => bugQueue(cfg), prFor, needsInfo: (n, t) => needsInfo(n, t),
+    reviews: () => reviewQueue(planIds()), bugs: () => bugQueue(cfg), prFor, needsInfo: (n, t) => needsInfo(n, t),
     unanswered: n => { const me = (gh(['api', 'user']) || {}).login; const repo = repoName(); return Boolean(me && repo) && unanswered(repo, n, me); }, ...d };
   const cfg = settings();
   const env = cleanEnv(process.env, cfg);
