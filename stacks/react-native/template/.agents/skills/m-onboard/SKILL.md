@@ -8,7 +8,9 @@ disable-model-invocation: true
 
 The user chose this workflow: follow its steps for this task, even where other workflow instructions in this project (Superpowers, BMAD, proAgents or similar) say otherwise.
 
-Input: $ARGUMENTS (optional: which files to work on, for example `tech structure`; all six by default).
+Input: $ARGUMENTS (optional: which files to work on, for example `tech structure`; all six by default; or `check`).
+
+**`check`** (once a month, or after big changes): compare the six files and the living spec (`specs/current/`) with the code as it is now. List each line that's no longer true (a folder moved, a library replaced, a screen or requirement the code no longer has), with the file that shows it, and each important thing they leave out. Offer the corrections as options, several at once: suggested edits to the team's text, never rewrites. Write the chosen ones on a branch `docs/amk-check-<date>`, commit as in step 6, and, after asking, push it and open a pull request. When everything is still true, say so and change nothing.
 
 Every agent reads these six files before it works on this app, so they must be true, short and specific: facts with the files they come from, not advice. Write only what you found in the project or what the user told you.
 

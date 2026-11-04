@@ -1,6 +1,6 @@
 # Plan: tests that grow with each change, a tester, user stories, planning all features before building, and hands-off running
 
-Status: 0.9.0 released on 2026-10-30, with 0.8.0's changes, which never reached npm (live once approved there); 0.10.0 to 0.13.0 built; 0.14.0 planned.
+Status: 0.9.0 released on 2026-10-30, with 0.8.0's changes, which never reached npm (live once approved there); 0.10.0 to 0.14.0 built.
 
 ## In one page
 
@@ -791,6 +791,14 @@ Each release ships on its own and keeps its own docs current: both `AGENTS.md` f
 - **What asks for an answer** is a "changes requested" review, or an AI reviewer's review that comments or comment on a line. A bot's comment on the pull request as a whole (a coverage or preview report, or the `amk-ready` workflow's) or its approval asks nothing: counting those would start sessions for nothing. `gh pr view` names a bot like a person (`github-actions`), so the queue reads GitHub's REST API, where an author has a type. The session answers in one comment on the pull request, as replying on each line would need GitHub's API, which an unattended session never calls.
 - **The bug queue checks who labelled each issue** (its events): someone with triage rights or more, or Sentry's integration when `Sentry adds amk-fix` is on. One session per bug per run, on `fix/<number>`. `autopilot.js` itself posts the needs-info comment (redacted, without paths) and adds `amk-needs-info`, so the agent touches no labels. Notes an earlier run left (`needs-info.md`, `blocked.md`) are removed before a session.
 - **`AGENTS.md` stays under the 8 KB that `doctor` checks:** rows were shortened to make room. Expo's was already over before this release (8,585 bytes installed); it's shorter now, but not yet under.
+
+**What building 0.14.0 settled:**
+- **Codemagic's test builds start only by hand** until the team uncomments their `triggering`: each one costs macOS minutes, so an update never starts paid builds on its own. Android goes to Firebase App Distribution (an APK); iOS to TestFlight's internal testing, as Firebase on iOS needs ad hoc signing with each tester's device registered, and one workflow has one kind of signing.
+- **EAS previews are a CI part of their own,** `--ci eas`, for Expo apps whose native folders come from `expo prebuild`: EAS's fingerprint job, which decides when a new build is needed, works only there. The workflow follows EAS's own example (a build only when the fingerprint changed, an update to the preview channel, a comment on the pull request), so every pull request updates the same channel. Expo Workflows reads pull requests from forks not at all.
+- **The weekly kit update runs in two jobs:** `sync` from npm with read-only rights and no secrets, making a patch; then a job that runs nothing from npm puts it on `amk/kit-<version>` and opens the pull request. A version whose branch exists is skipped, so nothing is force-pushed over a person's fixes. With the workflow's own token the pull request gets no CI (GitHub's rule), so it uses the AI jobs' App when that's set up.
+- **`metrics.js` asks GitHub with a query of its own:** `gh pr list --json reviews,commits` asks for every commit's authors too and passed GitHub's limit of 500,000 nodes on a real repository, so it read nothing. The period's first 100 pull requests, with 30 reviews and 50 commits each, are read in one query. An agent's pull request is one with a commit whose trailer names an AI tool as co-author, or an AI job's fix.
+- **`m-learn review` and `m-onboard check` are modes of their skills,** not new skills; `m-report` is new. The monthly docs check as an AI job in CI waits: a person runs `m-onboard check` for now.
+- **Translations:** the rule lives in `react-native.md` and `expo.md` (Texts in several languages), where every change's build steps read it, and `rn-check` warns only about the gaps a branch made, between sibling language files.
 
 ## Compatibility with apps that sync
 

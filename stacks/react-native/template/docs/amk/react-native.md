@@ -100,6 +100,15 @@ What App Store review and Google Play reject. `node scripts/amk/release-check.js
 - Android foreground services declare their type (`android:foregroundServiceType`) and its `FOREGROUND_SERVICE_<TYPE>` permission, and each type is declared in Play Console.
 - From 1 February 2027, Google Play takes updates to apps targeting Android 15 or later only with 16 KB page size support, which React Native has from 0.77.
 
+## Texts in several languages
+
+In an app with language files (JSON under `i18n/`, `locales/`, `translations/` or `lang/`), every text a change adds or changes goes into each language's file, under the same key:
+- the source language as written;
+- each other language as a machine translation, listed in `specs/<id>/translations.md` (the key, the language, the text) for a translator to review, and marked there once reviewed. `m-release` lists those still waiting;
+- where a translation service (Lokalise, Crowdin, Phrase and the like) syncs the language files, change only the source language, and list the new keys in `translations.md` for the service instead.
+
+`rn-check` warns about a key the branch left out of one language's file.
+
 ## TypeScript
 
 - Keep the checks `tsconfig.json` has. Don't loosen them, or get past one with `any`, `@ts-ignore` or a non-null `!`.

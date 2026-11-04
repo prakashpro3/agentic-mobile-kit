@@ -53,6 +53,8 @@ Every AI tool reads the same rules (`AGENTS.md`), the same project facts (`docs/
 | Review a branch | `m-review` | A read-only review for scope, tests, both platforms, error states, security and native changes |
 | Ship a release | `m-release <version>` | Changelog from real commits, store and client notes, version bump, release check, release PR, then the tag. Signed builds come from Codemagic, or from `sh scripts/amk/release-build.sh` run by a person on a Mac. |
 | Stop a mistake from repeating | `m-learn <what went wrong>` | The smallest lasting fix: a check, a known-issues entry, a docs line or a skill step |
+| See what reviews keep finding | `m-learn review` | The month's review comments and `amk-ok` reasons, grouped by what keeps coming back, each made into a check, a known issue or a rule once you choose it |
+| Tell the client where things stand | `m-report [--since 14d]` | A draft in `.amk/reports/<date>/`: what users can do now (a screenshot each), what's in progress or blocked, and the questions waiting on them. You read it and send it |
 
 How to invoke a skill: `/m-feature` in Claude Code and Antigravity, and `$m-feature` in Codex. The skills only run when you invoke them; they never start on their own.
 
@@ -234,6 +236,8 @@ From `docs/amk/team-process.md`:
 
 ## Once a month (30 minutes)
 
+- `node scripts/amk/metrics.js`: pull request size, the wait for reviews, CI's failure rate, reopened issues, approval to pull request, and how many of the agents' pull requests merged without rework. Compare with last month.
+- `m-learn review`: what reviews kept finding, turned into checks. `m-onboard check`: what in `docs/amk/` and the living spec is no longer true.
 - Read `git log --grep 'chore(learn)'`: what did agents get wrong, and did the fixes hold?
 - Remove stale entries from `docs/amk/known-issues.md`.
 - After a React Native, Xcode, Android Gradle Plugin or AI model upgrade, re-read `AGENTS.md` and `docs/amk/` for anything that's no longer true.

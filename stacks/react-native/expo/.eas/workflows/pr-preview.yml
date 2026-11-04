@@ -1,0 +1,54 @@
+# agentic-mobile-kit: a preview of each pull request on EAS (Expo Workflows), added with --ci eas. A new preview build
+# only when the native side changed (EAS's fingerprint, which needs ios/ and android/ to come from expo prebuild), then
+# the pull request's JavaScript published as an update, and a comment on the pull request to open it. Testers install
+# a preview build once; the updates reach it. Signing stays on EAS. Every pull request publishes to the preview channel,
+# so the preview build shows the one pushed last.
+# Once per project (a person with the Expo account): link the project to this GitHub repository (expo.dev, the
+# project's settings, GitHub), set up updates (npx eas update:configure), and give eas.json a preview profile:
+#   "preview": { "distribution": "internal", "channel": "preview" }
+# An internal iOS build installs only on registered iPhones (npx eas device:create).
+name: Pull request preview
+
+on:
+  pull_request:
+    branches: ['*']
+
+jobs:
+  fingerprint:
+    type: fingerprint
+    environment: preview
+  get_android_build:
+    needs: [fingerprint]
+    type: get-build
+    params:
+      fingerprint_hash: ${{ needs.fingerprint.outputs.android_fingerprint_hash }}
+      profile: preview
+  get_ios_build:
+    needs: [fingerprint]
+    type: get-build
+    params:
+      fingerprint_hash: ${{ needs.fingerprint.outputs.ios_fingerprint_hash }}
+      profile: preview
+  build_android:
+    needs: [get_android_build]
+    if: ${{ !needs.get_android_build.outputs.build_id }}
+    type: build
+    params:
+      platform: android
+      profile: preview
+  build_ios:
+    needs: [get_ios_build]
+    if: ${{ !needs.get_ios_build.outputs.build_id }}
+    type: build
+    params:
+      platform: ios
+      profile: preview
+  publish_update:
+    needs: [fingerprint]
+    type: update
+    environment: preview
+    params:
+      channel: preview
+  comment:
+    after: [build_android, build_ios, publish_update]
+    type: github-comment

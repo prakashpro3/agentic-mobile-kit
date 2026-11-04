@@ -540,6 +540,31 @@ for (const id of specIds) {
   }
 }
 
+// ---------- a text in every language: the language files a branch touched lack no key a sibling has ----------
+// JSON in a folder named i18n, locales, translations or lang: en.json beside de.json, or en/common.json beside
+// de/common.json. Only gaps the branch made: a key missing on the base branch already isn't reported
+const LANG = /(^|\/)(i18n?|locales?|translations?|lang)\//i;
+const flatKeys = text => { const flat = (o, p) => Object.entries(o || {}).flatMap(([k, v]) => (v && typeof v === 'object' && !Array.isArray(v) ? flat(v, `${p}${k}.`) : [`${p}${k}`]));
+  try { return new Set(flat(JSON.parse(text), '')); } catch { return null; } };
+const langGroups = new Map();
+for (const f of new Set([...(git('ls-files') || '').split('\n'), ...touchedPaths])) {
+  if (!f || !f.endsWith('.json') || !LANG.test(f) || !fs.existsSync(path.join(root, f))) continue;
+  const dir = path.posix.dirname(f);
+  const key = /^[a-z]{2,3}([-_][A-Za-z]{2,4})?$/.test(path.posix.basename(dir)) ? `${path.posix.dirname(dir)}/*/${path.posix.basename(f)}` : `${dir}/*.json`;
+  langGroups.set(key, [...(langGroups.get(key) || []), f]);
+}
+for (const files of langGroups.values()) {
+  if (files.length < 2 || !files.some(f => touchedPaths.includes(f))) continue;
+  const gaps = read => { const sets = files.map(f => [f, flatKeys(read(f) || '{}')]).filter(([, k]) => k);
+    const all = new Set(sets.flatMap(([, k]) => [...k])); return new Map(sets.map(([f, k]) => [f, [...all].filter(x => !k.has(x))])); };
+  const now = gaps(f => fs.readFileSync(path.join(root, f), 'utf8'));
+  const before = sha ? gaps(f => git('show', `${sha}:${f}`)) : new Map();
+  for (const [f, missing] of now) {
+    const fresh = missing.filter(k => !(before.get(f) || []).includes(k));
+    if (fresh.length) findings.push({ level: '!', where: `${f}:1`, message: `no text for ${fresh.length === 1 ? 'a key' : `${fresh.length} keys`} its other languages have: ${fresh.slice(0, 5).join(', ')}${fresh.length > 5 ? ', …' : ''}. Add each, as react-native.md says (Texts in several languages)` });
+  }
+}
+
 // ---------- report ----------
 // by file, then line
 const order = w => { const [, file, n] = /^(.*):(\d+)$/.exec(w); return [file, Number(n)]; };

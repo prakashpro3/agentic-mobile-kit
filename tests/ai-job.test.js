@@ -84,6 +84,7 @@ test('init installs the AI jobs\' workflows only with --ci github,ai, and refuse
   init(plain, { ci: ['github'], skipGenerate: true });
   assert.ok(fs.existsSync(path.join(plain, '.github/workflows/ci.yml')) && fs.existsSync(path.join(plain, '.github/workflows/amk-ready.yml')));
   assert.ok(!fs.existsSync(path.join(plain, '.github/workflows/amk-ai-review.yml')), 'not without ai');
+  assert.match(fs.readFileSync(path.join(plain, '.github/workflows/amk-kit-update.yml'), 'utf8'), /npx -y agentic-mobile-kit@latest sync[\s\S]*permissions:\n      contents: write/, 'the weekly kit update, its write rights in the job that runs nothing from npm');
   const ai = app();
   init(ai, { ci: ['github', 'ai'], skipGenerate: true });
   for (const f of ['amk-ai-review.yml', 'amk-ai-deps.yml']) assert.ok(fs.existsSync(path.join(ai, '.github/workflows', f)), f);

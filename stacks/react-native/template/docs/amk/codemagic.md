@@ -30,6 +30,14 @@ You need admin rights in the Codemagic team (or your personal account). Menus ar
 
 Then start `android-release` by hand and check that the signed `.aab` appears in the build's artifacts. Do the same for `ios-release`.
 
+## Test builds for testers
+
+`android-test` builds a signed APK and sends it to Firebase App Distribution; `ios-test` builds a signed ipa for TestFlight's internal testing. They start only by hand until you uncomment their `triggering` (a build of each merge to `main`, which costs macOS minutes). Once, for Android:
+1. In the Firebase console, add the Android app (its package name) if it isn't there, and copy its App ID (Project settings) into `app_id` in `codemagic.yaml`. Under App Distribution, make a group of testers named `testers`, or change `groups` to yours.
+2. In Google Cloud, a service account with the **Firebase App Distribution Admin** role, its JSON key in a Codemagic variable `FIREBASE_SERVICE_ACCOUNT`, in a group named `firebase_credentials`, marked Secret.
+
+iOS uses the same key and App Store profile as `ios-release`; the build reaches TestFlight's internal testers only. For Firebase on iOS instead, it needs an ad hoc profile with each tester's device registered: `distribution_type: ad_hoc`, and a `firebase: ios:` block beside Android's.
+
 ## Apps with more than one target
 
 When one repo ships several apps (for example a main app and a kiosk app, or product flavors), copy the workflow once per app. In each copy, set the bundle ID, the scheme (iOS) and the Gradle task and package (Android).

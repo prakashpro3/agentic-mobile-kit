@@ -483,3 +483,21 @@ StatusBar.setTranslucent(true);
   assert.match(m.out, /✗ src\/a\.tsx:2 {2}StyleSheet\.absoluteFillObject was removed in React Native 0\.85: use StyleSheet\.absoluteFill$/m);
   assert.match(m.out, /! src\/a\.tsx:1 {2}InteractionManager was removed in React Native 0\.87: use requestIdleCallback \(this app is on 0\.85/);
 });
+
+test('rn-check: a key one language file has and its sibling lacks, when the branch made the gap', () => {
+  const dir = app(undefined, {
+    'src/i18n/en.json': JSON.stringify({ home: { title: 'Home' }, old: 'Only English, from before' }, null, 2),
+    'src/i18n/de.json': JSON.stringify({ home: { title: 'Start' } }, null, 2),
+    'locales/en/common.json': '{ "save": "Save" }', 'locales/de/common.json': '{ "save": "Speichern" }',
+  });
+  write(dir, 'src/i18n/en.json', JSON.stringify({ home: { title: 'Home', greeting: 'Hello' }, old: 'Only English, from before' }, null, 2));
+  write(dir, 'locales/en/common.json', '{ "save": "Save", "cancel": "Cancel" }');
+  const { out } = check(dir);
+  assert.match(out, /! src\/i18n\/de\.json:1  no text for a key its other languages have: home\.greeting\./);
+  assert.doesNotMatch(out, /old/, 'a gap from before the branch');
+  assert.match(out, /! locales\/de\/common\.json:1  no text for a key its other languages have: cancel\./, 'one folder per language');
+  write(dir, 'src/i18n/de.json', JSON.stringify({ home: { title: 'Start', greeting: 'Hallo' } }, null, 2));
+  write(dir, 'locales/de/common.json', '{ "save": "Speichern", "cancel": "Abbrechen" }');
+  assert.doesNotMatch(check(dir).out, /no text for/);
+});
+

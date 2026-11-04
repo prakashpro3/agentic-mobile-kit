@@ -42,6 +42,7 @@ Each choice prints the command it runs, for scripts and CI: `init` (with `--ci g
 | Review a branch | `m-review` | Checks the work against the spec (complete, correct, coherent) and covers both platforms, error states, security and native changes |
 | Ship a release | `m-release` | Changelog from real commits, store and client notes, versions, release check, release PR, tag, signed builds |
 | Stop a mistake repeating | `m-learn` | Turns a correction into a lasting check, a known-issues entry or a rule |
+| Tell the client where things stand | `m-report` | Drafts a report from the specs, the plan, the pull requests and the open questions: what users can do now, a screenshot each, what's in progress or blocked, and the questions for them. You send it |
 
 Invoke a skill with `/m-feature` in Claude Code and Antigravity, or `$m-feature` in Codex. The skills are set to run only when you invoke them.
 
@@ -65,7 +66,8 @@ npx agentic-mobile-kit uninstall     # remove the kit; files you changed are kep
 Both need a clean working tree and leave the result for you to review with `git diff`.
 - **Report:** `sync` lists what it updated, added, removed and merged.
 - **Your docs:** the product, tech, structure and conventions files your team filled in are never changed.
-- **Adding CI later:** `sync --ci github` or `--ci codemagic` does it.
+- **Adding CI later:** `sync --ci github` or `--ci codemagic` does it (`--ci eas` for an Expo app's previews).
+- **Every week, as a pull request:** with `--ci github`, a workflow runs the latest kit's `sync` and opens a pull request with what it changed. It never merges, and it runs no code from npm with write rights.
 - **From 0.6 or earlier:** the update moves the kit's files from `docs/ai/` and `scripts/ai/` to `docs/amk/` and `scripts/amk/`, with your edits. Your own files in the old folders stay where they are, and it lists any of your files that still use the old paths.
 
 ## Requirements

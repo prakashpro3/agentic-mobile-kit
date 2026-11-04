@@ -114,6 +114,15 @@ What App Store review and Google Play reject. `node scripts/amk/release-check.js
 - Google Play restricts these permissions to apps whose core feature needs them, with a declaration in Play Console: photos and videos (`READ_MEDIA_IMAGES`, `READ_MEDIA_VIDEO`: others use the Android photo picker), `QUERY_ALL_PACKAGES`, `MANAGE_EXTERNAL_STORAGE`, SMS and call log, `USE_EXACT_ALARM`, and background location (also a video and an in-app disclosure first). A library can add one: list it in `android.blockedPermissions` when the app doesn't need it.
 - Android foreground services declare their type and its `FOREGROUND_SERVICE_<TYPE>` permission (the library's config plugin usually does), and each type is declared in Play Console.
 
+## Texts in several languages
+
+In an app with language files (JSON under `i18n/`, `locales/`, `translations/` or `lang/`), every text a change adds or changes goes into each language's file, under the same key:
+- the source language as written;
+- each other language as a machine translation, listed in `specs/<id>/translations.md` (the key, the language, the text) for a translator to review, and marked there once reviewed. `m-release` lists those still waiting;
+- where a translation service (Lokalise, Crowdin, Phrase and the like) syncs the language files, change only the source language, and list the new keys in `translations.md` for the service instead.
+
+`rn-check` warns about a key the branch left out of one language's file.
+
 ## TypeScript
 
 - Keep the checks `tsconfig.json` has. Don't loosen them, or get past one with `any`, `@ts-ignore` or a non-null `!`.

@@ -708,6 +708,17 @@ function expoApp(files = {}) {
   return dir;
 }
 
+test('--ci eas: an Expo app without native folders gets the pull request preview; a bare app is told to use Codemagic\'s test builds', () => {
+  const dir = expoApp();
+  init(dir, { ci: ['eas'], skipGenerate: true, log: () => {} });
+  assert.match(fs.readFileSync(path.join(dir, '.eas/workflows/pr-preview.yml'), 'utf8'), /type: fingerprint[\s\S]*type: github-comment/);
+  assert.ok(!fs.existsSync(path.join(dir, '.github/workflows/ci.yml')), 'only what was chosen');
+  const plain = expoApp();
+  init(plain, { skipGenerate: true, log: () => {} });
+  assert.ok(!fs.existsSync(path.join(plain, '.eas')), 'not without --ci eas');
+  assert.throws(() => init(fakeApp(), { ci: ['eas'], skipGenerate: true, log: () => {} }), /The EAS previews are for Expo apps whose ios\/ and android\/ come from expo prebuild[\s\S]*--ci codemagic/);
+});
+
 test('Expo app without native folders: Expo instructions, rules, skills and permissions next to Expo\'s own text', () => {
   const dir = expoApp();
   const { values } = init(dir, { skipGenerate: true });

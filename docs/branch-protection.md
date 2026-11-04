@@ -61,7 +61,7 @@ gh api -X PATCH repos/<owner>/<repo> -f allow_auto_merge=true
 `--ci github,ai` adds `.github/workflows/amk-ai-review.yml` (an AI reviews each ready pull request and comments) and `amk-ai-deps.yml` (an AI fixes a dependency update whose CI fails, without changing versions). They comment or push fixes; they never approve. Each needs:
 
 - the `ANTHROPIC_API_KEY` secret;
-- a GitHub App for the AI jobs, installed on the repository, with **contents and pull requests: read and write**, and nothing else (no administration, no workflows). Its client ID goes in the `AMK_APP_CLIENT_ID` variable and its private key in the `AMK_APP_PRIVATE_KEY` secret. A push made with the workflow's own token doesn't start CI again; the App's does, so a fix gets checked.
+- a GitHub App for the AI jobs, installed on the repository, with **contents and pull requests: read and write**, and nothing else (no administration, no workflows). The weekly kit update (`amk-kit-update.yml`) uses it too when it's there, so its pull request gets CI. Its client ID goes in the `AMK_APP_CLIENT_ID` variable and its private key in the `AMK_APP_PRIVATE_KEY` secret. A push made with the workflow's own token doesn't start CI again; the App's does, so a fix gets checked.
 
 They start only for a person with write access (or, for the dependency job, Dependabot or Renovate), skip forks, drafts and their own fixes, stop after three fix commits in a row on a branch or six runs in an hour, and pause themselves after three failures in a row: an issue "AI job paused: <job>" says so, and closing it resumes the job (`scripts/amk/ai-job.js`). The dependency job installs the updated packages and runs their code in its checks, with the App's token and the API key in reach: turn it on only if you accept that.
 

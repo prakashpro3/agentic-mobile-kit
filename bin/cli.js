@@ -8,8 +8,8 @@ const help = `agentic-mobile-kit ${version}
 
 Usage:
   npx agentic-mobile-kit             In a terminal: pick what to do in this app, step by step
-  npx agentic-mobile-kit init [--new bare|expo] [--tools claude,codex,antigravity] [--ci github,codemagic,ai] [--pm yarn|npm|pnpm|bun]
-  npx agentic-mobile-kit sync [--ci github,codemagic,ai] [--from <version>]
+  npx agentic-mobile-kit init [--new bare|expo] [--tools claude,codex,antigravity] [--ci github,codemagic,ai,eas] [--pm yarn|npm|pnpm|bun]
+  npx agentic-mobile-kit sync [--ci github,codemagic,ai,eas] [--from <version>]
   npx agentic-mobile-kit uninstall [--from <version>]
   npx agentic-mobile-kit doctor
 
@@ -22,8 +22,9 @@ Commands:
 Options:
   --new    In an empty folder: first create the app, with the React Native CLI (bare) or create-expo-app (expo)
   --tools  AI tools your team uses: ${Object.keys(TOOLS).join(', ')} (default: claude,codex,antigravity)
-  --ci     CI to set up, only if the app uses it: ${Object.keys(CI).join(', ')} (GitHub Actions checks, Codemagic signed builds, and the
-           optional AI review and dependency-fix jobs, with github: they need an API key and a GitHub App; default: none)
+  --ci     CI to set up, only if the app uses it: ${Object.keys(CI).join(', ')} (GitHub Actions checks, Codemagic signed and test
+           builds, the optional AI review and dependency-fix jobs, with github: they need an API key and a GitHub App, and
+           an EAS preview of each pull request, for Expo apps whose native folders come from expo prebuild; default: none)
   --pm     Package manager, if it can't be detected from the lockfile
   --from   The kit version that installed the project; needed only for installs made before 0.4.0`;
 

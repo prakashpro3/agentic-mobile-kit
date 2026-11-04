@@ -11,6 +11,7 @@
   "m-pause": 300,
   "m-prototype": 1100,
   "m-release": 950,
+  "m-report": 400,
   "m-review": 1000,
   "m-test": 600
 }

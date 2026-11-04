@@ -1,5 +1,7 @@
 # Signed release builds on Codemagic (codemagic.io). One-time setup for each app: docs/amk/codemagic.md
-# Both workflows start when a version tag is pushed (git push origin v1.2.0); you can also start them in Codemagic.
+# Both release workflows start when a version tag is pushed (git push origin v1.2.0); you can also start them in Codemagic.
+# The two test workflows give testers a build of main (Firebase App Distribution, TestFlight's internal testing): they
+# start only from Codemagic until you turn on their triggering, below, for each merge to main (macOS minutes cost).
 # Build numbers are set on the build machine only (one more than the store's latest), so the repo never needs a bump for them.
 workflows:
   android-release:
@@ -83,6 +85,85 @@ workflows:
     artifacts:
       - build/ios/ipa/*.ipa
       - /tmp/xcodebuild_logs/*.log
+    publishing:
+      app_store_connect:
+        auth: integration
+        submit_to_testflight: true
+
+  android-test:
+    name: Android test build (Firebase App Distribution)
+    instance_type: mac_mini_m2
+    max_build_duration: 60
+    # for a build of each merge to main, uncomment:
+    # triggering:
+    #   events:
+    #     - push
+    #   branch_patterns:
+    #     - pattern: main
+    #       include: true
+    #       source: true
+    #   cancel_previous_builds: true
+    environment:
+      android_signing:
+        - upload_keystore
+      groups:
+        - firebase_credentials # FIREBASE_SERVICE_ACCOUNT: a service account with the Firebase App Distribution Admin role
+      node: 24
+      java: 17
+    scripts:
+      - name: Install dependencies
+        script: sh scripts/amk/install-deps.sh
+      - name: Build the signed APK
+        script: |
+          sh scripts/amk/prebuild.sh android # Expo apps without android/ in git
+          echo "sdk.dir=$ANDROID_SDK_ROOT" > android/local.properties
+          sed -i '' -E "s/versionCode( =)? [0-9]+/versionCode\1 $BUILD_NUMBER/" android/app/build.gradle*
+          cd android && ./gradlew assembleRelease \
+            -Pandroid.injected.signing.store.file="$CM_KEYSTORE_PATH" \
+            -Pandroid.injected.signing.store.password="$CM_KEYSTORE_PASSWORD" \
+            -Pandroid.injected.signing.key.alias="$CM_KEY_ALIAS" \
+            -Pandroid.injected.signing.key.password="$CM_KEY_PASSWORD"
+    artifacts:
+      - android/app/build/outputs/apk/release/*.apk
+    publishing:
+      firebase:
+        firebase_service_account: $FIREBASE_SERVICE_ACCOUNT
+        android:
+          app_id: 1:000000000000:android:0000000000000000 # Firebase console > Project settings > your Android app's App ID
+          groups:
+            - testers
+          artifact_type: apk
+
+  ios-test:
+    name: iOS test build (TestFlight, internal testing)
+    instance_type: mac_mini_m2
+    max_build_duration: 60
+    # for a build of each merge to main, uncomment the same triggering as android-test
+    integrations:
+      app_store_connect: codemagic
+    environment:
+      ios_signing:
+        distribution_type: app_store # Firebase for iOS takes ad_hoc builds instead, for registered devices only
+        bundle_identifier: {{IOS_BUNDLE_ID}}
+      vars:
+        APP_STORE_APPLE_ID: 0 # App Store Connect > the app > App Information > Apple ID
+      node: 24
+      xcode: latest
+      cocoapods: default
+    scripts:
+      - name: Install dependencies
+        script: sh scripts/amk/install-deps.sh && sh scripts/amk/prebuild.sh ios && sh scripts/amk/pod-install.sh
+      - name: Use the signing files, for internal testers only
+        script: |
+          xcode-project use-profiles --custom-export-options='{"testFlightInternalTestingOnly": true}'
+      - name: Build the signed ipa
+        script: |
+          if last=$(app-store-connect get-latest-build-number "$APP_STORE_APPLE_ID") && [ -n "$last" ]; then build=$((last + 1)); else build=$BUILD_NUMBER; fi
+          (cd ios && agvtool new-version -all "$build")
+          workspace=$(ls -d ios/*.xcworkspace | head -1)
+          xcode-project build-ipa --workspace "$workspace" --scheme "$(basename "$workspace" .xcworkspace)"
+    artifacts:
+      - build/ios/ipa/*.ipa
     publishing:
       app_store_connect:
         auth: integration
