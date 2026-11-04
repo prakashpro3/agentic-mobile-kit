@@ -5,8 +5,9 @@
 //   lint       ESLint errors in the files changed since the base, compared with those files at the base
 //   typecheck  TypeScript errors (file, code, message), compared with a type check of the base
 //   test       failing Jest tests and test files, compared with a test run of the base
-// The base: AMK_BASE, else the first of the remote's default branch, origin/main, origin/master, main and master
-// whose merge base with HEAD has a package.json (a default branch left at an old first commit isn't the app's base).
+// The base: AMK_BASE; on a release branch (release/…), the last release's tag (v…); else the first of the remote's
+// default branch, origin/main, origin/master, main and master whose merge base with HEAD has a package.json (a default
+// branch left at an old first commit isn't the app's base).
 // Its merge base is checked out once into a temporary git worktree that shares node_modules, and its results are kept
 // for the next run.
 // `test --related` runs only the Jest tests related to the files changed since the base (Jest's --changedSince, which
@@ -87,6 +88,10 @@ const hasApp = sha => Boolean(sha && git('rev-parse', '--verify', '--quiet', `${
 // { ref, note }: the note says when the remote's default branch was passed over
 function baseRef() {
   if (process.env.AMK_BASE) return { ref: process.env.AMK_BASE, note: '' };
+  // a release branch is compared with the last release, not with main: what main gained since that release is the
+  // release's change, so a test that broke on main since then is new
+  const tag = /^release\//.test(git('symbolic-ref', '--quiet', '--short', 'HEAD')) && git('describe', '--tags', '--abbrev=0', '--match', 'v*', 'HEAD');
+  if (tag && hasApp(tag)) return { ref: tag, note: '' };
   const remoteDefault = git('symbolic-ref', '--quiet', '--short', 'refs/remotes/origin/HEAD');
   const refs = [...new Set([remoteDefault, 'origin/main', 'origin/master', 'main', 'master'])]
     .filter(r => r && git('rev-parse', '--verify', '--quiet', `${r}^{commit}`));

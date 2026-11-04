@@ -79,7 +79,15 @@ if (line.startsWith('pr comment')) {
   log('pr comment', { number: p.number, body: body() });
   out(`${p.url}#comment`);
 }
-if (line.startsWith('pr checks')) out([]);
+// a pull request's checks: each fails while the branch on origin is at the commit it failed on, and passes once a
+// newer one is pushed; a failed run's log is the state's runs[<id>]
+if (line.startsWith('pr checks')) {
+  const p = prOf(args[2] && !args[2].startsWith('-') ? args[2] : git('symbolic-ref', '--short', 'HEAD')) || fail('no pull requests found');
+  const at = git('ls-remote', 'origin', `refs/heads/${p.head}`).split('\t')[0];
+  out((p.checks || []).map(c => ({ name: c.name, workflow: c.workflow || 'ci', link: c.link, bucket: c.failsAt === at ? 'fail' : 'pass' })));
+}
+m = /^run view (\d+)/.exec(line);
+if (m) out((state.runs || {})[m[1]] || '');
 m = /^api repos\/[^/]+\/[^/]+\/pulls\/(\d+)\/(reviews|comments|commits)/.exec(line);
 if (m) {
   const p = prOf(m[1]) || fail();

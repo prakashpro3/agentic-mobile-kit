@@ -170,6 +170,26 @@ test('no base branch to compare with: a failure stays a failure', () => {
   assert.strictEqual(check(dir, 'typecheck', { AMK_BASE: 'trunk' }).code, 0, 'AMK_BASE picks it');
 });
 
+test('a release branch is compared with the last release: a test that broke on main since then is new', () => {
+  const dir = app();
+  git(dir, 'switch', '-q', 'main');
+  git(dir, 'tag', 'v1.0.0');
+  write(dir, 'tests.json', JSON.stringify({ 'src/__tests__/old.test.js': ['Old › still broken'], 'src/__tests__/empty.test.js': null, 'src/__tests__/shift.test.js': ['Shift › 90 minutes'] }));
+  commit(dir, 'fix: round the hours');
+  git(dir, 'switch', '-q', '-c', 'release/v1.1.0');
+  const r = check(dir, 'test');
+  assert.strictEqual(r.code, 1, r.out);
+  assert.match(r.out, /test: 1 new compared with v1\.0\.0 \([0-9a-f]{7}\):\n {2}src\/__tests__\/shift\.test\.js › Shift › 90 minutes/);
+  assert.strictEqual(check(dir, 'base').out.trim(), 'v1.0.0');
+  assert.strictEqual(check(dir, 'test', { AMK_BASE: 'main' }).code, 0, 'AMK_BASE still picks the base');
+  // another branch, or a release branch before any release: compared with main, as before
+  git(dir, 'switch', '-q', 'feature');
+  assert.strictEqual(check(dir, 'base').out.trim(), 'main');
+  git(dir, 'switch', '-q', 'release/v1.1.0');
+  git(dir, 'tag', '-d', 'v1.0.0');
+  assert.strictEqual(check(dir, 'test').code, 0);
+});
+
 test('test --related: only the Jest tests related to the files changed since the base, and failures compared as before', () => {
   const dir = app();
   write(dir, 'fake-jest.js', `require('fs').appendFileSync('args.txt', process.argv.slice(2).join(' ') + '\\n');\n${fs.readFileSync(path.join(dir, 'fake-jest.js'), 'utf8')}`);

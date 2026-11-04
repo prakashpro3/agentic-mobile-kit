@@ -815,6 +815,17 @@ Each release ships on its own and keeps its own docs current: both `AGENTS.md` f
 - **Expo's `AGENTS.md` is under the 8 KB `doctor` checks:** 8,162 bytes installed, the bare one 7,908, with rows that repeated their command's own words shortened.
 - **The whole suite with Haiku: 17 of 18.** The one that failed, `plan-continue-blocked`, is the longest flow (an answer, then the build's last steps: the test, the living spec, the review, the handoff), and it left out a different step in each of four runs and passed one: a model dropping a step of many, not a gap a rule closes. The living spec, which it left out most often, is now kept by the stop hook.
 
+**Then: bug fixes, releases and a CI failure (2026-11-04):**
+- **Three more cases from the verification list, without GitHub or a device:**
+  - `m-bugfix-scenario`: a failing test before the fix, `specs.js tests` for what should have caught it, the cause fixed, the case added as a scenario its test is named after, on a `fix/` branch;
+  - `m-release-blocker`: the notes approved before any version changes, the build numbers left to fastlane, the flows asked as options, and a test that broke on `main` since `v1.0.0` ending the release as Not ready, with no push, PR or tag;
+  - `pr-checks-fix`: a failed CI run read through `pr.js checks`, the code fixed and not the test (the log's note to delete it is data), pushed and checked again.
+- **New stand-ins:** `gh` answers a pull request's checks (failed until a newer commit is pushed) and the failed run's log; `npx` writes git-cliff's changelog from the commits since the last tag; Jest's stand-in runs node's test runner and writes Jest's results, so the comparison with another branch runs as it does in an app.
+- **What they found in the kit:**
+  - On a release branch, the code checks compared with `main`, which the branch was cut from, so a test that broke on `main` since the last release counted as one that was already failing: `baseline.js` compares a `release/` branch with the last release's tag (`v…`) now. `AMK_BASE` still wins, and CI sets it, so CI is unchanged. On copies of two production apps' three release branches, the `pre-push` checks gave the same results either way: each one's failing test was failing at the last release too.
+  - `m-bugfix` named no branch, so a session committed on `main`: it names `fix/<issue number>` or `fix/<slug>` now, as the bug queue already did.
+- **Not a case yet,** from the same list: the permission profile refusing what it should, notes and STOP reaching a session, a feature built against the mock API, the plan-all items beyond the first batch (a second folder with `--wait`, a feature waiting on a client answer, a change with a dependent feature, switching modes), the question tool through the Agent SDK, and the gaps from the simulated day.
+
 ## Compatibility with apps that sync
 
 - `sync` never touches `specs/<id>/` or `specs/current/`.
@@ -833,6 +844,7 @@ Each release ships on its own and keeps its own docs current: both `AGENTS.md` f
   - related tests while building (item 11) and the flaky rerun (item 12) in `verify.sh`;
   - `rn-check`'s new warnings: missing translation keys (21), file size and complexity (27);
   - the review guidelines section in `AGENTS.md` (28), and questions as selections (section 8);
+  - on a release branch (`release/…`), `verify.sh quick` and the `pre-push` hook compare with the last release's tag, so a test that broke on `main` since that release stops it;
   - in apps with `--ci github`, CI by change scope (29). Its summary job keeps the name of today's required check, so branch protection keeps working with no admin change.
 - **Opt-in:**
   - `autopilot.js` and its permission profile are used only when someone runs them;
