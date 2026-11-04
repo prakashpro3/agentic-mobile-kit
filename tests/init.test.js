@@ -890,7 +890,7 @@ function fakeCreator(calls, { fail = false, lock = true, podsFail = false, templ
       fs.writeFileSync(path.join(app, layout), "import {\n  DarkTheme,\n  ThemeProvider,\n} from 'expo-router/react-navigation';\nimport { Stack } from 'expo-router';\n\nexport default function RootLayout() {\n  return <Stack />;\n}\n");
     } else if (template) {
       fs.mkdirSync(path.join(app, 'ios/NewApp'));
-      fs.writeFileSync(path.join(app, 'ios/NewApp/Info.plist'), '<dict>\n\t<key>UISupportedInterfaceOrientations</key>\n\t<array>\n\t\t<string>UIInterfaceOrientationPortrait</string>\n\t</array>\n</dict>\n');
+      fs.writeFileSync(path.join(app, 'ios/NewApp/Info.plist'), '<dict>\n\t<key>UISupportedInterfaceOrientations</key>\n\t<array>\n\t\t<string>UIInterfaceOrientationPortrait</string>\n\t</array>\n\t<key>NSLocationWhenInUseUsageDescription</key>\n\t<string></string>\n\t<key>RCTNewArchEnabled</key>\n\t<true/>\n</dict>\n');
       fs.writeFileSync(path.join(app, 'babel.config.js'), "module.exports = {\n  presets: ['module:@react-native/babel-preset'],\n};\n");
       fs.writeFileSync(path.join(app, 'tsconfig.json'), JSON.stringify({ extends: '@react-native/typescript-config', include: ['**/*.ts', '**/*.tsx'] }, null, 2));
       fs.writeFileSync(path.join(app, 'index.js'), "/**\n * @format\n */\n\nimport { AppRegistry } from 'react-native';\nimport App from './App';\nimport { name as appName } from './app.json';\n\nAppRegistry.registerComponent(appName, () => App);\n");
@@ -954,9 +954,9 @@ test('init --new: iPad and every orientation, stricter TypeScript and "@/" impor
   let calls = [];
   createApp(dir, 'bare', { run: fakeCreator(calls, { template: true }), pods: false, ...quiet });
   assert.strictEqual(calls[1], 'npm install --save-dev babel-plugin-module-resolver@5');
-  assert.strictEqual(git(dir, 'log', '--format=%s'), 'Support tablets and landscape; stricter TypeScript with @/ imports; an error boundary\nkit');
+  assert.strictEqual(git(dir, 'log', '--format=%s'), 'Support tablets and landscape; stricter TypeScript with @/ imports; an error boundary; no empty location permission text\nkit');
   assert.strictEqual(fs.readFileSync(path.join(dir, 'ios/NewApp/Info.plist'), 'utf8'),
-    '<dict>\n\t<key>UISupportedInterfaceOrientations</key>\n\t<array>\n\t\t<string>UIInterfaceOrientationPortrait</string>\n\t\t<string>UIInterfaceOrientationLandscapeLeft</string>\n\t\t<string>UIInterfaceOrientationLandscapeRight</string>\n\t</array>\n</dict>\n');
+    '<dict>\n\t<key>UISupportedInterfaceOrientations</key>\n\t<array>\n\t\t<string>UIInterfaceOrientationPortrait</string>\n\t\t<string>UIInterfaceOrientationLandscapeLeft</string>\n\t\t<string>UIInterfaceOrientationLandscapeRight</string>\n\t</array>\n\t<key>RCTNewArchEnabled</key>\n\t<true/>\n</dict>\n');
   assert.strictEqual(fs.readFileSync(path.join(dir, 'babel.config.js'), 'utf8'),
     "module.exports = {\n  presets: ['module:@react-native/babel-preset'],\n  plugins: [['module-resolver', { alias: { '^@/(.+)': './src/\\\\1' } }]],\n};\n");
   assert.deepStrictEqual(JSON.parse(fs.readFileSync(path.join(dir, 'tsconfig.json'), 'utf8')).compilerOptions, { ...stricter, paths: { '@/*': ['./src/*'] } });
@@ -995,7 +995,7 @@ test('init --new: iPad and every orientation, stricter TypeScript and "@/" impor
   assert.ok(fs.existsSync(path.join(dir, 'components/error-boundary.tsx')));
   assert.match(fs.readFileSync(path.join(dir, 'app/_layout.tsx'), 'utf8'), /^import \{ Stack \} from 'expo-router';\nexport \{ ErrorBoundary \} from '\.\.\/components\/error-boundary';$/m);
   assert.strictEqual(git(dir, 'status', '--porcelain'), '');
-  assert.strictEqual(git(dir, 'log', '--format=%s'), 'Support tablets and landscape; stricter TypeScript with @/ imports; an error boundary\nkit');
+  assert.strictEqual(git(dir, 'log', '--format=%s'), 'Support tablets and landscape; stricter TypeScript with @/ imports; an error boundary; no empty location permission text\nkit');
 });
 
 test('init --new refuses a folder with files, a folder inside a repository and an unknown type; a failed tool leaves the folder as it was', () => {
