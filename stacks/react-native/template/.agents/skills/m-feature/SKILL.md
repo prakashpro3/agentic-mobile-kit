@@ -55,7 +55,7 @@ From here the plan lives in files, so the building can also run in a fresh sessi
 ## 4. Build, one task at a time
 
 For each task, in order (a task with `after:` once those tasks are ticked; one without, as listed):
-1. Implement only that task. Write tests first for logic (state, data, utils); UI can be tested after. Build screens to the UI/UX level in `design.md`, from the colours, type, spacing and controls in `docs/amk/design-system.md`, and to the screen rules in the React Native rules file `AGENTS.md` names (keyboard, system bars, scrolling, large text, announced messages), for every phone, tablet and orientation `AGENTS.md` lists: they're the bugs device checks and reviews find most.
+1. Implement only that task. Write tests first for logic (state, data, utils); UI can be tested after. Build screens to the UI/UX level in `design.md`, from the colours, type, spacing and controls in `docs/amk/design-system.md`, and to the screen rules in the rules file `AGENTS.md` names (keyboard, system bars, scrolling, large text, announced messages, texts in several languages), for every phone, tablet and orientation `AGENTS.md` lists: the bugs checks and reviews find most.
 2. Run `sh scripts/amk/verify.sh quick --related`: lint, typecheck, and the tests of the files this branch changed. Paste the real output. If something fails, fix it; after 2 failed attempts, stop and report.
 3. Commit with a clear message ending in `Spec: specs/<id>`.
 4. Tick the task in `tasks.md` and update the handoff block and log in `progress.md`.
@@ -66,7 +66,7 @@ If building shows the plan is wrong: when the intent is the same, update `design
 
 ## 5. Test it
 
-When all tasks are done, run `m-test <id>`: the code checks, the device flows of the feature and of the areas it touches, and the test report, where each scenario gets a status. Fix what fails and run it again until the report says Ready (after two failed attempts at the same fix, stop and report). Where the code and the spec disagree, fix whichever is wrong, asking first if it's the spec: the spec must describe what ships. Off a Mac, record in `progress.md` that iOS still needs checking on a Mac, and say so in the PR.
+When all tasks are done, follow `.agents/skills/m-test/SKILL.md` for `<id>`: the code checks, the device flows of the feature and of the areas it touches, and the test report, where each scenario gets a status. Fix what fails and run it again until the report says Ready (two failed attempts at the same fix: stop and report). Where the code and the spec disagree, fix whichever is wrong, asking first if it's the spec: the spec must describe what ships. Off a Mac, record in `progress.md` that iOS still needs checking on a Mac, and say so in the PR.
 
 Then **the design review**: give the screenshots `verify.sh` listed as changed (all of them, the first time) to the `m-design-reviewer` subagent, which sees only them, `docs/amk/design-system.md` and the UI/UX level in `design.md` (without subagents, check the same yourself). Fix what it finds, or tell the user why one stays. Once the user accepts the look, `sh scripts/amk/verify.sh approve --label <id>` makes these screenshots the approved ones.
 

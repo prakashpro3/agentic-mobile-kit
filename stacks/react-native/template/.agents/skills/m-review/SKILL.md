@@ -37,7 +37,7 @@ If your tool has subagents, hand the review to the `m-reviewer` subagent, so it 
    - **Native:** `project.pbxproj`, `Podfile`, Gradle or manifest changes, and whether pods and builds were re-run.
    - **Performance:** heavy work in render, list keys (from IDs, not the index), needless re-renders, base64 images in code.
 3. For each finding, check it in the code before reporting it. Report: severity (**blocker**, **should fix**), file and line, the problem, and a suggested fix. Leave out style nits; lint handles those.
-4. End with: "Ready for PR" or "Not ready: N blockers".
+4. End with: "Ready for PR" or "Not ready: N blockers". A check that couldn't run (no device here, a script the app doesn't have) is a note for the PR, not a blocker.
 
 ## Receiving review feedback (from people or AI reviewers)
 

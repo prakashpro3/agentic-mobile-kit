@@ -754,7 +754,7 @@ test('Expo: an app on React Navigation itself gets the react-navigation skill; s
   commitAll(plain);
   init(plain, { skipGenerate: true });
   assert.ok(fs.existsSync(path.join(plain, '.agents/skills/react-navigation/SKILL.md')));
-  assert.match(read(plain, 'AGENTS.md'), /in an app on React Navigation without Expo Router, `react-navigation`/);
+  assert.match(read(plain, 'AGENTS.md'), /on React Navigation without Expo Router, `react-navigation`/);
 
   // an Expo Router app with the skill from an earlier version
   const router = expoApp();

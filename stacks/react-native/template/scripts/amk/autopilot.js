@@ -485,7 +485,8 @@ function question(id) {
 
 // ---------- review fixes and the bug queue, read by this script (the agent never calls GitHub's API) ----------
 // ponytail: the first 100 of a pull request's reviews, comments and commits, and of an issue's events, are read
-const latest = xs => xs.filter(Boolean).sort().pop() || '';
+// the latest of these times, as a number: GitHub writes them in UTC, but a time with an offset compares right too
+const latest = xs => Math.max(0, ...xs.map(x => Date.parse(x)).filter(t => !Number.isNaN(t)));
 const repoName = (ghx = gh) => (ghx(['repo', 'view', '--json', 'nameWithOwner']) || {}).nameWithOwner;
 // nobody answered its latest ask: a "changes requested" review, or an AI reviewer's (a bot's) review that comments or
 // comment on a line. A bot's comment on the pull request as a whole (a coverage or preview report, amk-ready's) or

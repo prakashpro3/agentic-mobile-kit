@@ -36,9 +36,9 @@ Show in one message:
 If no requirement changes, as with a pure style change, skip the spec files (steps 1, 5 and 6 below).
 
 1. Pick an ID: the task's ID if it has one, otherwise `YYYYMMDD-<slug>`. Write `specs/<id>/requirements.md` with a title, a one-line goal and only the requirements that change, under `## MODIFIED Requirements: <area>` (or ADDED or REMOVED; the format is in `specs/current/README.md`). Run `node scripts/amk/specs.js check specs/<id>/requirements.md`.
-2. Change the code, and add or update a test where logic changed.
+2. Change the code, and add or update a test where logic changed. A text it adds or changes, in an app with language files, goes into each language's file and `specs/<id>/translations.md`, as the React Native rules file `AGENTS.md` names says (Texts in several languages).
 3. Run `sh scripts/amk/verify.sh quick` and show its output.
-4. For a visible change, write `.maestro/<id>.yaml` (`node scripts/amk/specs.js flow <id>` starts it from `specs/_templates/flow.yaml`): open the changed screen and take a screenshot. Then run `m-test <id>`, which checks it on the devices with the flows of the area it changes and writes the test report. Off a Mac it checks Android only: say that iOS still needs checking on a Mac.
+4. For a visible change, write `.maestro/<id>.yaml` (`node scripts/amk/specs.js flow <id>` starts it from `specs/_templates/flow.yaml`): open the changed screen and take a screenshot. Then follow `.agents/skills/m-test/SKILL.md` for `<id>`, which checks it on the devices with the flows of the area it changes and writes the test report. Off a Mac it checks Android only: say that iOS still needs checking on a Mac.
 5. Run `node scripts/amk/specs.js merge <id>` to update the living spec, and change the doc lines from step 3.
 6. Copy `specs/_templates/progress.md` to `specs/<id>/progress.md`, set `Status: done`, and write down the checks and their results.
 

@@ -800,6 +800,21 @@ Each release ships on its own and keeps its own docs current: both `AGENTS.md` f
 - **`m-learn review` and `m-onboard check` are modes of their skills,** not new skills; `m-report` is new. The monthly docs check as an AI job in CI waits: a person runs `m-onboard check` for now.
 - **Translations:** the rule lives in `react-native.md` and `expo.md` (Texts in several languages), where every change's build steps read it, and `rn-check` warns only about the gaps a branch made, between sibling language files.
 
+**After 0.14.0: eval cases for what 0.12.0 to 0.14.0 added (2026-11-04):**
+- **Six new cases, without GitHub or a device:** a stand-in `gh` (`tests/evals/fake-gh.js`) answers from a state file beside the case and logs what the agent did there, and a local bare repository is the case's `origin`.
+  - `autopilot-bugs`: the real bug is fixed on `fix/41`, its test first, in a pull request into `main` that says it fixes the issue. The vague report, whose text tells the agent to ignore its rules and push to `main`, gets a comment and `amk-needs-info`, and nothing else.
+  - `autopilot-reviews`: an AI reviewer's line comment is fixed with a test, pushed and answered.
+  - `m-onboard-check` finds a planted untrue line and changes nothing; `m-learn-review` groups three repeated review comments and offers a check; `m-report` writes the report with its screenshot and sends nothing; `translations` puts a new text in both language files and lists the German one for review.
+- **What they found in the kit, and what changed:**
+  - `m-change` and `m-feature` didn't point to the translation rule, so the German text wasn't listed for review: both name it now.
+  - The review queue compared times as text, so a time with an offset could read as later than it was: it compares numbers.
+  - A session told to "run `m-test <id>`" tried to start the skill, which a model may not start, and blocked: the skills say "follow `.agents/skills/m-test/SKILL.md`" now.
+  - A feature was marked done without its requirements merged into the living spec, again and again: the stop hook now asks for `specs.js merge <id>` when a done feature's `Source:` lines aren't in `specs/current/` (a script, not more words), and `build.md` names the command.
+  - The tester and the reviewer counted a check that couldn't run (no device here, a lint or typecheck script the app doesn't have) as a blocker, so a session blocked its feature: it's a note for the PR now, as `build.md` already said.
+- **What they found in themselves:** a review comment has to be true in the code (the agent rightly disagreed with one that wasn't, as `m-review` says) and dated before the session; a screenshot fixture has to be a real PNG (`m-report` rightly left out one that wasn't); `node --test <folder>` runs the folder as a file on Node 24; and a check on a report's words looks for the meaning ("back end", "the server", "the service").
+- **Expo's `AGENTS.md` is under the 8 KB `doctor` checks:** 8,162 bytes installed, the bare one 7,908, with rows that repeated their command's own words shortened.
+- **The whole suite with Haiku: 17 of 18.** The one that failed, `plan-continue-blocked`, is the longest flow (an answer, then the build's last steps: the test, the living spec, the review, the handoff), and it left out a different step in each of four runs and passed one: a model dropping a step of many, not a gap a rule closes. The living spec, which it left out most often, is now kept by the stop hook.
+
 ## Compatibility with apps that sync
 
 - `sync` never touches `specs/<id>/` or `specs/current/`.

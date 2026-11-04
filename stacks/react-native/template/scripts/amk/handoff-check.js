@@ -4,6 +4,7 @@
 // build (scripts/amk/autopilot.js sets AMK_AUTOPILOT), it also keeps the feature of the branch going: a stop while it
 // isn't done or blocked goes back to the agent, unless .amk/build/STOP is there, or the agent stops again with nothing
 // changed since its last stop (no commit, no task ticked, the same next step), which autopilot.js treats as a stall.
+// Both: a feature marked done whose requirements never reached the living spec is asked to merge them first.
 // SessionStart, after a compaction: the active spec's handoff, its next task and the definition of done, read fresh from
 // the files, so nothing the summary lost is missing.
 const fs = require('fs');
@@ -58,6 +59,20 @@ if ((working.length || progress !== null) && !payload.stop_hook_active) {
   if (codeChanged && !handoffUpdated) {
     process.stderr.write('There are uncommitted code changes, but no specs/<id>/progress.md was updated. ' +
       'Update its handoff block (status, next step, decisions, last checks) before stopping.\n');
+    process.exit(2);
+  }
+}
+
+// a feature marked done whose requirements never reached the living spec (specs.js merge writes "Source: specs/<id>"
+// beside each one it adds or changes): asked once, as the living spec must say what ships
+if (own && !payload.stop_hook_active) {
+  const req = read(`specs/${own}/requirements.md`) || '';
+  const changes = /^## (?:ADDED|MODIFIED) Requirements/m.test(req) && /^### Requirement:/m.test(req);
+  let merged = false;
+  try { merged = fs.readdirSync(path.join(root, 'specs', 'current')).some(f => f.endsWith('.md') && (read(`specs/current/${f}`) || '').includes(`Source: specs/${own}\n`)); } catch {}
+  if (changes && !merged && /^Status:\s*done/im.test(read(`specs/${own}/progress.md`) || '')) {
+    process.stderr.write(`specs/${own} says done, but its requirements aren't in the living spec (no "Source: specs/${own}" in specs/current/): ` +
+      `run node scripts/amk/specs.js merge ${own}, commit specs/current/ with the feature, then stop.\n`);
     process.exit(2);
   }
 }

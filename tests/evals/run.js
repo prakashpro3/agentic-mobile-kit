@@ -112,23 +112,25 @@ const cleanEnv = () => ({
     .filter(k => process.env[k]).map(k => [k, process.env[k]])),
   TERM: 'dumb', LANG: 'en_US.UTF-8',
 });
+// a case's own commands (the stand-in gh), in <case>-bin beside its folder: first on the PATH when it's there
+const withBin = (dir, env) => { const bin = `${dir}-bin`; return fs.existsSync(bin) ? { ...env, PATH: `${bin}${path.delimiter}${env.PATH}` } : env; };
 function claude(dir, token, run, model, resume) {
   assertScratch(dir, token);
   const args = ['-p', run.prompt, '--model', model, '--output-format', 'stream-json', '--verbose', '--max-turns', String(run.maxTurns || 10),
     '--setting-sources', 'project', '--strict-mcp-config', '--max-budget-usd', String(run.budget || 1), ...(resume ? ['--resume', resume] : []),
     '--allowedTools', ...run.tools];
-  const r = spawnSync('claude', args, { cwd: dir, env: cleanEnv(), encoding: 'utf8', timeout: 20 * 60e3, maxBuffer: 2 ** 28 });
+  const r = spawnSync('claude', args, { cwd: dir, env: withBin(dir, cleanEnv()), encoding: 'utf8', timeout: 20 * 60e3, maxBuffer: 2 ** 28 });
   return { ...parseStream(r.stdout || ''), raw: r.stdout || '', stderr: r.stderr || '' };
 }
 // A case run through autopilot.js, which starts the sessions itself. No device is reachable: Maestro is off the PATH
 // (verify.sh stops before taking a device), and every device setting names one that doesn't exist
 function autopilot(dir, token, c, model) {
   assertScratch(dir, token);
-  const env = { ...cleanEnv(), PATH: process.env.PATH.split(path.delimiter).filter(p => !/maestro/i.test(p)).join(path.delimiter),
+  const env = { ...withBin(dir, { ...cleanEnv(), PATH: process.env.PATH.split(path.delimiter).filter(p => !/maestro/i.test(p)).join(path.delimiter) }),
     AMK_IOS_DEVICE: '00000000-0000-0000-0000-0000000e0001', AMK_IOS_TABLET: '00000000-0000-0000-0000-0000000e0002',
     AMK_ANDROID_DEVICE: 'emulator-5598', AMK_ANDROID_TABLET: 'emulator-5596', AMK_ANDROID_AVD: 'amk-eval-none', AMK_ANDROID_TABLET_AVD: 'amk-eval-none' };
   const started = Date.now();
-  const r = spawnSync(process.execPath, ['scripts/amk/autopilot.js', '--model', model, '--budget', String(c.budget || 2), '--stall', '10'],
+  const r = spawnSync(process.execPath, ['scripts/amk/autopilot.js', ...(Array.isArray(c.autopilot) ? c.autopilot : []), '--model', model, '--budget', String(c.budget || 2), '--stall', '10'],
     { cwd: dir, env, encoding: 'utf8', timeout: 60 * 60e3 });
   const logs = Object.fromEntries((fs.existsSync(path.join(dir, '.amk/build')) ? fs.readdirSync(path.join(dir, '.amk/build')) : [])
     .filter(id => fs.existsSync(path.join(dir, '.amk/build', id, 'build.log'))).map(id => [id, fs.readFileSync(path.join(dir, '.amk/build', id, 'build.log'), 'utf8')]));
@@ -141,7 +143,9 @@ function runCase(c, app, token, model, logs) {
   const dir = path.join(path.dirname(app), c.name);
   fs.cpSync(app, dir, { recursive: true, verbatimSymlinks: true });
   assertScratch(dir, token);
-  if (c.setup) c.setup(dir);
+  try { if (c.setup) c.setup(dir); } catch (e) {
+    return { name: c.name, skill: c.skill, passed: false, failures: [`its setup failed: ${String(e.message).split('\n').slice(0, 3).join(' / ')}`], ms: 0, tokens: 0, costUsd: 0, turns: 0 };
+  }
   const base = git(dir, 'rev-parse', 'HEAD').trim();
   if (c.autopilot) {
     const a = autopilot(dir, token, c, model);
@@ -219,7 +223,8 @@ if (require.main === module) {
   } finally {
     // the sessions these runs left in Claude Code's projects folder, and the apps
     for (const c of chosen) fs.rmSync(path.join(os.homedir(), '.claude', 'projects', path.join(root, c.name).replace(/[^a-zA-Z0-9]/g, '-')), { recursive: true, force: true });
-    if (!args.includes('--keep')) for (const d of [app, ...chosen.map(c => path.join(root, c.name))]) fs.rmSync(d, { recursive: true, force: true });
+    // each case's folder, with its stand-in gh and its origin repository beside it
+    if (!args.includes('--keep')) for (const d of [app, ...chosen.flatMap(c => ['', '-bin', '-origin.git'].map(x => path.join(root, `${c.name}${x}`)))]) fs.rmSync(d, { recursive: true, force: true });
   }
   const before = previous();
   console.log(`\n${report(results, before)}\nLogs: ${logs}${args.includes('--keep') ? `\nApps: ${root}` : ''}`);

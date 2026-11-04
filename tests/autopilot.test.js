@@ -218,7 +218,9 @@ test('the stop hook keeps an unattended feature going until it\'s done or blocke
   write(dir, 'specs/x/progress.md', read(dir, 'specs/x/progress.md').replace(/^Blocked:.*$/m, 'Blocked:       the API has no such field').replace('the PR\n', 'ask\n'));
   assert.strictEqual(stop('1').status, 0, 'blocked: it ends');
   write(dir, 'specs/x/progress.md', read(dir, 'specs/x/progress.md').replace(/^Blocked:.*$/m, 'Blocked:       none').replace(/^Status:.*$/m, 'Status:        done').replace('ask\n', 'none\n'));
-  assert.strictEqual(stop('1').status, 0, 'done: it ends');
+  assert.match(stop('1').stderr, /specs\/x says done, but its requirements aren't in the living spec/, 'done, but not in the living spec yet');
+  write(dir, 'specs/current/home.md', '# Home\n\n## Requirements\n\n### Requirement: Thing x\nThe app SHALL do thing x.\n\nSource: specs/x\n');
+  assert.strictEqual(stop('1').status, 0, 'done and merged: it ends');
   assert.strictEqual(stop('').status, 0, 'with a person there, only the handoff check applies');
   // after a compaction: the handoff, the next task and the definition of done, read now
   const ctx = stop('1', JSON.stringify({ hook_event_name: 'SessionStart', source: 'compact' }));
@@ -365,6 +367,7 @@ test('the queues: which issues a person (or Sentry, when allowed) labelled, and 
   const me = { login: 'dev', type: 'User' };
   const t = h => `2026-11-03T${h}:00:00Z`;
   assert.strictEqual(auto.unanswered('o/r', 3, 'dev', pr({ commits: [t('01')], inline: [{ user: bot, created_at: t('02') }] })), true, 'an AI comment after the last commit');
+  assert.strictEqual(auto.unanswered('o/r', 3, 'dev', pr({ commits: ['2026-11-03T05:30:00+05:30'], inline: [{ user: bot, created_at: t('02') }] })), true, 'a commit time with an offset: 00:00 UTC, before the comment');
   assert.strictEqual(auto.unanswered('o/r', 3, 'dev', pr({ commits: [t('01')], inline: [{ user: bot, created_at: t('02') }], issueComments: [{ user: me, created_at: t('03') }] })), false, 'answered');
   assert.strictEqual(auto.unanswered('o/r', 3, 'dev', pr({ commits: [t('01')], reviews: [{ user: { login: 'ana', type: 'User' }, state: 'CHANGES_REQUESTED', submitted_at: t('02') }] })), true, 'changes requested');
   assert.strictEqual(auto.unanswered('o/r', 3, 'dev', pr({ commits: [t('03')], reviews: [{ user: { login: 'ana', type: 'User' }, state: 'CHANGES_REQUESTED', submitted_at: t('02') }] })), false, 'fixed since');

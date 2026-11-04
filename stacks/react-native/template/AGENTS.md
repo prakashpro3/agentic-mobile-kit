@@ -1,7 +1,7 @@
 <!-- KIT:START agentic-mobile-kit {{KIT_VERSION}} ci={{KIT_CI}} stack={{KIT_STACK}} (edit outside these markers; the kit updates what's inside) -->
 # {{APP_NAME}}: instructions for AI agents
 
-Read by Claude Code (through CLAUDE.md), Codex, Cursor, OpenCode, Kiro and Antigravity. Keep it short; details live in `docs/amk/`.
+Read by Claude Code (through CLAUDE.md), Codex, Cursor, OpenCode, Kiro and Antigravity; details live in `docs/amk/`.
 
 This project may also use other AI workflow frameworks (for example Superpowers, BMAD or proAgents). They keep working for everything else. When the user starts a task with an `m-` skill (`/m-feature`, `$m-feature`, …), follow that skill's steps for the whole task; where another framework's instructions differ, the `m-` skill wins.
 
@@ -22,21 +22,21 @@ This project may also use other AI workflow frameworks (for example Superpowers,
 | iOS pods (after native dependency changes) | `sh scripts/amk/pod-install.sh` |
 | iOS build (simulator, no signing) | `sh scripts/amk/ios-build.sh` |
 | Android build | `cd android && ./gradlew assembleDebug` |
-| Check on devices (release builds, Maestro flows, screenshots) | `sh scripts/amk/verify.sh all --spec <id>`; with product flavors it checks the first unless `--flavor <name>`; another iOS scheme: `--scheme <name>`; only some screens: `--screens phone` (or `tablet`, `landscape`, …); only the flows tagged smoke: `--tags smoke`; with the app's mock API: `--mock`; on a real iPhone or iPad the user names: `AMK_IOS_DEVICE=<its UDID>` (the flows clear the app's data on it) |
-| Check devices at the same time | `sh scripts/amk/verify.sh plan --spec <id>` prints a command per device that fits in memory, each for an `m-device-checker` subagent |
+| Check on devices (release builds, Maestro flows, screenshots) | `sh scripts/amk/verify.sh all --spec <id>`; with product flavors it checks the first unless `--flavor <name>`; another iOS scheme: `--scheme <name>`; only some screens: `--screens phone` (or `tablet`, `landscape`, …); smoke flows only: `--tags smoke`; with the app's mock API: `--mock`; on a real iPhone or iPad the user names: `AMK_IOS_DEVICE=<its UDID>` (the flows clear the app's data on it) |
+| Check devices at the same time | `sh scripts/amk/verify.sh plan --spec <id>` prints a command per device, each for an `m-device-checker` subagent |
 | After each task: lint, typecheck and the tests of the changed files | `sh scripts/amk/verify.sh quick --related` |
-| React Native mistakes, flow problems, and files or functions over the size limits, in this branch's changes (`verify.sh quick` runs it) | `node scripts/amk/rn-check.js` |
-| Specs and the plan: progress, format, the tests of the areas a spec touches, a flow to start from, the living spec; the plan's check, a second folder to plan in, an export to plan from, starting a planned feature | `node scripts/amk/specs.js status` (or `check`, `tests <id>`, `flow <id>`, `merge <id>`, `check --plan`, `plan-folder`, `import <file>`, `start [<id>]`) |
-| Unattended (a person starts it; it never skips permission prompts): its own PRs' review fixes, `amk-fix` bugs, then approved planned features | `node scripts/amk/autopilot.js [--reviews \| --bugs \| --features]`; first `node scripts/amk/autopilot.js check` |
-| A feature's PR: its checks (with a failure's log), review comments, auto-merge, main merged into stacked branches | `node scripts/amk/pr.js checks` (or `comments`, `automerge`, `forward`) |
-| Check a release before tagging it (versions, permission texts, store review rules, debug leftovers) | `node scripts/amk/release-check.js` |
+| React Native mistakes, flow problems and oversized files or functions in this branch's changes (`verify.sh quick` runs it) | `node scripts/amk/rn-check.js` |
+| Specs and the plan: progress, checks, the tests of the areas a spec touches, flows, the living spec, planning | `node scripts/amk/specs.js status` (or `check`, `tests <id>`, `flow <id>`, `merge <id>`, `check --plan`, `plan-folder`, `import <file>`, `start [<id>]`) |
+| Unattended (a person starts it; never skipping permission prompts): its PRs' review fixes, `amk-fix` bugs, then approved features | `node scripts/amk/autopilot.js [--reviews \| --bugs \| --features]`; first `node scripts/amk/autopilot.js check` |
+| A feature's PR: checks (with a failure's log), review comments, auto-merge, main merged into stacked branches | `node scripts/amk/pr.js checks` (or `comments`, `automerge`, `forward`) |
+| Check a release before tagging it (versions, store review rules, debug leftovers) | `node scripts/amk/release-check.js` |
 | Signed release builds (a person runs them: they use the signing keys) | `sh scripts/amk/release-build.sh android [flavor]`, `sh scripts/amk/release-build.sh ios [scheme]` |
 
 ## Definition of done
 
 A task is done only when:
 1. `sh scripts/amk/verify.sh quick` passes (lint, typecheck, tests) and you show its output from this session. In an app whose base branch already fails some of them, it passes when your change adds no new failure, and lists the old ones: leave those alone unless the task is to fix them;
-2. UI changes were checked with `sh scripts/amk/verify.sh all --spec <id>` on both iOS and Android, on each screen listed above, and you looked at the screenshots. On Windows or Linux it covers Android only: say in `progress.md` and the PR that iOS still needs a Mac, and don't merge until a teammate has checked it;
+2. UI changes were checked with `sh scripts/amk/verify.sh all --spec <id>` on iOS and Android, on each screen listed above, and you looked at the screenshots. Off a Mac it covers Android only: say in `progress.md` and the PR that iOS still needs a Mac, for a teammate to check before merging;
 3. the change stays inside the task's scope;
 4. `specs/<id>/progress.md` is updated, when working from a spec;
 5. tests are assessed (added, changed or retired, or why none), the flows of the areas it touches ran, and what didn't run is listed with its reason, in `specs/<id>/test-report.md` (`m-test`).

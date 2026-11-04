@@ -60,3 +60,23 @@ test('the hook commands find the project from any folder a tool starts them in: 
     assert.strictEqual(stop.status, 0, `the stop hook runs, from ${from}: ${stop.stderr}`);
   }
 });
+
+test('handoff check: a feature marked done whose requirements never reached the living spec is asked to merge them', () => {
+  const dir = app();
+  git(dir, 'switch', '-q', '-c', 'feature/EV-3');
+  write(dir, 'specs/EV-3/requirements.md', '# EV-3\n\n## ADDED Requirements: home\n\n### Requirement: Says hello\nThe app SHALL say hello.\n\n#### Scenario: Hello\n- THEN it says hello\n');
+  write(dir, 'specs/EV-3/progress.md', 'Status:        done\nBlocked:       none\n');
+  write(dir, 'specs/current/home.md', '# Home\n\n## Requirements\n');
+  git(dir, 'add', '-A');
+  git(dir, '-c', 'user.name=t', '-c', 'user.email=t@example.invalid', 'commit', '-q', '-m', 'EV-3 done');
+  const r = spawnSync('node', [path.join(dir, 'scripts/amk/handoff-check.js')], { cwd: dir, input: '{}', encoding: 'utf8' });
+  assert.strictEqual(r.status, 2);
+  assert.match(r.stderr, /specs\/EV-3 says done, but its requirements aren't in the living spec[\s\S]*node scripts\/amk\/specs\.js merge EV-3/);
+  assert.strictEqual(spawnSync('node', [path.join(dir, 'scripts/amk/handoff-check.js')], { cwd: dir, input: '{"stop_hook_active":true}', encoding: 'utf8' }).status, 0, 'asked once');
+  write(dir, 'specs/current/home.md', '# Home\n\n## Requirements\n\n### Requirement: Says hello\nThe app SHALL say hello.\n\nSource: specs/EV-3\n\n#### Scenario: Hello\n- THEN it says hello\n');
+  assert.strictEqual(hook(dir), 0, 'merged');
+  write(dir, 'specs/EV-3/requirements.md', '# EV-3\n\n## REMOVED Requirements: home\n\n### Requirement: Old\nReason: gone\n');
+  write(dir, 'specs/current/home.md', '# Home\n\n## Requirements\n');
+  assert.strictEqual(hook(dir), 0, 'only a removal: nothing to find in the living spec');
+});
+
