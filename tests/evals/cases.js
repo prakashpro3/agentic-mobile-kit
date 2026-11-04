@@ -206,7 +206,8 @@ const BUG_TOOLS = ['Read', 'Glob', 'Grep', 'Write', 'Edit', 'Agent', 'Task', 'Ba
   'Bash(git switch -c *)', 'Bash(git checkout -b *)'];
 const RELEASE_TOOLS = ['Read', 'Glob', 'Grep', 'Write', 'Edit', 'Agent', 'Task', 'Bash(git status*)', 'Bash(git log*)', 'Bash(git diff*)', 'Bash(git describe *)',
   'Bash(git pull*)', 'Bash(git fetch*)', 'Bash(git switch *)', 'Bash(git checkout -b *)', 'Bash(git add *)', 'Bash(git commit *)', 'Bash(git ls-files*)', 'Bash(git show *)',
-  'Bash(npx -y git-cliff@2.14.2 *)', 'Bash(sh scripts/amk/set-version.sh *)', 'Bash(node scripts/amk/*)', 'Bash(sh scripts/amk/verify.sh quick*)', 'Bash(wc *)'];
+  'Bash(npx -y git-cliff@2.14.2 *)', 'Bash(sh scripts/amk/set-version.sh *)', 'Bash(node scripts/amk/*)', 'Bash(sh scripts/amk/verify.sh quick*)', 'Bash(wc *)',
+  'Bash(yarn test*)', 'Bash(npm test*)', 'Bash(node --test*)'];
 // m-release's question about the flows to run: options, in a numbered list (claude -p has no question tool)
 const flowsAsked = r => numbered(r).length >= 2 && /smoke|tablet|landscape|every flow|all (?:the )?flows|tagged/i.test(r.final);
 
@@ -677,31 +678,37 @@ module.exports = [
     setup: dir => {
       shifts(dir, 'floor', [['A whole hour', 60, '1h 0m'], ['A 90-minute shift', 90, '1h 30m']], 'node tools/jest-node.js');
       write(dir, 'tools/jest-node.js', JEST_NODE);
+      write(dir, '.maestro/EV-7.yaml', 'appId: ${APP_ID}\n---\n- launchApp\n# Scenario 1: A whole hour\n- assertVisible: "1h 0m"\n# Scenario 2: A 90-minute shift\n- assertVisible: "1h 30m"\n');
       for (const [f, text] of Object.entries(NATIVE)) write(dir, f, text);
       commit(dir, 'feat: a shift\'s length');
       git(dir, 'tag', 'v1.0.0');
       write(dir, 'src/notes.js', "// a shift's notes, as the shift screen shows them\nexports.shiftNotes = shift => (shift.notes || '').trim() || 'No notes';\n");
       commit(dir, 'feat: notes on the shift screen');
-      write(dir, 'src/duration.js', durationSrc('round'));
-      commit(dir, 'fix: round a shift\'s hours to the nearest hour');
+      // a refactor that changes what a 90-minute shift shows, as regressions do: its changelog line gives nothing away
+      write(dir, 'src/duration.js', "// a shift's length, as hours and minutes\nconst hours = total => Math.round(total / 60);\nexports.formatMinutes = total => `${hours(total)}h ${total % 60}m`;\n");
+      commit(dir, 'refactor: one helper for a shift\'s hours');
       origin(dir);
       git(dir, 'push', '-q', 'origin', 'v1.0.0');
       fakeNpx(dir);
     },
     runs: [{ prompt: '/m-release 1.1.0', tools: RELEASE_TOOLS, maxTurns: 50, budget: 2 }],
-    // a person answering: the notes approved, no device for the flows, the recommended answer to anything else
-    next: runs => {
+    // a release manager answering, until the test report is written: the notes approved; a regression found on the way
+    // isn't fixed in the release (its test step decides); no device for the flows; else the recommended answer
+    next: (runs, dir) => {
       const last = runs[runs.length - 1];
-      if (runs.length >= 5 || runs.some(r => bash(r, 'verify.sh quick').length)) return null;
-      return { prompt: flowsAsked(last) ? 'None: there\'s no simulator or emulator on this machine, so each scenario is not run, for that reason.'
-        : /approv/i.test(last.final) ? 'Approved.' : 'Take your recommended answer, and go on.', tools: RELEASE_TOOLS, maxTurns: 50, budget: 2 };
+      if (runs.length >= 6 || read(dir, 'release-notes/1.1.0/test-report.md')) return null;
+      const say = [/approv/i.test(last.final) && 'Approved.',
+        /regress|revert|restore|blocker|broke|breaks/i.test(last.final) && 'Don\'t change the code in the release: go on with its steps as m-release says, and let its test step decide.',
+        flowsAsked(last) && 'For the flows: none, as there\'s no simulator or emulator on this machine, so each scenario is not run, for that reason.'].filter(Boolean);
+      return { prompt: say.join(' ') || 'Take your recommended answer, and go on.', tools: RELEASE_TOOLS, maxTurns: 50, budget: 2 };
     },
     check: (dir, runs) => {
       const notes = f => read(dir, `release-notes/1.1.0/${f}`);
       const report = notes('test-report.md') || '';
       const calls = runs.flatMap(r => r.calls);
       const asked = runs.findIndex(flowsAsked);
-      const tested = runs.findIndex(r => bash(r, 'verify.sh quick').length);
+      // m-test's code checks, run for the release (a quick look at the tests earlier isn't the release's test)
+      const tested = runs.findIndex(r => bash(r, 'verify.sh quick --label').length);
       const gradle = read(dir, 'android/app/build.gradle') || '';
       return [
         !hasRef(dir, 'release/v1.1.0') && 'no release/v1.1.0 branch',
@@ -709,12 +716,12 @@ module.exports = [
         !(notes('play-store.txt') && notes('app-store.txt') && notes('client.md')) && 'the store and client notes aren\'t all in release-notes/1.1.0/',
         (notes('play-store.txt') || '').length > 500 && 'play-store.txt is over 500 characters',
         /[<>]/.test(notes('app-store.txt') || '') && 'app-store.txt has < or >',
-        bash(runs[0], 'set-version.sh').length && 'it set the version before the notes were approved',
+        bash(runs[0], 'sh scripts/amk/set-version.sh').length && 'it set the version before the notes were approved',
         !/MARKETING_VERSION = 1\.1\.0;/.test(read(dir, 'ios/EvalApp.xcodeproj/project.pbxproj') || '') && 'the iOS version isn\'t 1.1.0',
         !/versionName "1\.1\.0"/.test(gradle) && 'the Android version isn\'t 1.1.0',
         !/versionCode 1\n/.test(gradle) && 'the Android build number changed, though fastlane sets it',
         !calls.some(c => c.name === 'Bash' && /release-check\.js/.test(String(c.input.command || ''))) && 'it never ran release-check.js',
-        tested < 0 && 'the release was never tested (verify.sh quick)',
+        tested < 0 && 'the release was never tested (m-test: verify.sh quick --label)',
         (asked < 0 || (tested >= 0 && asked >= tested)) && 'it didn\'t ask which flows to run before testing',
         !/Not ready/i.test(report) && 'release-notes/1.1.0/test-report.md doesn\'t say Not ready',
         !/90-minute shift[^\n]*\bfailed\b/i.test(report) && '"A 90-minute shift" isn\'t failed in the report',
