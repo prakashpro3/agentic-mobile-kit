@@ -94,7 +94,7 @@ const COMMANDS = pm => ['sh scripts/amk/verify.sh', 'node scripts/amk/specs.js',
 // what an unattended run never changes (guard.js and the pre-commit hook hold the same list): the kit's scripts, hooks
 // and tool settings, the workflows, the agents' instructions, the coverage floors and size caps, and the code owners
 const GUARDRAILS = ['scripts/amk/', '.rulesync/', '.githooks/', '.github/workflows/', '.agents/', '.claude/', '.codex/', 'AGENTS.md',
-  'CLAUDE.md', 'rulesync.jsonc', '.amk-coverage', '.amk-size-caps', '.amk-secrets', 'CODEOWNERS', '.github/CODEOWNERS', 'docs/CODEOWNERS'];
+  'CLAUDE.md', 'rulesync.jsonc', '.amk-coverage', '.amk-size-caps', '.amk-secrets', '.amk-screens', 'CODEOWNERS', '.github/CODEOWNERS', 'docs/CODEOWNERS'];
 // a path as Claude Code's rules write an absolute one: //Users/…, or //c/Users/… on Windows
 const rulePath = p => `/${process.platform === 'win32' ? p.replace(/\\/g, '/').replace(/^([A-Za-z]):/, (_, d) => `/${d.toLowerCase()}`) : p}`;
 // Claude Code: --permission-mode dontAsk refuses what isn't allowed rather than asking, and what the project's settings

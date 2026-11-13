@@ -1,7 +1,8 @@
 #!/bin/sh
 # Checks the app the way a user would: lint, typecheck and tests, then release builds on the iOS simulator
 # and Android emulator, running Maestro flows and saving screenshots as evidence. Apps that support tablets or
-# landscape (scripts/amk/screens.js) are checked on each: an iPad simulator and a tablet emulator, and turned.
+# landscape (scripts/amk/screens.js) are checked on each: an iPad simulator and a tablet emulator, and turned. A team
+# that checks fewer (phones only) lists them in .amk-screens, and the others are never checked.
 #
 # Usage: sh scripts/amk/verify.sh [quick|ios|android|all|build|plan|approve] [--spec <ids>] [--flow <file>] [--label <name>]
 #                                [--flavor <name>] [--scheme <name>] [--screens <list>] [--no-build] [--related] [--mock]
@@ -23,7 +24,7 @@
 #   --flavor <name> Android product flavor to check (default: the first one in build.gradle)
 #   --scheme <name> iOS scheme to check (default: the one named like the workspace)
 #   --screens <l>   only these of the screens the app supports, comma-separated: phone, tablet, portrait,
-#                   landscape, or one such as tablet-landscape
+#                   landscape, or one such as tablet-landscape (portrait and landscape include the tablet's)
 #   --no-build      check the last build instead of building again (after `build`), when it has the same API (--mock)
 #   --mock          build with the app's mock API on: the variables in .amk-mock (a NAME=value line each) switch it on, the
 #                   way the app reads its other settings. Its evidence goes in <label>-mock/, and its report says so
@@ -185,7 +186,14 @@ with_tags() {
     }'
 }
 
-# the screens to check on a platform: the ones the app supports, narrowed by --screens
+# Xcode building or indexing the same project holds its build service: a build from here then can't start
+xcode_busy() {
+  ! grep -q 'unable to initiate PIF transfer session' "$1" 2> /dev/null ||
+    echo "  Xcode is building or indexing this project too: let it finish or quit it (if it stays stuck: pkill -f SWBBuildService), then run this again (docs/amk/known-issues.md)"
+}
+
+# the screens to check on a platform: the ones the app supports (as far as .amk-screens lets), narrowed by --screens
+capped() { [ ! -f .amk-screens ] || echo " (.amk-screens limits the screens to check)"; }
 screens_for() {
   for s in $(node scripts/amk/screens.js "$1"); do
     [ -n "$only" ] || { echo "$s"; continue; }
@@ -630,7 +638,8 @@ ios() {
   device="" tablet=""
   if [ "$build_only" = 0 ]; then
     screens=$(screens_for ios)
-    [ -n "$screens" ] || { echo "ios: none of the app's screens is $only"; return; }
+    [ -n "$screens" ] || { echo "ios: none of the app's screens is $only$(capped)"; return; }
+    echo "ios: checking" $screens
     if echo "$screens" | grep -q '^phone-'; then
       take_simulator iPhone "${AMK_IOS_DEVICE:-}" || { status=1; return; }
       device=$taken
@@ -667,7 +676,7 @@ ios() {
   claim_wait "build-ios-$project" "" "the iOS build of this project" || { status=1; return; }
   if [ "$no_build" = 0 ]; then
     if [ "$sims" = 1 ] && ! CONFIGURATION=Release sh scripts/amk/ios-build.sh > "$evidence/ios-build.log" 2>&1; then
-      echo "ios: release build FAILED, see ${evidence#"$root"/}/ios-build.log"; status=1; return
+      echo "ios: release build FAILED, see ${evidence#"$root"/}/ios-build.log"; xcode_busy "$evidence/ios-build.log"; status=1; return
     fi
     for d in $reals; do
       if ! CONFIGURATION=Release AMK_IOS_TEAM=$team sh scripts/amk/ios-build.sh device "$d" > "$evidence/ios-device-build.log" 2>&1; then
@@ -999,7 +1008,8 @@ android() {
     # the devices first: the build only needs the CPU type, and emulators boot while Gradle builds.
     # The flows clear the app's data, so a phone plugged in over USB is used only when AMK_ANDROID_DEVICE names it
     screens=$(screens_for android)
-    [ -n "$screens" ] || { echo "android: none of the app's screens is $only"; return; }
+    [ -n "$screens" ] || { echo "android: none of the app's screens is $only$(capped)"; return; }
+    echo "android: checking" $screens
     avds=$("$sdk/emulator/emulator" -list-avds 2> /dev/null || true)
     if echo "$screens" | grep -q '^phone-'; then
       take_android phone "${AMK_ANDROID_DEVICE:-}" "${AMK_ANDROID_AVD:-}" || { status=1; return; }

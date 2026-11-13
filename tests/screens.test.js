@@ -66,3 +66,23 @@ test('screens: an Expo app without native folders reads app.json; nothing to rea
   const empty = tmpDir('amk-screens-');
   assert.deepStrictEqual(list(screens(empty), 'android'), ['phone-portrait']);
 });
+
+test('screens: .amk-screens keeps the ones the team checks (phones only), so portrait and landscape mean the phone\'s', () => {
+  const dir = bareApp({ phone: ['Portrait', 'LandscapeLeft'] });
+  const all = screens(dir);
+  assert.ok(list(all, 'android').some(s => s.startsWith('tablet-')), 'the app runs on tablets');
+  write(dir, '.amk-screens', '# our owner checks no tablets\nphone\n');
+  const phones = screens(dir);
+  assert.deepStrictEqual(list(phones, 'ios'), ['phone-portrait', 'phone-landscape']);
+  assert.deepStrictEqual(list(phones, 'android'), ['phone-portrait', 'phone-landscape']);
+  assert.strictEqual(describe(phones), 'phones only (portrait and landscape), as .amk-screens says');
+  write(dir, '.amk-screens', 'phone-portrait, tablet-landscape');
+  assert.deepStrictEqual(list(screens(dir), 'android'), ['phone-portrait', 'tablet-landscape']);
+  assert.match(describe(screens(dir)), /, as \.amk-screens says$/);
+  write(dir, '.amk-screens', 'tablet');
+  assert.strictEqual(describe(screens(dir)), 'tablets only (portrait and landscape), as .amk-screens says');
+  // a file with only comments caps nothing
+  write(dir, '.amk-screens', '# phones only, later\n');
+  assert.deepStrictEqual(list(screens(dir), 'android'), list(all, 'android'));
+  assert.strictEqual(describe(screens(dir)), describe(all));
+});

@@ -40,6 +40,7 @@ The kit's guardrails (its scripts, hooks and tool settings, the workflows, the a
 /.amk-coverage       @your-team
 /.amk-size-caps      @your-team
 /.amk-secrets        @your-team
+/.amk-screens        @your-team
 ```
 
 ## Auto-merge

@@ -178,6 +178,7 @@ test('the guard in an unattended build: no API, approvals, plain merges or trigg
   const edit = file => guard(null, '1', { tool_name: 'Edit', tool_input: { file_path: path.join(KIT, file), old_string: 'a', new_string: 'b' } });
   assert.strictEqual(edit('scripts/amk/specs.js'), 2);
   assert.strictEqual(edit('.claude/settings.json'), 2);
+  assert.strictEqual(edit('.amk-screens'), 2, 'the screens a team checks are its decision');
   assert.strictEqual(edit('src/App.tsx'), 0);
   assert.strictEqual(guard(null, '1', { tool_name: 'Read', tool_input: { file_path: path.join(KIT, 'scripts/amk/specs.js') } }), 0, 'reading them is fine');
   assert.strictEqual(guard(null, '1', { tool_name: 'apply_patch', tool_input: { command: ['apply_patch', '*** Begin Patch\n*** Update File: .github/workflows/ci.yml\n@@\n-a\n+b\n*** End Patch'] } }), 2, 'a patch (Codex)');
@@ -251,6 +252,11 @@ test('the pre-commit hook refuses an unattended commit that changes the kit\'s g
   assert.match(refused.stderr, /an unattended build doesn't change these \(a person does, in a reviewed pull request\): scripts\/amk\/x\.sh/);
   git(dir, 'rm', '-q', '--cached', 'scripts/amk/x.sh');
   assert.strictEqual(commitWith('1').status, 1, 'removing one is a change too');
+  git(dir, 'reset', '-q');
+  write(dir, '.amk-screens', 'phone\n');
+  git(dir, 'add', '.amk-screens');
+  assert.strictEqual(commitWith('1').status, 1, 'nor the screens a team checks');
+  fs.rmSync(path.join(dir, '.amk-screens'));
   git(dir, 'reset', '-q');
   git(dir, 'add', 'src/a.txt');
   assert.strictEqual(commitWith('1').status, 0, commitWith.stderr);

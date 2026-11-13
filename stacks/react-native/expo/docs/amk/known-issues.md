@@ -16,6 +16,11 @@ Recurring errors and their fixes. Check here before debugging a build error. Rem
 - **Fix:** delete `ios/.amk-fingerprint` and `android/.amk-fingerprint`, then check again. The next build regenerates both folders and takes longer.
 - **Prevention:** none needed for app config, plugin and library changes.
 
+### iOS build: "unable to initiate PIF transfer session (operation in progress?)"
+- **Cause:** two builds of the same project at once: a build from the command line (`verify.sh`, `ios-build.sh`) while Xcode builds or indexes it. No `xcodebuild` needs to be running: Xcode's build service holds the project.
+- **Fix:** let Xcode finish, or quit it, then build again. If it stays stuck: `pkill -f SWBBuildService` (Xcode's build service, which starts again when needed), then build again.
+- **Prevention:** don't start a command-line build while Xcode builds or indexes the same project.
+
 ### Expo SDK 55: the Android release build fails with "libworklets.so … missing and no known rule to make it"
 - **Cause:** SDK 55's `expo-modules-core` looks for `libworklets.so` in an older build-output folder (`node_modules/react-native-worklets/android/build/intermediates/cmake/release/obj/<abi>/`). `react-native-worklets` 0.7 builds it into `intermediates/cxx/RelWithDebInfo/<hash>/obj/<abi>/`. It fails without the kit too.
 - **Fix:** move to a later Expo SDK (SDK 57 builds). Until then: build worklets once (`cd android && ./gradlew :react-native-worklets:assembleRelease`), copy each `libworklets.so` from `cxx/RelWithDebInfo/*/obj/<abi>/` to `cmake/release/obj/<abi>/`, and build again. The copy stays until `node_modules` is reinstalled.

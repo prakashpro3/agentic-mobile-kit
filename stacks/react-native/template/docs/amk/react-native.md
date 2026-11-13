@@ -37,6 +37,7 @@ Rules for things AI agents commonly get wrong in current React Native. Each one 
 - Landscape leaves little height: screens scroll, the keyboard covers more, and the safe-area insets include the left and right edges (the notch or Dynamic Island side).
 - Android ignores orientation and size locks on tablets and foldables (600 dp wide and up) for apps targeting Android 16 (API 36), and from Android 17 (API 37) apps can't opt out. Apple deprecated `UIRequiresFullScreen` with iPadOS 26, so iPad windows resize too. Every screen has to work at any window size and turned, whatever the app's settings say.
 - Don't lock the orientation in code to avoid layout work. Which orientations the app supports is a product decision, set in `Info.plist` (`UISupportedInterfaceOrientations`, and `~ipad` for iPads) and the Android manifest (`android:screenOrientation`); the iPad app itself is the Xcode target's device family.
+- A team that checks fewer screens than the app supports (phones only, say) lists them in `.amk-screens`, as `--screens` takes them: `phone`. `verify.sh` then never checks the others, whatever `--screens` asks (`portrait` and `landscape` otherwise include the tablet's), and `node scripts/amk/screens.js` prints the sentence for `AGENTS.md`'s Screens line.
 
 ## Current React Native and React
 

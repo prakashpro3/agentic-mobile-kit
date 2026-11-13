@@ -7,7 +7,7 @@ set -eu
 #    settings, the workflows, the agents' instructions, the coverage floors and size caps, and the code owners (the same
 #    list as autopilot.js and guard.js). A person changes them, in a reviewed pull request
 if [ -n "${AMK_AUTOPILOT:-}" ]; then
-  kept=$(git diff --cached --name-only | grep -E '^(scripts/amk/|\.rulesync/|\.githooks/|\.github/workflows/|\.agents/|\.claude/|\.codex/|((\.github|docs)/)?CODEOWNERS$|AGENTS\.md$|CLAUDE\.md$|rulesync\.jsonc$|\.amk-(coverage|size-caps|secrets)$)' || true)
+  kept=$(git diff --cached --name-only | grep -E '^(scripts/amk/|\.rulesync/|\.githooks/|\.github/workflows/|\.agents/|\.claude/|\.codex/|((\.github|docs)/)?CODEOWNERS$|AGENTS\.md$|CLAUDE\.md$|rulesync\.jsonc$|\.amk-(coverage|size-caps|secrets|screens)$)' || true)
   # merging main in brings its versions (a kit update there): only a file that differs from the merged branch's is a change
   if [ -n "$kept" ] && git rev-parse -q --verify MERGE_HEAD > /dev/null; then
     kept=$(for f in $kept; do [ "$(git rev-parse -q ":$f" 2> /dev/null)" = "$(git rev-parse -q "MERGE_HEAD:$f" 2> /dev/null)" ] || echo "$f"; done)

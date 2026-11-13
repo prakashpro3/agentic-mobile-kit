@@ -247,6 +247,18 @@ test('verify.sh android: --screens and AMK_SCREENS narrow the screens, and Maest
   assert.match(old.out, /^android-tablet: not checked: turning the device needs Maestro 2\.0 or later/m);
 });
 
+test('verify.sh android: .amk-screens caps the screens, so --screens portrait checks the phone only, and says which first', { skip }, () => {
+  const devices = { connected: ['emulator-5554 Big tablet', 'emulator-5556 P35'], avds: 'Big P35', tablets: 'Big', rotates: true, build: true, maestro: record };
+  const phoneOnly = { '.amk-screens': '# the owner checks no tablets\nphone\n' };
+  const portrait = verifyAndroid({ ...devices, files: phoneOnly, args: ['android', '--flavor', 'x', '--label', 'run', '--screens', 'portrait'] });
+  assert.strictEqual(portrait.maestro, 'emulator-5556 direct smoke.yaml\n');
+  assert.match(portrait.out, /^android: checking phone-portrait$/m);
+  assert.doesNotMatch(portrait.calls, /-s emulator-5554 install/, 'no tablet');
+  const tablet = verifyAndroid({ ...devices, files: phoneOnly, args: ['android', '--flavor', 'x', '--label', 'run', '--screens', 'tablet'] });
+  assert.match(tablet.out, /^android: none of the app's screens is tablet \(\.amk-screens limits the screens to check\)$/m);
+  assert.strictEqual(tablet.maestro, '');
+});
+
 test('verify.sh build and --no-build: build once, then check each device without building again', { skip }, () => {
   // build: the release build without a device, for this machine's CPU type (iOS builds too, on a Mac)
   const built = verifyAndroid({ connected: [], build: true, args: ['build', '--flavor', 'x', '--label', 'run'] });
@@ -590,6 +602,8 @@ esac
 `, 0o755);
   write(dir, 'bin/xcodebuild', String.raw`#!/bin/sh
 echo "xcodebuild $*" >> "$FAKE_STATE.calls"
+# FAKE_XCODE_BUSY: Xcode builds or indexes the project, and holds its build service
+if [ -n "$FAKE_XCODE_BUSY" ]; then echo 'error: Could not compute dependency graph: MsgHandlingError(message: "unable to initiate PIF transfer session (operation in progress?)")'; exit 65; fi
 case "$*" in *"-destination id="*) p=Release-iphoneos ;; *) p=Release-iphonesimulator ;; esac
 mkdir -p "ios/DerivedData/Build/Products/$p/App.app"
 printf '<plist version="1.0"><dict><key>CFBundleIdentifier</key><string>com.example.app</string><key>CFBundleExecutable</key><string>App</string></dict></plist>\n' > "ios/DerivedData/Build/Products/$p/App.app/Info.plist"
@@ -743,6 +757,15 @@ test('verify.sh ios --part: a later part on a temporary simulator of the same ty
   // a real iPhone can't be copied for a part
   assert.match(verifyIos({ env: { AMK_IOS_DEVICE: "Tester's iPhone" }, files: threeFlows, args: ['ios', '--label', 'run', '--spec', 'x1', '--part', '2/2'] }).out,
     /^ios: part 2\/2 of the flows runs on a copy of the device, which works only for a simulator, not Tester's iPhone$/m);
+});
+
+test('verify.sh ios: a build Xcode holds (building or indexing the project) says so, and how to go on (issue #13)', { skip: skipIos }, () => {
+  const busy = verifyIos({ env: { FAKE_XCODE_BUSY: '1' } });
+  assert.strictEqual(busy.status, 1);
+  assert.match(busy.out, /^ios: release build FAILED, see \S+ios-build\.log$/m);
+  assert.match(busy.out, /^ {2}Xcode is building or indexing this project too: let it finish or quit it \(if it stays stuck: pkill -f SWBBuildService\), then run this again \(docs\/amk\/known-issues\.md\)$/m);
+  const other = verifyIos({ env: { FAKE_XCODE_BUSY: '' } });
+  assert.doesNotMatch(other.out, /Xcode is building or indexing/);
 });
 
 test('verify.sh ios: a first iOS build (no pods or no build folder yet) needs 8 GB free; later ones 5', { skip: skipIos }, () => {

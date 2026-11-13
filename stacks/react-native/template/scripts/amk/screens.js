@@ -2,7 +2,8 @@
 // The screens the app supports: phones and tablets, portrait and landscape, on iOS and Android. Read from the native
 // projects (app.json in an Expo app that doesn't have them yet), so agents build for them and verify.sh checks them.
 // The app runs on tablets when its iOS app runs on iPad; Android runs every app on tablets, but the kit checks
-// Android tablets only for apps made for tablets.
+// Android tablets only for apps made for tablets. A team that checks fewer screens than the app supports (phones only,
+// say) writes them in .amk-screens, as --screens takes them: "phone". The kit then never checks the others.
 // Usage: node scripts/amk/screens.js               one sentence, as AGENTS.md says it
 //        node scripts/amk/screens.js ios|android   the screens to check, one per line: phone-portrait, tablet-landscape, …
 'use strict';
@@ -59,14 +60,31 @@ function expo(cwd) {
   return { ios: { phone, tablet: config.ios && config.ios.supportsTablet ? phone : null }, android: { phone, tablet: BOTH } };
 }
 
+// .amk-screens: the screens the team checks, comma or space separated, as --screens takes them (phone, tablet,
+// portrait, landscape, tablet-landscape, …); # starts a comment. Without it, every screen the app supports
+function capOf(cwd) {
+  const words = (read(path.join(cwd, '.amk-screens')) || '').replace(/#.*$/gm, '').split(/[\s,]+/).filter(Boolean);
+  return words.length ? words : null;
+}
+// a screen a word names: the word itself, or one of its two parts (phone, landscape, …)
+const named = (screen, words) => words.some(w => screen === w || screen.startsWith(`${w}-`) || screen.endsWith(`-${w}`));
+function capped(p, words) {
+  if (!p || !words) return p;
+  const keep = kind => (p[kind] || []).filter(o => named(`${kind}-${o}`, words));
+  const tablet = keep('tablet');
+  return { phone: keep('phone'), tablet: tablet.length ? tablet : null };
+}
+
 function screens(cwd) {
   const fromExpo = expo(cwd);
   const i = ios(cwd) || (fromExpo && fromExpo.ios);
   const a = android(cwd) || (fromExpo && fromExpo.android);
   const tablets = Boolean(i && i.tablet);
+  const cap = capOf(cwd);
   return {
-    ios: i && { phone: i.phone, tablet: tablets ? i.tablet : null },
-    android: a && { phone: a.phone, tablet: tablets ? a.tablet : null },
+    ios: capped(i && { phone: i.phone, tablet: tablets ? i.tablet : null }, cap),
+    android: capped(a && { phone: a.phone, tablet: tablets ? a.tablet : null }, cap),
+    cap,
   };
 }
 
@@ -78,16 +96,20 @@ function list(s, platform) {
 
 function describe(s) {
   const say = o => (o.length === 2 ? 'portrait and landscape' : `${o[0]} only`);
+  const of = (platform, kind) => { const o = s[platform] && s[platform][kind]; return o && o.length ? o : null; };
   const part = (kind, apple) => {
-    const i = s.ios && s.ios[kind];
-    const a = s.android && s.android[kind];
+    const i = of('ios', kind);
+    const a = of('android', kind);
     if (i && a && say(i) !== say(a)) return `${say(i)} on ${apple}, ${say(a)} on Android`;
     return say(i || a || ['portrait']);
   };
-  const tablets = (s.ios && s.ios.tablet) || (s.android && s.android.tablet);
+  const tablets = of('ios', 'tablet') || of('android', 'tablet');
+  const phones = of('ios', 'phone') || of('android', 'phone') || !tablets;
+  const why = s.cap ? ', as .amk-screens says' : '';
+  if (!phones) return `tablets only (${part('tablet', 'iPad')})${why}`;
   return tablets
-    ? `phones (${part('phone', 'iPhone')}) and tablets (${part('tablet', 'iPad')})`
-    : `phones only (${part('phone', 'iPhone')}), no iPad app`;
+    ? `phones (${part('phone', 'iPhone')}) and tablets (${part('tablet', 'iPad')})${why}`
+    : `phones only (${part('phone', 'iPhone')})${why || ', no iPad app'}`;
 }
 
 if (require.main === module) {

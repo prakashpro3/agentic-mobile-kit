@@ -70,7 +70,7 @@ for (const p of paths) {
 // auto-merge, touch the trigger labels, push anything but a feature/ or fix/ branch by name, or change the guardrails
 // (autopilot.js and the pre-commit hook hold the same list)
 if (process.env.AMK_AUTOPILOT) {
-  const GUARDRAILS = /^(?:scripts\/amk\/|\.rulesync\/|\.githooks\/|\.github\/workflows\/|\.agents\/|\.claude\/|\.codex\/|(?:\.github\/|docs\/)?CODEOWNERS$|AGENTS\.md$|CLAUDE\.md$|rulesync\.jsonc$|\.amk-(?:coverage|size-caps|secrets)$)/;
+  const GUARDRAILS = /^(?:scripts\/amk\/|\.rulesync\/|\.githooks\/|\.github\/workflows\/|\.agents\/|\.claude\/|\.codex\/|(?:\.github\/|docs\/)?CODEOWNERS$|AGENTS\.md$|CLAUDE\.md$|rulesync\.jsonc$|\.amk-(?:coverage|size-caps|secrets|screens)$)/;
   const roots = [root, fs.realpathSync(root)];
   const rel = p => roots.map(r => path.relative(r, path.resolve(r, p)).replace(/\\/g, '/')).find(x => !x.startsWith('..')) || '';
   // relative to the project, or as written without leading ../ (after a cd the guard doesn't follow)
