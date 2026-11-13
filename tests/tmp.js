@@ -11,3 +11,5 @@ module.exports = prefix => {
   made.push(dir);
   return dir;
 };
+// a folder a test made another way (a git worktree beside a temp app), removed with the rest
+module.exports.track = dir => { made.push(dir); return dir; };

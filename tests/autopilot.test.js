@@ -50,7 +50,7 @@ function app({ c = 'drafting' } = {}) {
 // the plan branch, changed from a second folder (as planning does while a build runs)
 function approve(dir, id) {
   const wt = path.join(path.dirname(dir), `${path.basename(dir)}-plan`);
-  if (!fs.existsSync(wt)) git(dir, 'worktree', 'add', '-q', wt, 'plan');
+  if (!fs.existsSync(wt)) { git(dir, 'worktree', 'add', '-q', wt, 'plan'); tmpDir.track(wt); }
   write(wt, 'specs/plan.md', read(wt, 'specs/plan.md').replace(new RegExp(`(\\| ${id} \\|.*\\|) [a-z ]+ \\|$`, 'm'), '$1 approved |'));
   commit(wt, `docs(spec): ${id} approved`);
 }

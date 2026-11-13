@@ -446,7 +446,9 @@ test('verify.sh quick: rn-check runs after lint, typecheck and tests, and its pr
   const dir = app({ scripts: { lint: 'node -e ""', typecheck: 'node -e ""', test: 'node -e ""' }, dependencies: { react: '19.2.3', 'react-native': '0.87.1' } });
   for (const f of fs.readdirSync(KIT)) write(dir, `scripts/amk/${f}`, fs.readFileSync(path.join(KIT, f), 'utf8'));
   commit(dir, 'kit');
-  const quick = () => spawnSync('sh', ['scripts/amk/verify.sh', 'quick'], { cwd: dir, encoding: 'utf8', env: { ...process.env, AMK_BASE: 'main' } });
+  // the base's cache in a temp folder of the test's, not the machine's (baseline.js keeps one per project)
+  const temp = tmpDir('amk-rncheck-tmp-');
+  const quick = () => spawnSync('sh', ['scripts/amk/verify.sh', 'quick'], { cwd: dir, encoding: 'utf8', env: { ...process.env, AMK_BASE: 'main', TMPDIR: temp } });
   write(dir, 'src/b.tsx', "import { SafeAreaView } from 'react-native';\nconsole.log(1);\n");
   const failed = quick();
   assert.match(failed.stdout, /^quick: lint, typecheck and tests passed\nrn-check: 1 problem, 1 warning in the lines changed since main\n {2}✗ src\/b\.tsx:1 {2}SafeAreaView/m);
@@ -456,7 +458,7 @@ test('verify.sh quick: rn-check runs after lint, typecheck and tests, and its pr
   assert.match(passed.stdout, /^rn-check: 0 problems, 1 warning/m);
   assert.strictEqual(passed.status, 0, passed.stdout + passed.stderr);
   // --related asks for the tests of the changed files; a test script that isn't Jest runs them all, and says so
-  const related = spawnSync('sh', ['scripts/amk/verify.sh', 'quick', '--related'], { cwd: dir, encoding: 'utf8', env: { ...process.env, AMK_BASE: 'main' } });
+  const related = spawnSync('sh', ['scripts/amk/verify.sh', 'quick', '--related'], { cwd: dir, encoding: 'utf8', env: { ...process.env, AMK_BASE: 'main', TMPDIR: temp } });
   assert.match(related.stdout, /^quick: lint, typecheck and the tests related to this branch's changes passed\n {2}test: every test ran, as the test script isn't Jest$/m);
 });
 
