@@ -110,7 +110,7 @@ function scratchApp(token) {
 const cleanEnv = () => ({
   ...Object.fromEntries(['HOME', 'PATH', 'USER', 'SHELL', 'TMPDIR', 'SystemRoot', 'USERPROFILE', 'APPDATA', 'LOCALAPPDATA', 'TEMP', 'TMP']
     .filter(k => process.env[k]).map(k => [k, process.env[k]])),
-  TERM: 'dumb', LANG: 'en_US.UTF-8',
+  TERM: 'dumb', LANG: 'en_US.UTF-8', AMK_NOTIFY: 'off',
 });
 // a case's own commands (the stand-in gh), in <case>-bin beside its folder: first on the PATH when it's there
 const withBin = (dir, env) => { const bin = `${dir}-bin`; return fs.existsSync(bin) ? { ...env, PATH: `${bin}${path.delimiter}${env.PATH}` } : env; };

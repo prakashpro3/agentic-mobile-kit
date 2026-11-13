@@ -328,3 +328,67 @@ test('a planned spec in the second layer: the template\'s requirement placeholde
   assert.doesNotMatch(read(dir, 'specs/current/home.md'), /<name>/);
   assert.ok(!fs.existsSync(path.join(dir, 'specs/current/undefined.md')));
 });
+
+test('branch: a feature built feature by feature starts on a feature branch not merged yet (part 1 of a split), else on main', () => {
+  const dir = app();
+  git(dir, 'switch', '-q', 'main');
+  const built = (id, name) => {
+    write(dir, `specs/${id}/requirements.md`, `# ${id}\n\n## Goal\n\nIt.\n\n## ADDED Requirements: home\n\n${req(name)}`);
+    write(dir, 'specs/current/home.md', `${read(dir, 'specs/current/home.md')}\n${req(name)}Source: specs/${id}\n`);
+    write(dir, `specs/${id}/progress.md`, read(dir, `specs/${id}/progress.md`).replace(/^Status:.*$/m, 'Status:        done'));
+    commit(dir, `${id} built`);
+  };
+  const startLine = id => (/started from (\S+) \(its PR goes to ([^)\s]+)\)/.exec(read(dir, `specs/${id}/progress.md`)) || []).slice(1);
+  // part 1, from main
+  let r = run(dir, 'branch', 'p1');
+  assert.strictEqual(r.code, 0, r.out);
+  assert.match(r.out, /^Started feature\/p1 from main\.$/m);
+  assert.deepStrictEqual(startLine('p1'), ['main', 'main']);
+  built('p1', 'Part one');
+  // part 2, while part 1's PR is open: on part 1, so it has that code, and its PR goes there
+  git(dir, 'switch', '-q', 'main');
+  r = run(dir, 'branch', 'p2');
+  assert.match(r.out, /^Started feature\/p2 from feature\/p1, which isn't merged into main yet: p2 builds on it, and its PR goes there/m);
+  assert.deepStrictEqual(startLine('p2'), ['feature/p1', 'feature/p1']);
+  assert.match(git(dir, 'log', '--format=%s', 'feature/p2'), /p1 built/, 'part 1\'s code is there');
+  built('p2', 'Part two');
+  // part 3: the newest of them, or the one you're on
+  git(dir, 'switch', '-q', 'main');
+  run(dir, 'branch', 'p3');
+  assert.deepStrictEqual(startLine('p3'), ['feature/p2', 'feature/p2']);
+  git(dir, 'switch', '-q', 'feature/p1');
+  run(dir, 'branch', 'p4');
+  assert.deepStrictEqual(startLine('p4'), ['feature/p1', 'feature/p1'], 'the branch you\'re on');
+  // an existing branch: switched to, nothing written
+  git(dir, 'switch', '-q', 'main');
+  assert.match(run(dir, 'branch', 'p2').out, /^Switched to feature\/p2/m);
+  // merged ones don't count: p1 by a merge, p2 squashed (only its living spec says so)
+  git(dir, 'switch', '-q', 'main');
+  for (const b of ['feature/p3', 'feature/p4']) git(dir, 'branch', '-q', '-D', b);
+  git(dir, 'merge', '-q', '--no-ff', '-m', 'Merge p1', 'feature/p1');
+  git(dir, 'merge', '-q', '--squash', 'feature/p2');
+  commit(dir, 'p2 (squashed)');
+  r = run(dir, 'branch', 'next');
+  assert.match(r.out, /^Started feature\/next from main\.$/m, r.out);
+});
+
+test('changed-flows: the flows using a testID a changed file sets, through a subflow too, and the flows changed themselves', () => {
+  const dir = app();
+  git(dir, 'switch', '-q', 'main');
+  write(dir, 'src/Home.tsx', 'export const H = () => <Text testID="home-title" />;\n');
+  write(dir, 'src/Login.tsx', "export const L = () => <TextInput testID={'login-email'} />;\n");
+  write(dir, '.maestro/home.yaml', 'appId: x\n---\n- launchApp\n- assertVisible:\n    id: "home-title"\n');
+  write(dir, '.maestro/orders.yaml', 'appId: x\n---\n- launchApp\n- runFlow: { file: subflows/login.yaml, when: { visible: { id: "login-email" } } }\n- tapOn: { id: orders-list }\n');
+  write(dir, '.maestro/subflows/login.yaml', 'appId: x\n---\n- tapOn:\n    id: login-email\n');
+  write(dir, '.maestro/about.yaml', 'appId: x\n---\n- launchApp\n# id: "home-title" in a comment only\n');
+  commit(dir, 'screens and flows');
+  git(dir, 'switch', '-q', '-c', 'feature/x');
+  const flows = () => run(dir, 'changed-flows').out.split('\n').filter(Boolean).map(f => path.basename(f));
+  assert.deepStrictEqual(flows(), [], 'nothing changed yet');
+  write(dir, 'src/Home.tsx', 'export const H = () => <Text testID="home-title" style={s.big} />;\n');
+  assert.deepStrictEqual(flows(), ['home.yaml']);
+  write(dir, 'src/Login.tsx', "export const L = () => <TextInput testID={'login-email'} autoComplete=\"email\" />;\n");
+  assert.deepStrictEqual(flows(), ['home.yaml', 'orders.yaml'], 'orders runs the login subflow');
+  write(dir, '.maestro/about.yaml', 'appId: x\n---\n- launchApp\n- takeScreenshot: about\n');
+  assert.deepStrictEqual(flows(), ['about.yaml', 'home.yaml', 'orders.yaml'], 'a flow changed itself');
+});

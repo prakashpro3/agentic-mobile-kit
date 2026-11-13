@@ -7,6 +7,10 @@
     // so it also runs in PowerShell. No matcher: runs for every tool call; guard.js decides from the payload
     "preToolUse": [{ "command": "node -e \"require(require('child_process').execSync('git rev-parse --show-toplevel').toString().trim() + '/scripts/amk/guard.js')\"" }],
     "stop": [{ "command": "node -e \"require(require('child_process').execSync('git rev-parse --show-toplevel').toString().trim() + '/scripts/amk/handoff-check.js')\"" }],
+    // when the AI waits for you, a notification (scripts/amk/notify.js): Claude Code's permission prompts and replies it
+    // has waited a minute for, Codex's approvals. Every finished turn comes from the stop hook (handoff-check.js)
+    "notification": [{ "command": "node -e \"require(require('child_process').execSync('git rev-parse --show-toplevel').toString().trim() + '/scripts/amk/notify.js').hook()\"" }],
+    "permissionRequest": [{ "command": "node -e \"require(require('child_process').execSync('git rev-parse --show-toplevel').toString().trim() + '/scripts/amk/notify.js').hook()\"" }],
     // after a compaction (Claude Code, and Codex where it calls it), the spec's handoff, next task and definition of done
     "sessionStart": [{ "matcher": "compact", "command": "node -e \"require(require('child_process').execSync('git rev-parse --show-toplevel').toString().trim() + '/scripts/amk/handoff-check.js')\"" }]
   }

@@ -650,7 +650,7 @@ module.exports = [
     check: (dir, runs, base) => {
       const calls = runs.flatMap(r => r.calls);
       const fix = calls.findIndex(c => ['Edit', 'Write'].includes(c.name) && /src\/duration\.js$/.test(String(c.input.file_path || '')) && /floor|trunc|\|\s*0|~~/.test(`${c.input.new_string || ''}${c.input.content || ''}`));
-      const failedFirst = calls.slice(0, fix < 0 ? calls.length : fix).some(c => c.name === 'Bash' && TEST_RUNS.test(String(c.input.command || '')) && /not ok|# fail [1-9]|✖|FAIL/.test(c.result));
+      const failedFirst = calls.slice(0, fix < 0 ? calls.length : fix).some(c => c.name === 'Bash' && TEST_RUNS.test(String(c.input.command || '')) && /not ok|(?:#|ℹ) fail [1-9]|✖|FAIL/.test(c.result));
       const scenarios = ((read(dir, 'specs/current/shifts.md') || '').match(/^#### Scenario:/gm) || []).length;
       const unchecked = (spawnSync(process.execPath, ['scripts/amk/specs.js', 'tests'], { cwd: dir, encoding: 'utf8' }).stdout || '').split('\n').filter(l => /^\s+shifts: .*scenario "/.test(l));
       const specCheck = spawnSync(process.execPath, ['scripts/amk/specs.js', 'check'], { cwd: dir, encoding: 'utf8' });

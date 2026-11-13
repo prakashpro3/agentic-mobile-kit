@@ -229,3 +229,46 @@ test('forward: a code conflict, or a merge that fails verify.sh quick, is undone
   assert.match(g2.lines.join('\n'), /feature\/b: with main merged in, verify\.sh quick fails, so the merge is undone/);
   assert.strictEqual(git(dir2, 'rev-parse', 'feature/b'), before2);
 });
+
+test('forward: a feature built feature by feature on another one\'s branch (specs.js branch) gets main once that one merged, and its PR goes into main', () => {
+  const dir = fs.realpathSync(tmpDir('amk-pr-fbf-'));
+  git(dir, 'init', '-q', '-b', 'main');
+  git(dir, 'config', 'user.name', 't');
+  git(dir, 'config', 'user.email', 't@example.invalid');
+  write(dir, 'package.json', '{"name":"app"}\n');
+  for (const f of ['specs.js', 'baseline.js', 'redact.js', 'pr.js']) write(dir, `scripts/amk/${f}`, read(KIT, `scripts/amk/${f}`));
+  write(dir, 'scripts/amk/verify.sh', 'exit 0\n');
+  write(dir, 'specs/_templates/progress.md', read(KIT, 'specs/_templates/progress.md'));
+  const req = n => `### Requirement: ${n}\nThe app SHALL do ${n.toLowerCase()}.\n\n#### Scenario: ${n} works\n- WHEN asked\n- THEN it does\n`;
+  write(dir, 'specs/current/home.md', `# Home\n\n## Requirements\n\n${req('Greeting')}`);
+  git(dir, 'add', '-A');
+  git(dir, 'commit', '-qm', 'app');
+  const branch = id => execFileSync(process.execPath, ['scripts/amk/specs.js', 'branch', id], { cwd: dir, encoding: 'utf8' });
+  const built = (id, name) => {
+    write(dir, 'specs/current/home.md', `${read(dir, 'specs/current/home.md')}\n${req(name)}Source: specs/${id}\n`);
+    write(dir, `src/${id}.ts`, `export const ${id} = 1;\n`);
+    git(dir, 'add', '-A');
+    git(dir, 'commit', '-qm', `${id} built`);
+  };
+  branch('one');
+  built('one', 'Part one');
+  branch('two');
+  assert.match(read(dir, 'specs/two/progress.md'), /its PR goes to feature\/one\)/);
+  built('two', 'Part two');
+  // part one's pull request merges, and main moves on
+  git(dir, 'switch', '-q', 'main');
+  git(dir, 'merge', '-q', '--no-ff', '-m', 'Merge one', 'feature/one');
+  write(dir, 'src/main.ts', 'export const later = 1;\n');
+  git(dir, 'add', '-A');
+  git(dir, 'commit', '-qm', 'more on main');
+  git(dir, 'switch', '-q', 'feature/two');
+  let base = 'feature/one';
+  const g = fakeGh({ 'pr view': () => ({ number: 21, url: 'https://github.com/o/r/pull/21', state: 'OPEN', baseRefName: base, reviewDecision: '' }),
+    'pr edit': (() => { base = 'main'; return { status: 0, stdout: '', stderr: '' }; }) });
+  const ghRun = g.io.ghRun;
+  g.io.ghRun = args => { const r = ghRun(args); return typeof r === 'function' ? r() : r; };
+  const code = inDir(dir, p => p.forward('main', {}, { reviewers: 'solo' }, g.io));
+  assert.strictEqual(code, 0, g.lines.join('\n'));
+  assert.strictEqual(git(dir, 'merge-base', '--is-ancestor', 'main', 'feature/two'), '', 'main is in feature/two now');
+  assert.ok(g.calls.includes('pr edit 21 --base main'), g.calls.join('\n'));
+});

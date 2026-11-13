@@ -61,6 +61,7 @@ test('fresh install: files, filled AGENTS.md, links, hooks, scripts; no CI unles
   assert.match(read(dir, '.gitignore'), /^\.amk\/$/m);
   assert.match(read(dir, '.gitignore'), /^\.maestro\/\.amk-\*$/m, 'the flow copies verify.sh runs for a moment');
   assert.match(read(dir, '.gitignore'), /^node_modules$/m, 'node_modules linked into a worktree, which node_modules/ doesn\'t match');
+  assert.match(read(dir, '.gitignore'), /^\.claude\/worktrees\/$/m, 'Claude Code\'s worktrees inside the project');
   const pkg = JSON.parse(read(dir, 'package.json'));
   assert.strictEqual(pkg.scripts.typecheck, 'tsc --noEmit');
   assert.match(pkg.scripts.postinstall, /core\.hooksPath \.githooks/);

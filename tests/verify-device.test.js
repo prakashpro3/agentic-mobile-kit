@@ -259,6 +259,30 @@ test('verify.sh android: .amk-screens caps the screens, so --screens portrait ch
   assert.strictEqual(tablet.maestro, '');
 });
 
+test('verify.sh android --changed: only the flows that use a testID a changed file sets, and a check that the app opens when none does', { skip }, () => {
+  const devices = { connected: ['emulator-5556 P35'], avds: 'P35', build: true, maestro: record, env: { AMK_SCREENS: 'phone-portrait' } };
+  const files = {
+    '.maestro/home.yaml': 'appId: ${APP_ID}\n---\n- launchApp\n# Scenario 1: Home\n- assertVisible:\n    id: "home-title"\n- takeScreenshot: home-1\n',
+    '.maestro/settings.yaml': 'appId: ${APP_ID}\n---\n- launchApp\n# Scenario 1: Save\n- tapOn:\n    id: "settings-save"\n- takeScreenshot: settings-1\n',
+    'src/Settings.tsx': 'export const S = () => <Button testID="settings-save" />;\n',
+    'src/Home.tsx': 'export const H = () => <Text testID="home-title" />;\n',
+    'package.json': '{"name":"app"}\n',
+  };
+  // main, then a branch that changes the settings screen (or nothing on any screen)
+  const branch = change => app => {
+    const g = (...a) => spawnSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@example.invalid', ...a], { cwd: app });
+    g('init', '-q', '-b', 'main'); g('add', '-A'); g('commit', '-qm', 'app'); g('switch', '-q', '-c', 'feature/x');
+    change(app);
+  };
+  const args = ['android', '--flavor', 'x', '--label', 'run', '--changed'];
+  const settings = verifyAndroid({ ...devices, files, args, prepare: branch(app => fs.writeFileSync(path.join(app, 'src/Settings.tsx'), 'export const S = () => <Button testID="settings-save" title="Save" />;\n')) });
+  assert.match(settings.maestro, /settings/, settings.out);
+  assert.doesNotMatch(settings.maestro, /home/, 'the home screen didn\'t change');
+  const none = verifyAndroid({ ...devices, files, args, prepare: branch(app => fs.writeFileSync(path.join(app, 'src/util.ts'), 'export const x = 1;\n')) });
+  assert.match(none.out, /no flow reaches what this branch changed, so this is a check that the app opens/);
+  assert.match(none.maestro, /smoke\.yaml/);
+});
+
 test('verify.sh build and --no-build: build once, then check each device without building again', { skip }, () => {
   // build: the release build without a device, for this machine's CPU type (iOS builds too, on a Mac)
   const built = verifyAndroid({ connected: [], build: true, args: ['build', '--flavor', 'x', '--label', 'run'] });

@@ -97,3 +97,15 @@ test('handoff check: a link git doesn\'t ignore (the project\'s node_modules in 
   write(dir, 'src/App.tsx', 'export const x = 1;\n');
   assert.strictEqual(hook(dir), 2, 'a real code change still asks');
 });
+
+test('handoff check: Claude Code\'s worktrees inside the project (.claude/worktrees/) aren\'t this session\'s code', () => {
+  const dir = app();
+  write(dir, 'specs/20261016-x/progress.md', IN_PROGRESS);
+  git(dir, 'add', '-A');
+  git(dir, '-c', 'user.name=t', '-c', 'user.email=t@example.invalid', 'commit', '-q', '-m', 'spec');
+  // another session's worktree, as git lists it when .gitignore doesn't keep it out
+  write(dir, '.claude/worktrees/agenda/src/Agenda.tsx', 'export {};\n');
+  assert.strictEqual(hook(dir), 0);
+  write(dir, 'src/App.tsx', 'export const x = 1;\n');
+  assert.strictEqual(hook(dir), 2, 'this session\'s own change still asks');
+});

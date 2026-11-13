@@ -1,7 +1,8 @@
 # Copy to .maestro/subflows/<name>.yaml for steps several flows share: logging in, skipping onboarding, answering a
 # permission prompt. A flow runs it with "- runFlow: subflows/<name>.yaml". verify.sh runs only the flows directly in
 # .maestro/, not the subflows below it. This one logs in with the test account from .maestro/.env.local (MAESTRO_EMAIL,
-# MAESTRO_PASSWORD), which isn't committed.
+# MAESTRO_PASSWORD), which isn't committed. Run it only when the login screen shows, so a flow on an app that's still
+# logged in goes straight on: - runFlow: { file: subflows/login.yaml, when: { visible: { id: "login-email" } } }
 appId: ${APP_ID}
 ---
 - tapOn:

@@ -43,7 +43,10 @@ if (payload.hook_event_name === 'SessionStart') {
   process.exit(0);
 }
 
-if (payload.stop_hook_active && !unattended) process.exit(0); // already reminded once; don't loop
+// the turn really ends here (nothing below asks to go on): tell the developer, who may be in another window
+const ends = () => { try { require('./notify.js').notify({ ...payload, hook_event_name: 'Stop' }); } catch {} process.exit(0); };
+
+if (payload.stop_hook_active && !unattended) ends(); // already reminded once; don't loop
 
 // unattended: the feature's state at this stop (its last commit, ticked tasks and next step)
 const progress = unattended && own ? read(`specs/${own}/progress.md`) || '' : null;
@@ -57,7 +60,8 @@ if ((working.length || progress !== null) && !payload.stop_hook_active) {
   const link = f => { try { return fs.lstatSync(path.join(root, f)).isSymbolicLink(); } catch { return false; } };
   const changed = sh('git status --porcelain --untracked-files=all')
     .split('\n').filter(Boolean).filter(l => !(l.startsWith('?? ') && link(l.slice(3)))).map(l => l.slice(3));
-  const codeChanged = changed.some(f => !f.startsWith('specs/') && !f.startsWith('.amk/'));
+  // not the AI tool's worktrees inside the project (Claude Code's .claude/worktrees/): another session's work
+  const codeChanged = changed.some(f => !f.startsWith('specs/') && !f.startsWith('.amk/') && !f.startsWith('.claude/worktrees/'));
   const handoffUpdated = changed.some(f => /^specs\/[^/]+\/progress\.md$/.test(f));
   if (codeChanged && !handoffUpdated) {
     process.stderr.write('There are uncommitted code changes, but no specs/<id>/progress.md was updated. ' +
@@ -104,4 +108,4 @@ if (progress !== null && !fs.existsSync(path.join(root, '.amk', 'build', 'STOP')
     process.exit(2);
   }
 }
-process.exit(0);
+ends();

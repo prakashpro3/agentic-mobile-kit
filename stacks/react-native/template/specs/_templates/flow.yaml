@@ -19,8 +19,15 @@
 appId: ${APP_ID}  # set by verify.sh
 # tags: [smoke]  # optional: verify.sh --tags smoke checks only the flows with one of the tags
 ---
-- launchApp:
-    clearState: true
+# Start at the screen the scenarios are on: a flow that walks from the first screen through every one before it is
+# slow, and fails for screens it only passes through.
+# - The app keeps its data between flows (logged in, say): clear it (launchApp: { clearState: true }) only for a
+#   scenario that needs a fresh install: onboarding, an empty state, a first permission prompt.
+# - Log in with the subflow only when the login screen shows:
+#     - runFlow: { file: subflows/login.yaml, when: { visible: { id: "login-email" } } }
+# - Where the app opens screens from a link (React Navigation's linking, Expo Router's routes), open this one with it
+#   rather than tapping through: - openLink: <the app's scheme>://<the screen's path>
+- launchApp
 # After every launchApp: a splash screen can still cover the app while assertions already pass (the app's views
 # exist under it), so wait a moment (for text that never appears), then for the screen to settle.
 - extendedWaitUntil:

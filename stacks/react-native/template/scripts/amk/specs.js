@@ -18,6 +18,12 @@
 //                                             dependencies built or on the build's stack), or <id>. Makes feature/<id>
 //                                             from main or the top of the stack, with the spec as of its approval commit.
 //                                             Exits 3 when none is ready, 4 when the living spec changed under it
+//   node scripts/amk/specs.js changed-flows    the flows that reach what this branch changed since main: those using a
+//                                             testID a changed file sets (or running a subflow that does), and the flows
+//                                             changed themselves; verify.sh --changed runs them
+//   node scripts/amk/specs.js branch <id>      a feature built feature by feature: makes feature/<id>, on a feature branch
+//                                             not merged into main yet when there is one (the one you're on, else the
+//                                             newest: part 1 of a feature split in parts), so it has that code; else main
 //   node scripts/amk/specs.js import <file>    a CSV export (a spreadsheet saved as CSV) or a Trello board's JSON export,
 //                                             a line per row or open card, as outside text to plan from
 // A requirement is "### Requirement: <name>", a sentence with SHALL or MUST, and at least one
@@ -748,6 +754,58 @@ function fetchOrigin() {
   try { execFileSync('git', ['fetch', '--quiet', 'origin'], { stdio: 'ignore', timeout: 60000, env }); } catch {}
 }
 
+// the flows that reach what this branch changed since main, for a small change's device check: those that use a testID
+// a changed file sets (testID="…", testID: '…'), or run a subflow that does, and the flows changed themselves
+function changedFlows() {
+  const main = mainRef();
+  // without a main branch to compare with, what's changed and not committed yet
+  const base = (main && git('merge-base', 'HEAD', main)) || 'HEAD';
+  const files = [...new Set([...(git('diff', '--name-only', base) || '').split('\n'),
+    ...(git('ls-files', '--others', '--exclude-standard') || '').split('\n')])].filter(Boolean);
+  const ids = new Set();
+  for (const f of files.filter(x => /\.(jsx?|tsx?)$/.test(x) && !x.startsWith('scripts/amk/'))) {
+    for (const m of (read(f) || '').matchAll(/testID\s*[=:]\s*\{?\s*(["'`])([^"'`$]+)\1/g)) ids.add(m[2]);
+  }
+  const uses = text => [...stripYamlComments(text || '').matchAll(/\bid:\s*["']?([^"'\s,}]+)/g)].some(m => ids.has(m[1]));
+  const subs = allFlows('.maestro/subflows').map(f => `subflows/${f}`).filter(f => files.includes(`.maestro/${f}`) || uses(read(`.maestro/${f}`)));
+  return allFlows().filter(f => {
+    const text = read(`.maestro/${f}`) || '';
+    return files.includes(`.maestro/${f}`) || uses(text) || subs.some(sf => text.includes(sf));
+  }).map(f => path.resolve('.maestro', f));
+}
+
+// the start line in a feature's progress.md: where it started, and where its PR goes (pr.js forward reads it)
+function logStart(id, line) {
+  const progress = `specs/${id}/progress.md`;
+  const p = read(progress) || read('specs/_templates/progress.md') || '## Log\n';
+  fs.mkdirSync(path.dirname(progress), { recursive: true });
+  fs.writeFileSync(progress, /^## Log\s*$/m.test(p) ? p.replace(/^## Log\s*\n(\s*<!--[\s\S]*?-->\s*\n)?/m, m => `${m.replace(/\n*$/, '\n')}\n${line}\n`) : `${p.replace(/\n*$/, '\n')}\n## Log\n\n${line}\n`);
+}
+// feature by feature: the branch a feature is built on. A feature branch not merged into main yet (part 1 of a feature
+// split in parts, its PR still open) is where the next one starts, so the next one has its code: the one you're on,
+// else the newest. Its PR then goes there, and pr.js forward moves it into main once that one merges
+function branchFeature(id) {
+  const name = `feature/${id}`;
+  if (branch() === name) { console.log(`On ${name} already.`); return 0; }
+  if (exists(name)) {
+    if (git('switch', '--quiet', name) === null) { console.error(`git switch ${name} failed: commit or stash what's changed here first.`); return 1; }
+    console.log(`Switched to ${name}, where ${id} is built.`);
+    return 0;
+  }
+  fetchOrigin();
+  const main = mainRef();
+  if (!main) { console.error('No main branch found: set AMK_BASE to the branch features start from.'); return 1; }
+  const built = builtOn(main);
+  const open = (git('for-each-ref', '--sort=-committerdate', '--format=%(refname:short)', 'refs/heads/feature/') || '').split('\n').filter(Boolean)
+    .filter(b => !isAncestor(b, main) && !built.has(b.slice(8)) && show(b, `specs/${b.slice(8)}/progress.md`) !== null);
+  const from = open.includes(branch()) ? branch() : open[0] || main;
+  if (git('switch', '--quiet', '--no-track', '-c', name, from) === null) { console.error(`git switch -c ${name} ${from} failed.`); return 1; }
+  logStart(id, `- ${new Date().toISOString().slice(0, 16).replace('T', ' ')}: started from ${from} (its PR goes to ${from.replace(/^origin\//, '')})`);
+  console.log(from === main ? `Started ${name} from ${main}.`
+    : `Started ${name} from ${from}, which isn't merged into ${main.replace(/^origin\//, '')} yet: ${id} builds on it, and its PR goes there (pr.js forward moves it into ${main.replace(/^origin\//, '')} once ${from} merges).`);
+  return 0;
+}
+
 function start(want) {
   if (branch() === 'plan') { console.error('This folder is on the plan branch: build in a folder on main or a feature branch.'); return 1; }
   if (git('status', '--porcelain', '--untracked-files=no')) { console.error('Commit the changes here first (git status): a feature starts from a clean folder.'); return 1; }
@@ -796,10 +854,7 @@ function start(want) {
   for (const a of [['switch', '--quiet', '--no-track', '-c', name, from], ['checkout', approved, '--', `specs/${pick.id}/`]]) {
     try { execFileSync('git', a, { stdio: ['ignore', 'ignore', 'pipe'] }); } catch (e) { console.error(`git ${a.join(' ')}: ${String(e.stderr || e.message).trim()}`); return 1; }
   }
-  const progress = `specs/${pick.id}/progress.md`;
-  const log = `- ${new Date().toISOString().slice(0, 16).replace('T', ' ')}: started from ${from} (its PR goes to ${from.replace(/^origin\//, '')}), with the spec as approved in ${short} on ${ref}`;
-  const p = read(progress) || read('specs/_templates/progress.md') || '## Log\n';
-  fs.writeFileSync(progress, /^## Log\s*$/m.test(p) ? p.replace(/^## Log\s*\n(\s*<!--[\s\S]*?-->\s*\n)?/m, m => `${m.replace(/\n*$/, '\n')}\n${log}\n`) : `${p.replace(/\n*$/, '\n')}\n## Log\n\n${log}\n`);
+  logStart(pick.id, `- ${new Date().toISOString().slice(0, 16).replace('T', ' ')}: started from ${from} (its PR goes to ${from.replace(/^origin\//, '')}), with the spec as approved in ${short} on ${ref}`);
   try {
     execFileSync('git', ['add', '--', `specs/${pick.id}/`], { stdio: 'ignore' });
     execFileSync('git', ['commit', '--quiet', '-m', `docs(spec): ${pick.id} from the plan, as approved in ${short}\n\nSpec: specs/${pick.id}`], { stdio: ['ignore', 'ignore', 'pipe'] });
@@ -889,6 +944,10 @@ if (require.main === module) {
     process.exitCode = status();
   } else if (cmd === 'start') {
     process.exitCode = start(args[0]);
+  } else if (cmd === 'changed-flows') {
+    for (const f of changedFlows()) console.log(f);
+  } else if (cmd === 'branch' && args[0]) {
+    process.exitCode = branchFeature(args[0]);
   } else if (cmd === 'plan-folder') {
     process.exitCode = planFolder();
   } else if (cmd === 'import' && args[0]) {

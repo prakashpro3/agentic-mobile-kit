@@ -167,15 +167,17 @@ function forward(main, { check = true } = {}, cfg = settings(), io = IO) {
   specs.fetchOrigin();
   const ref = specs.planRef();
   const plan = ref && specs.show(ref, 'specs/plan.md');
-  if (!plan) return 0;
+  // the plan's features, and those built feature by feature on a branch of their own (specs.js branch)
+  const local = (git('for-each-ref', '--format=%(refname:short)', 'refs/heads/feature/') || '').split('\n').filter(Boolean).map(b => b.slice(8));
+  const ids = [...new Set([...(plan ? specs.planFeatures(plan).rows.map(r => r.id) : []), ...local])];
   const built = specs.builtOn(main);
   const was = branchNow();
   let code = 0;
-  for (const r of specs.planFeatures(plan).rows) {
-    const b = `feature/${r.id}`;
-    if (built.has(r.id) || git('rev-parse', '--verify', '--quiet', `refs/heads/${b}`) === null) continue;
+  for (const id of ids) {
+    const b = `feature/${id}`;
+    if (built.has(id) || git('rev-parse', '--verify', '--quiet', `refs/heads/${b}`) === null) continue;
     // its pull request's base, from the start line specs.js start wrote: a stacked branch's parent
-    const parent = (/its PR goes to ([^)\s]+)\)/.exec(git('show', `${b}:specs/${r.id}/progress.md`) || '') || [])[1];
+    const parent = (/its PR goes to ([^)\s]+)\)/.exec(git('show', `${b}:specs/${id}/progress.md`) || '') || [])[1];
     const parentId = parent && (/^feature\/(.+)$/.exec(parent) || [])[1];
     if (!parentId || !built.has(parentId)) continue;
     if (git('merge-base', '--is-ancestor', main, b) === null) {
@@ -183,7 +185,7 @@ function forward(main, { check = true } = {}, cfg = settings(), io = IO) {
       const before = git('rev-parse', 'HEAD');
       let s = { rest: [] };
       if (git('merge', '--no-edit', '--quiet', main) === null) {
-        s = settle(r.id);
+        s = settle(id);
         if (s.rest.length || git('commit', '--no-edit', '--quiet') === null) {
           git('merge', '--abort');
           io.log(`${b}: main can't be merged in without a person: ${s.rest.length ? `conflicts in ${s.rest.join(', ')}` : 'the merge commit was refused (see the hook\'s message)'}. Merge main into it by hand, then push.`);
@@ -195,9 +197,9 @@ function forward(main, { check = true } = {}, cfg = settings(), io = IO) {
       if (s.lock || changed.some(f => LOCKS.test(f))) sh('sh', ['scripts/amk/install-deps.sh'], { stdio: 'ignore' });
       if ((s.pods || changed.includes('ios/Podfile.lock')) && process.platform === 'darwin') sh('sh', ['scripts/amk/pod-install.sh'], { stdio: 'ignore' });
       if (s.spec) {
-        sh(process.execPath, ['scripts/amk/specs.js', 'merge', r.id], { stdio: 'ignore' });
+        sh(process.execPath, ['scripts/amk/specs.js', 'merge', id], { stdio: 'ignore' });
         git('add', '--', 'specs/current/');
-        git('commit', '--quiet', '-m', `docs(spec): ${r.id} merged into the living spec again, after main\n\nSpec: specs/${r.id}`);
+        git('commit', '--quiet', '-m', `docs(spec): ${id} merged into the living spec again, after main\n\nSpec: specs/${id}`);
       }
       if (check && sh('sh', ['scripts/amk/verify.sh', 'quick'], { stdio: 'ignore' }).status !== 0) {
         git('reset', '--quiet', '--keep', before);

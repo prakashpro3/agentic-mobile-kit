@@ -20,6 +20,8 @@
 #                   flows of each (a flow's name prefix works too: offline-sync runs offline-sync-1.yaml) and need --label
 #   --flow <file>   run only this flow: a path in the project, or anywhere (an absolute path)
 #   --tags <list>   only the flows with one of these tags in their header (tags: [smoke]), comma-separated
+#   --changed       only the flows that reach what this branch changed: they use a testID a changed file sets, or
+#                   are changed themselves (specs.js changed-flows); with --spec, its flows too
 #   --label <n>     evidence folder name (default: the spec id, or no-spec)
 #   --flavor <name> Android product flavor to check (default: the first one in build.gradle)
 #   --scheme <name> iOS scheme to check (default: the one named like the workspace)
@@ -72,6 +74,7 @@ only=${AMK_SCREENS:-}
 no_build=0
 mock=0
 related=0
+changed=0
 build_only=0
 part=""
 while [ $# -gt 0 ]; do
@@ -86,6 +89,7 @@ while [ $# -gt 0 ]; do
     --no-build) no_build=1; shift ;;
     --mock) mock=1; shift ;;
     --related) related=1; shift ;;
+    --changed) changed=1; shift ;;
     --part) part=$2; shift 2 ;;
     *) echo "verify: unknown option $1"; exit 2 ;;
   esac
@@ -167,8 +171,11 @@ built_api() { echo "$api" > "$root/.amk/last-build-$1"; }
 flow_files() {
   {
     if [ -n "$flow" ]; then echo "$flow"
-    elif [ -n "$spec" ]; then
-      for s in $(echo "$spec" | tr ',' ' '); do find "$root/.maestro" -maxdepth 1 -iname "$s*.yaml" ! -name '.amk-*' 2>/dev/null; done | sort -u
+    elif [ -n "$spec" ] || [ "$changed" = 1 ]; then
+      {
+        [ "$changed" = 0 ] || node scripts/amk/specs.js changed-flows
+        for s in $(echo "$spec" | tr ',' ' '); do find "$root/.maestro" -maxdepth 1 -iname "$s*.yaml" ! -name '.amk-*' 2>/dev/null; done
+      } | sort -u
     else find "$root/.maestro" -maxdepth 1 -name '*.yaml' ! -name '.amk-*' 2>/dev/null | sort
     fi
   } | with_tags | awk -v k="$part_k" -v n="$part_n" '(NR - 1) % n == k - 1'
@@ -419,6 +426,7 @@ run_flows() { # screen device app_id orientation (PORTRAIT, or LANDSCAPE_LEFT to
   files=$(flow_files)
   if [ -z "$files" ]; then
     [ -z "$tags" ] || echo "  $1: no flow has the tag $tags, so this is a check that the app opens"
+    [ "$changed" = 0 ] || [ -n "$spec" ] || echo "  $1: no flow reaches what this branch changed, so this is a check that the app opens"
     # launchApp returns before the app has drawn, and a splash screen stays up until the JavaScript has loaded:
     # a fixed wait (for text that never appears), then for the screen to settle, so the screenshot shows the app
     printf 'appId: %s\n---\n- launchApp\n- extendedWaitUntil:\n    visible: "agentic-mobile-kit: waiting for the app to draw"\n    timeout: 5000\n    optional: true\n- waitForAnimationToEnd\n- takeScreenshot: smoke-launch\n' "$3" > "$out/smoke.yaml"
