@@ -52,8 +52,11 @@ const state = progress === null ? null : JSON.stringify([sh('git rev-parse HEAD'
 
 // code changed without the handoff: asked once (stop_hook_active: the agent goes on because of an earlier ask)
 if ((working.length || progress !== null) && !payload.stop_hook_active) {
-  const changed = sh('git status --porcelain --untracked-files=all') // every new file, not just its new folder
-    .split('\n').filter(Boolean).map(l => l.slice(3));
+  // every new file, not just its new folder; but not a new link, such as the project's node_modules linked into a git
+  // worktree: no session writes code that way, and it would ask at every stop
+  const link = f => { try { return fs.lstatSync(path.join(root, f)).isSymbolicLink(); } catch { return false; } };
+  const changed = sh('git status --porcelain --untracked-files=all')
+    .split('\n').filter(Boolean).filter(l => !(l.startsWith('?? ') && link(l.slice(3)))).map(l => l.slice(3));
   const codeChanged = changed.some(f => !f.startsWith('specs/') && !f.startsWith('.amk/'));
   const handoffUpdated = changed.some(f => /^specs\/[^/]+\/progress\.md$/.test(f));
   if (codeChanged && !handoffUpdated) {

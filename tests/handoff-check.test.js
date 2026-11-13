@@ -80,3 +80,20 @@ test('handoff check: a feature marked done whose requirements never reached the 
   assert.strictEqual(hook(dir), 0, 'only a removal: nothing to find in the living spec');
 });
 
+
+test('handoff check: a link git doesn\'t ignore (the project\'s node_modules in a git worktree) isn\'t a code change', { skip: process.platform === 'win32' }, () => {
+  const dir = app();
+  write(dir, 'specs/20261016-x/progress.md', IN_PROGRESS);
+  git(dir, 'add', '-A');
+  git(dir, '-c', 'user.name=t', '-c', 'user.email=t@example.invalid', 'commit', '-q', '-m', 'spec');
+  // node_modules/ in .gitignore matches a folder, not a link: git lists the link as a new file
+  write(dir, '.gitignore', 'node_modules/\n');
+  git(dir, 'add', '.gitignore');
+  git(dir, '-c', 'user.name=t', '-c', 'user.email=t@example.invalid', 'commit', '-q', '-m', 'ignore');
+  const shared = tmpDir('amk-handoff-modules-');
+  fs.symlinkSync(shared, path.join(dir, 'node_modules'));
+  assert.match(git(dir, 'status', '--porcelain'), /^\?\? node_modules$/m);
+  assert.strictEqual(hook(dir), 0, 'only the link changed');
+  write(dir, 'src/App.tsx', 'export const x = 1;\n');
+  assert.strictEqual(hook(dir), 2, 'a real code change still asks');
+});
