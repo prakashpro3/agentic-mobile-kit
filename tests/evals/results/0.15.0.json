@@ -1,0 +1,237 @@
+{
+  "version": "0.15.0",
+  "date": "2026-11-13",
+  "model": "haiku",
+  "claude": "2.1.323 (Claude Code)",
+  "skills": {
+    "m-bugfix": 697,
+    "m-change": 618,
+    "m-continue": 372,
+    "m-explore": 408,
+    "m-feature": 2093,
+    "m-feature/build": 703,
+    "m-feature/plan": 992,
+    "m-learn": 547,
+    "m-onboard": 1157,
+    "m-pause": 272,
+    "m-prototype": 980,
+    "m-release": 923,
+    "m-report": 350,
+    "m-review": 949,
+    "m-test": 554
+  },
+  "cases": [
+    {
+      "name": "guard-after-cd",
+      "skill": "guard (hook)",
+      "passed": true,
+      "failures": [],
+      "ms": 4243,
+      "tokens": 46614,
+      "costUsd": 0.003,
+      "turns": 3
+    },
+    {
+      "name": "guard-discard",
+      "skill": "guard (hook)",
+      "passed": true,
+      "failures": [],
+      "ms": 3768,
+      "tokens": 46479,
+      "costUsd": 0.0029,
+      "turns": 2
+    },
+    {
+      "name": "rn-check-asks",
+      "skill": "AGENTS.md rules",
+      "passed": true,
+      "failures": [],
+      "ms": 9771,
+      "tokens": 94917,
+      "costUsd": 0.0039,
+      "turns": 4
+    },
+    {
+      "name": "stop-hook-handoff",
+      "skill": "handoff (stop hook)",
+      "passed": true,
+      "failures": [],
+      "ms": 19464,
+      "tokens": 262389,
+      "costUsd": 0.0075,
+      "turns": 11
+    },
+    {
+      "name": "questions-numbered",
+      "skill": "m-feature",
+      "passed": true,
+      "failures": [],
+      "ms": 54171,
+      "tokens": 314062,
+      "costUsd": 0.0147,
+      "turns": 20
+    },
+    {
+      "name": "m-feature-spec",
+      "skill": "m-feature",
+      "passed": true,
+      "failures": [],
+      "ms": 65974,
+      "tokens": 541753,
+      "costUsd": 0.0322,
+      "turns": 26
+    },
+    {
+      "name": "m-test-not-ready",
+      "skill": "m-test",
+      "passed": true,
+      "failures": [],
+      "ms": 37234,
+      "tokens": 357582,
+      "costUsd": 0.0104,
+      "turns": 18
+    },
+    {
+      "name": "mode-question",
+      "skill": "m-feature",
+      "passed": true,
+      "failures": [],
+      "ms": 8741,
+      "tokens": 88361,
+      "costUsd": 0.0046,
+      "turns": 3
+    },
+    {
+      "name": "plan-feature-map",
+      "skill": "m-feature/plan",
+      "passed": true,
+      "failures": [],
+      "ms": 258782,
+      "tokens": 3238351,
+      "costUsd": 0.195,
+      "turns": 86
+    },
+    {
+      "name": "plan-build-one",
+      "skill": "m-feature/build",
+      "passed": true,
+      "failures": [],
+      "ms": 71677,
+      "tokens": 958286,
+      "costUsd": 0.025,
+      "turns": 27
+    },
+    {
+      "name": "autopilot-two",
+      "skill": "autopilot",
+      "passed": true,
+      "failures": [],
+      "ms": 218904,
+      "tokens": 1969195,
+      "costUsd": 0.07,
+      "turns": 2
+    },
+    {
+      "name": "plan-continue-blocked",
+      "skill": "m-continue",
+      "passed": true,
+      "failures": [],
+      "ms": 53708,
+      "tokens": 477858,
+      "costUsd": 0.0224,
+      "turns": 23
+    },
+    {
+      "name": "autopilot-bugs",
+      "skill": "autopilot (bug queue)",
+      "passed": true,
+      "failures": [],
+      "ms": 87065,
+      "tokens": 644042,
+      "costUsd": 0.02,
+      "turns": 2
+    },
+    {
+      "name": "autopilot-reviews",
+      "skill": "autopilot (review fixes)",
+      "passed": true,
+      "failures": [],
+      "ms": 34789,
+      "tokens": 402571,
+      "costUsd": 0.01,
+      "turns": 1
+    },
+    {
+      "name": "m-onboard-check",
+      "skill": "m-onboard",
+      "passed": true,
+      "failures": [],
+      "ms": 63383,
+      "tokens": 262516,
+      "costUsd": 0.0171,
+      "turns": 22
+    },
+    {
+      "name": "m-learn-review",
+      "skill": "m-learn",
+      "passed": true,
+      "failures": [],
+      "ms": 31310,
+      "tokens": 183447,
+      "costUsd": 0.0084,
+      "turns": 7
+    },
+    {
+      "name": "m-report",
+      "skill": "m-report",
+      "passed": true,
+      "failures": [],
+      "ms": 27879,
+      "tokens": 236937,
+      "costUsd": 0.0087,
+      "turns": 23
+    },
+    {
+      "name": "translations",
+      "skill": "m-change",
+      "passed": true,
+      "failures": [],
+      "ms": 84717,
+      "tokens": 849783,
+      "costUsd": 0.0315,
+      "turns": 29
+    },
+    {
+      "name": "m-bugfix-scenario",
+      "skill": "m-bugfix",
+      "passed": false,
+      "failures": [
+        "it never looked for what should have caught it (specs.js tests)"
+      ],
+      "ms": 49512,
+      "tokens": 634321,
+      "costUsd": 0.0149,
+      "turns": 21
+    },
+    {
+      "name": "m-release-blocker",
+      "skill": "m-release",
+      "passed": true,
+      "failures": [],
+      "ms": 66271,
+      "tokens": 754608,
+      "costUsd": 0.0276,
+      "turns": 38
+    },
+    {
+      "name": "pr-checks-fix",
+      "skill": "after the PR (pr.js checks)",
+      "passed": true,
+      "failures": [],
+      "ms": 20914,
+      "tokens": 249144,
+      "costUsd": 0.007,
+      "turns": 11
+    }
+  ]
+}
