@@ -11,15 +11,15 @@ Recurring errors and their fixes. Check here before debugging a build error. Rem
 
 ## Entries
 
-### A native change doesn't show up in the build
-- **Cause:** the kit's scripts regenerate `ios/` and `android/` only when Expo's fingerprint changes. It covers the app config, config plugins and native libraries, but not, for example, a file that a config plugin reads.
-- **Fix:** delete `ios/.amk-fingerprint` and `android/.amk-fingerprint`, then check again. The next build regenerates both folders and takes longer.
-- **Prevention:** none needed for app config, plugin and library changes.
-
 ### iOS build: "unable to initiate PIF transfer session (operation in progress?)"
 - **Cause:** two builds of the same project at once: a build from the command line (`verify.sh`, `ios-build.sh`) while Xcode builds or indexes it. No `xcodebuild` needs to be running: Xcode's build service holds the project.
 - **Fix:** let Xcode finish, or quit it, then build again. If it stays stuck: `pkill -f SWBBuildService` (Xcode's build service, which starts again when needed), then build again.
 - **Prevention:** don't start a command-line build while Xcode builds or indexes the same project.
+
+### A native change doesn't show up in the build
+- **Cause:** the kit's scripts regenerate `ios/` and `android/` only when Expo's fingerprint changes. It covers the app config, config plugins and native libraries, but not, for example, a file that a config plugin reads.
+- **Fix:** delete `ios/.amk-fingerprint` and `android/.amk-fingerprint`, then check again. The next build regenerates both folders and takes longer.
+- **Prevention:** none needed for app config, plugin and library changes.
 
 ### Expo SDK 55: the Android release build fails with "libworklets.so … missing and no known rule to make it"
 - **Cause:** SDK 55's `expo-modules-core` looks for `libworklets.so` in an older build-output folder (`node_modules/react-native-worklets/android/build/intermediates/cmake/release/obj/<abi>/`). `react-native-worklets` 0.7 builds it into `intermediates/cxx/RelWithDebInfo/<hash>/obj/<abi>/`. It fails without the kit too.

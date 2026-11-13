@@ -1042,3 +1042,26 @@ test('sync: npm\'s reason when the installed version can\'t be downloaded (one n
       && /^Couldn't download agentic-mobile-kit@0\.0\.1 from npm: No matching version found for agentic-mobile-kit@0\.0\.1\.$/.test(e.message));
   } finally { process.env.PATH = PATH; }
 });
+
+test('sync: known issues that both the team and the kit added in one place get the kit\'s new entry at the top, no markers', () => {
+  const old = oldKit();
+  // the old kit didn't have the newest entry
+  const ki = path.join(old, 'docs/amk/known-issues.md');
+  const entry = (/^### iOS build: "unable to initiate PIF transfer session[^\n]*\n(?:- [^\n]*\n)+\n/m.exec(fs.readFileSync(ki, 'utf8')) || [])[0];
+  assert.ok(entry, 'the template has the entry');
+  fs.writeFileSync(ki, fs.readFileSync(ki, 'utf8').replace(entry, ''));
+  const dir = fakeApp();
+  init(dir, { template: old, skipGenerate: true });
+  commitAll(dir);
+  // the team's own entry, at the top of the list, where the kit's new one goes too
+  const team = '### Metro: "EMFILE: too many open files"\n- **Cause:** no watchman.\n- **Fix:** `brew install watchman`.\n- **Prevention:** install it with the toolchain.\n\n';
+  fs.writeFileSync(path.join(dir, 'docs/amk/known-issues.md'), read(dir, 'docs/amk/known-issues.md').replace('## Entries\n\n', `## Entries\n\n${team}`));
+  commitAll(dir);
+  const { report } = sync(dir, { fromDir: old, skipGenerate: true });
+  const text = read(dir, 'docs/amk/known-issues.md');
+  assert.doesNotMatch(text, /^(<<<<<<<|=======|>>>>>>>)/m);
+  assert.ok(report.merged.includes('docs/amk/known-issues.md'), JSON.stringify(report.conflicts));
+  assert.ok(text.includes(team), 'the team\'s entry stays');
+  assert.ok(text.includes(`## Entries\n\n${entry}`), 'the kit\'s new entry tops the list');
+  assert.strictEqual(text.split('unable to initiate PIF transfer session (operation').length, 2, 'once');
+});

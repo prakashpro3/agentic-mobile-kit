@@ -669,3 +669,7 @@ On the public test repository, whose `main` requires the `checks` and `android` 
 ## The stop hook in a git worktree (2026-11-13)
 
 In a production app's Claude Code worktree (`.claude/worktrees/<name>`), the stop hook asked to update the handoff at every stop, six times in one session, though the handoff was updated each time. The worktree had the project's `node_modules` linked in, and `node_modules/` in `.gitignore` matches only a folder, so git listed the link as a new file, which the hook counted as uncommitted code (and `git add -A` would have committed). The kit's `.gitignore` lines now include `node_modules` without the slash, and the hook doesn't count a new link as a code change.
+
+## 0.14.2's update on five apps (2026-11-13)
+
+The new known-issues entry (the iOS build error when Xcode holds the project) met entries the teams had written themselves: one app had the same issue in the same place, another its own entries at the top of the list, so wherever the kit put it, one app's update stopped on conflict markers. `sync` now gives `docs/amk/known-issues.md` the kit's new entries, by heading, at the top of the team's list when its merge conflicts. Updates of the five apps' copies (four from 0.7.19, one from 0.14.1, one fresh install) then had no conflicts; `.gitignore` gained `node_modules`; `verify.sh quick` passed (one app's own lint errors aside); the stop hook was quiet.

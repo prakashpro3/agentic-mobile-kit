@@ -11,15 +11,15 @@ Recurring errors and their fixes. Check here before debugging a build error. Rem
 
 ## Entries
 
-### iOS build fails right after a native dependency was added or removed
-- **Cause:** `ios/Pods` is out of date.
-- **Fix:** `sh scripts/amk/pod-install.sh`, then rebuild.
-- **Prevention:** run `sh scripts/amk/pod-install.sh` in the same change that edits `package.json`.
-
 ### iOS build: "unable to initiate PIF transfer session (operation in progress?)"
 - **Cause:** two builds of the same project at once: a build from the command line (`verify.sh`, `ios-build.sh`) while Xcode builds or indexes it. No `xcodebuild` needs to be running: Xcode's build service holds the project.
 - **Fix:** let Xcode finish, or quit it, then build again. If it stays stuck: `pkill -f SWBBuildService` (Xcode's build service, which starts again when needed), then build again.
 - **Prevention:** don't start a command-line build while Xcode builds or indexes the same project.
+
+### iOS build fails right after a native dependency was added or removed
+- **Cause:** `ios/Pods` is out of date.
+- **Fix:** `sh scripts/amk/pod-install.sh`, then rebuild.
+- **Prevention:** run `sh scripts/amk/pod-install.sh` in the same change that edits `package.json`.
 
 ### `./gradlew` fails with "no main manifest attribute, in …/gradle-wrapper.jar"
 - **Cause:** a React Native upgrade updated `android/gradlew` (which now runs `java -jar gradle-wrapper.jar`) but not `android/gradle/wrapper/gradle-wrapper.jar`. The upgrade diff doesn't carry binary files.
