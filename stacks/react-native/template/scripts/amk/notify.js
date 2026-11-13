@@ -9,6 +9,7 @@
 // An unattended build (autopilot.js) notifies by itself, so nothing comes from here then.
 'use strict';
 const fs = require('fs');
+const os = require('os');
 const path = require('path');
 const { spawn, spawnSync } = require('child_process');
 const { redact } = require('./redact.js');
@@ -52,7 +53,8 @@ function message(p, env = process.env) {
   return { title: `${project}: ${tool} ${question ? 'asks you' : 'finished'}`, text: question || lines[0] || 'Its turn is over.' };
 }
 
-// the desktop notification now, the webhook in a process of its own: a hook returns at once
+// the desktop notification now, the webhook in a process of its own: a hook returns at once. Those processes start in
+// the temp folder: on Windows a process holds the folder it runs in, and the project's would be locked meanwhile
 function send(n, env = process.env) {
   const text = redact(n.text).replace(/[\u0000-\u001f\u2028\u2029]+/g, ' ').slice(0, 300);
   const title = n.title.slice(0, 120);
@@ -62,14 +64,14 @@ function send(n, env = process.env) {
     else if (process.platform === 'win32') {
       const q = s => `'${s.replace(/'/g, "''")}'`;
       spawn('powershell', ['-NoProfile', '-Command', `Add-Type -AssemblyName System.Windows.Forms; $n = New-Object System.Windows.Forms.NotifyIcon; $n.Icon = [System.Drawing.SystemIcons]::Information; $n.Visible = $true; $n.ShowBalloonTip(10000, ${q(title)}, ${q(text)}, 'Info'); Start-Sleep 10; $n.Dispose()`],
-        { detached: true, stdio: 'ignore', windowsHide: true }).unref();
+        { detached: true, stdio: 'ignore', windowsHide: true, cwd: os.tmpdir() }).on('error', () => {}).unref();
     }
   } catch {}
   if (!env.AMK_NOTIFY_URL) return;
   // Slack and Google Chat read text, Discord content
   const body = JSON.stringify({ text: `${title}: ${text}`, content: `${title}: ${text}` });
   spawn(process.execPath, ['-e', 'fetch(process.argv[1], { method: "POST", headers: { "content-type": "application/json" }, body: process.argv[2], signal: AbortSignal.timeout(10000) }).catch(() => {})',
-    env.AMK_NOTIFY_URL, body], { detached: true, stdio: 'ignore', env }).unref();
+    env.AMK_NOTIFY_URL, body], { detached: true, stdio: 'ignore', env, cwd: os.tmpdir() }).on('error', () => {}).unref();
 }
 
 const notify = (p, env = process.env) => { const n = message(p, env); if (n) send(n, env); return n; };

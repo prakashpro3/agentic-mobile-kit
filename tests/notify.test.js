@@ -106,3 +106,12 @@ test('notify: the webhook, posted from a process of its own so the hook returns 
     assert.strictEqual(got[0].content, got[0].text);
   } finally { server.close(); }
 });
+
+test('notify: a notifier that can\'t start (Windows without PowerShell on the PATH) doesn\'t fail the hook', () => {
+  const { dir, env } = project();
+  // Windows, as Node sees it: the notification through PowerShell, which isn't on this machine's PATH (on Windows, it is)
+  write(dir, 'win32.js', "Object.defineProperty(process, 'platform', { value: 'win32' });\n");
+  const r = spawnSync(process.execPath, ['-r', path.join(dir, 'win32.js'), '-e', `require(${JSON.stringify(path.join(dir, 'scripts/amk/notify.js'))}).hook()`],
+    { cwd: dir, input: JSON.stringify({ hook_event_name: 'Notification', message: 'x' }), encoding: 'utf8', env });
+  assert.strictEqual(r.status, 0, r.stderr);
+});
