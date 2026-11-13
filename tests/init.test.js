@@ -1025,3 +1025,19 @@ test('init --new refuses a folder with files, a folder inside a repository and a
   assert.throws(() => createApp(dir, 'bare', { run: () => ({ status: null, signal: 'SIGINT' }), ...quiet }), /\(SIGINT\)\. This folder is as it was/);
   assert.deepStrictEqual(fs.readdirSync(dir), ['.git']);
 });
+
+test('sync: npm\'s reason when the installed version can\'t be downloaded (one npm hasn\'t got)', { skip: process.platform === 'win32' }, () => {
+  const dir = fakeApp();
+  init(dir, { skipGenerate: true });
+  fs.writeFileSync(path.join(dir, 'AGENTS.md'), read(dir, 'AGENTS.md').replace(`agentic-mobile-kit ${KIT_VERSION}`, 'agentic-mobile-kit 0.0.1'));
+  commitAll(dir);
+  // npm as it answers for a version it hasn't got, which it doesn't print with --silent
+  const bin = tmpDir('amk-fake-npm-');
+  fs.writeFileSync(path.join(bin, 'npm'), '#!/bin/sh\necho "npm error code ETARGET" >&2\necho "npm error notarget No matching version found for agentic-mobile-kit@0.0.1." >&2\nexit 1\n', { mode: 0o755 });
+  const PATH = process.env.PATH;
+  process.env.PATH = `${bin}${path.delimiter}${PATH}`;
+  try {
+    assert.throws(() => sync(dir, { skipGenerate: true }), e => e instanceof InitError
+      && /^Couldn't download agentic-mobile-kit@0\.0\.1 from npm: No matching version found for agentic-mobile-kit@0\.0\.1\.$/.test(e.message));
+  } finally { process.env.PATH = PATH; }
+});

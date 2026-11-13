@@ -918,7 +918,7 @@ Each release ships on its own and keeps its own docs current: both `AGENTS.md` f
    - `m-bugfix` adding the bug's scenario and its `-bug-` flow;
    - `m-release` asking for the suite, and stopping on a blocker.
 4. **CI templates** on a scratch GitHub repository:
-   - the weekly kit-update PR;
+   - the weekly kit-update PR (run live on 2026-11-13: see the tool matrix);
    - a docs-only PR that runs only the light checks, yet passes the one required check and auto-merges;
    - the `amk-ready` label turning on auto-merge for a solo developer, and a new commit removing it;
    - the AI review job posting comments only, and pausing after three failures in a row.

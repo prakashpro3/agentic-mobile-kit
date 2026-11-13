@@ -69,3 +69,12 @@ test('the nightly issue: the flows that failed twice, no paths or device IDs, th
   const before = spawnSync(process.execPath, [path.join(KIT, 'scripts/amk/report.js'), path.join(dir, 'missing'), '--issue-text', ''], { encoding: 'utf8' });
   assert.match(before.stdout, /The nightly e2e run failed before any flow ran/);
 });
+
+test('PR size: the large-pr label and the weekly kit update (amk/kit-<version>) skip it; a person\'s branch doesn\'t', () => {
+  const ci = fs.readFileSync(path.join(KIT, '.github/workflows/ci.yml'), 'utf8');
+  const step = (/- name: PR size[^\n]*\n\s+if: ([^\n]+)/.exec(ci) || [])[1] || '';
+  assert.match(step, /!contains\(github\.event\.pull_request\.labels\.\*\.name, 'large-pr'\)/);
+  assert.match(step, /!startsWith\(github\.head_ref, 'amk\/kit-'\)/);
+  // the kit-update workflow's branch is the one the check leaves out
+  assert.match(fs.readFileSync(path.join(KIT, '.github/workflows/amk-kit-update.yml'), 'utf8'), /branch="amk\/kit-\$VERSION"/);
+});
