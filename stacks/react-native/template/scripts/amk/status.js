@@ -199,7 +199,7 @@ function ownStatusLine(input, env = process.env) {
   if (!own || own.type !== 'command' || !own.command || /scripts\/amk\/status\.js/.test(own.command)) return '';
   // ponytail: through the system shell; a Windows status line written for Git Bash doesn't run here
   const r = spawnSync(own.command, { shell: true, input, encoding: 'utf8', timeout: 1500, env });
-  return (r.stdout || '').replace(/\n+$/, '');
+  return (r.stdout || '').replace(/\r\n/g, '\n').replace(/\n+$/, ''); // a Windows command's lines end in \r\n
 }
 function statusLine() {
   let input = '';

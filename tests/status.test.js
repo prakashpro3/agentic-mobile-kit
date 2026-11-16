@@ -153,6 +153,9 @@ test('status: the status line: the developer\'s own first, then the agent and th
   assert.match(agent, /· goes on by itself when that ends$/);
   assert.match(work, /^EV-7 ▰▰▱▱▱ 2\/5 tasks · Pull to refresh · Android check: phone 2\/8 login \d+s$/);
   assert.deepStrictEqual(line({ AMK_STATUS: 'off' }), ['mine', ''], 'theirs only');
+  // a status line whose lines end in \r\n (a Windows command's): no \r left under the prompt
+  write(config, 'settings.json', JSON.stringify({ statusLine: { type: 'command', command: 'node -e "process.stdout.write(\'mine\\r\\nsecond\\r\\n\')"' } }));
+  assert.deepStrictEqual(line({ AMK_STATUS: 'off' }), ['mine', 'second', '']);
   // the kit's own line in their settings isn't run twice; a narrow terminal cuts the lines
   write(config, 'settings.json', JSON.stringify({ statusLine: { type: 'command', command: 'node scripts/amk/status.js' } }));
   const narrow = line({ COLUMNS: '24' });
