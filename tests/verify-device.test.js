@@ -495,6 +495,25 @@ touch "$out/x1-1-home.png"`;
   assert.doesNotMatch(off.out, /accessibility warning/);
 });
 
+test('verify.sh: where the check stands, for the status line: build, install, then each flow of each screen; gone when it ends', { skip }, () => {
+  // the stand-in Maestro (in the screen's evidence folder) writes down the check's record as each flow starts
+  const seen = 'for r in "$(dirname "$FAKE_STATE")"/app/.amk/progress/verify-android-*.json; do cat "$r" >> "$FAKE_STATE.progress"; done\n';
+  const files = { '.maestro/x1-home.yaml': 'appId: ${APP_ID}\n---\n- launchApp\n', '.maestro/x1-list.yaml': 'appId: ${APP_ID}\n---\n- launchApp\n' };
+  const r = verifyAndroid({ connected: ['emulator-5556 P35'], build: true, maestro: seen + record, files, args: ['android', '--flavor', 'x', '--label', 'run', '--screens', 'phone-portrait'] });
+  assert.strictEqual(r.status, 0, r.out);
+  const runs = fs.readFileSync(path.join(path.dirname(r.app), 'state.progress'), 'utf8').trim().split('\n').map(l => JSON.parse(l));
+  assert.deepStrictEqual(runs.map(x => [x.title, x.stage, x.done, x.total, x.label]), [['Android check', 'phone', 0, 2, 'x1-home'], ['Android check', 'phone', 1, 2, 'x1-list']]);
+  assert.ok(runs.every(x => x.started <= x.stageStarted && x.key === runs[0].key), 'one record for the run');
+  // when it ends: no record left, and its length kept as the guide for the next check of its kind (it passed)
+  const kept = fs.readdirSync(path.join(r.app, '.amk/progress'));
+  assert.deepStrictEqual(kept, ['history.json']);
+  assert.deepStrictEqual(Object.keys(JSON.parse(fs.readFileSync(path.join(r.app, '.amk/progress/history.json'), 'utf8'))), ['android-00']);
+  // a check that fails keeps no length; one stopped halfway leaves no record either (its process is gone)
+  const failed = verifyAndroid({ connected: ['emulator-5556 P35'], build: true, maestro: 'exit 1', files, args: ['android', '--flavor', 'x', '--label', 'run', '--screens', 'phone-portrait'] });
+  assert.notStrictEqual(failed.status, 0);
+  assert.deepStrictEqual(fs.readdirSync(path.join(failed.app, '.amk/progress')), []);
+});
+
 test('verify.sh: a flow that fails, then passes when run once more, is flaky: reported with its first try, not a failure', { skip }, () => {
   // fails the first time at a step, with a screenshot of that screen; passes the second. Each run saves a view tree with
   // a small icon without a label, as in the accessibility test

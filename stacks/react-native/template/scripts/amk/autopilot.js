@@ -33,6 +33,7 @@ const path = require('path');
 const { spawn, spawnSync } = require('child_process');
 const { redact, untrusted } = require('./redact.js');
 const specs = require('./specs.js');
+const progress = require('./progress.js');
 
 const ROOT = fs.realpathSync(path.join(__dirname, '..', '..'));
 const BUILD = path.join(ROOT, '.amk', 'build');
@@ -513,6 +514,15 @@ function reviewQueue(ids = new Set(), ghx = gh) {
 }
 // the plan's features, by id
 const planIds = () => { const ref = specs.planRef(); const plan = ref && specs.show(ref, 'specs/plan.md'); return new Set(plan ? specs.planFeatures(plan).rows.map(r => r.id) : []); };
+// the plan's features, and how many of them are built: on main, or done on their branch
+function planCount() {
+  try {
+    const ids = [...planIds()];
+    const main = specs.mainRef();
+    const built = main ? specs.builtOn(main) : new Set();
+    return { total: ids.length, done: ids.filter(id => built.has(id) || isDone(git('show', `feature/${id}:specs/${id}/progress.md`))).length };
+  } catch { return {}; }
+}
 // open issues labelled amk-fix, oldest first: labelled by someone who can label them, or by Sentry's integration with
 // "Sentry adds amk-fix: on"; without amk-needs-info, and without an open pull request from fix/<n> yet
 function bugQueue(cfg, ghx = gh) {
@@ -572,7 +582,9 @@ async function build(o, d = {}) {
     // main merged into the build's stacked branches whose parent has merged (pr.js forward), at the start of each round
     forward: log => { const pr = require('./pr.js'); return pr.forward(specs.mainRef(), {}, pr.settings(), { ...pr.IO, log }); },
     reviews: () => reviewQueue(planIds()), bugs: () => bugQueue(cfg), prFor, needsInfo: (n, t) => needsInfo(n, t),
-    unanswered: n => { const me = (gh(['api', 'user']) || {}).login; const repo = repoName(); return Boolean(me && repo) && unanswered(repo, n, me); }, ...d };
+    unanswered: n => { const me = (gh(['api', 'user']) || {}).login; const repo = repoName(); return Boolean(me && repo) && unanswered(repo, n, me); },
+    // where the build stands, for the status line and status.js --watch: null when it ends
+    progress: at => (at ? progress.set('autopilot', { title: 'Unattended build', pid: process.pid, ...at }) : progress.end('autopilot')), ...d };
   const cfg = settings();
   const env = cleanEnv(process.env, cfg);
   const built = [];
@@ -627,14 +639,18 @@ async function build(o, d = {}) {
     await io.notify('Build: stopped on one', `${id}: ${reason}`);
     return null;
   };
-  for (const p of kinds.includes('reviews') ? io.reviews() : []) {
+  const reviews = kinds.includes('reviews') ? io.reviews() : [];
+  for (const [i, p] of reviews.entries()) {
+    io.progress({ stage: 'review comments', done: i, total: reviews.length, label: `#${p.number}` });
     end = await other({ id: `review-${p.number}`, branch: () => toBranch(p.headRefName), prompt: `m-review the review comments on pull request #${p.number}`,
       note: x => unattendedReview(p.number, p.headRefName, x), what: `review comments on pull request #${p.number}`,
       after: () => (io.unanswered(p.number) ? null : `review-${p.number}: answered`) });
     if (end) break;
   }
-  for (const i of !end && kinds.includes('bugs') ? io.bugs() : []) {
+  const bugs = !end && kinds.includes('bugs') ? io.bugs() : [];
+  for (const [k, i] of bugs.entries()) {
     const n = i.number;
+    io.progress({ stage: 'bugs', done: k, total: bugs.length, label: `#${n}` });
     end = await other({ id: `bug-${n}`, branch: () => toBranch(`fix/${n}`, true), prompt: `m-bugfix #${n}`, note: x => unattendedBug(n, x), what: `issue #${n}`,
       after: () => {
         const url = io.prFor(`fix/${n}`);
@@ -678,6 +694,7 @@ async function build(o, d = {}) {
     fs.mkdirSync(path.dirname(log), { recursive: true });
     fs.appendFileSync(log, `\n=== ${stamp()}: session ${t.sessions} of ${id} (${o.tool}${notes ? ', with notes.md' : ''})\n`);
     io.log(`${stamp()} ${id}: session ${t.sessions} (${o.tool}), logged in .amk/build/${id}/build.log`);
+    io.progress({ stage: 'features', ...planCount(), label: `${id}${t.sessions > 1 ? ` (session ${t.sessions})` : ''}` });
     const { cmd, args } = TOOLS[o.tool](`m-continue ${id}`, unattended(id, notes), o);
     const s = await io.session({ id, cmd, args, env, log, stallMs: o.stall * 60e3 });
     commitHandoff(id);
@@ -718,6 +735,7 @@ async function build(o, d = {}) {
   fs.mkdirSync(BUILD, { recursive: true });
   fs.writeFileSync(path.join(BUILD, 'report.md'), `# Build of ${stamp()}\n\n${redact(report)}\n`);
   io.log(`\n${report}`);
+  io.progress(null);
   await io.notify('Build ended', `${end.reason}. Built: ${built.length}${done.length ? `, reviews and bugs: ${done.length}` : ''}, blocked: ${blocked.length}`);
   return { end, built, blocked, done };
 }

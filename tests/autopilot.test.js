@@ -36,7 +36,7 @@ function app({ c = 'drafting' } = {}) {
   git(dir, 'config', 'user.email', 'amk-test@example.invalid');
   write(dir, 'package.json', '{"name":"app"}\n');
   write(dir, '.gitignore', '.amk/\n');
-  kit(dir, 'autopilot.js', 'specs.js', 'baseline.js', 'redact.js', 'pr.js');
+  kit(dir, 'autopilot.js', 'specs.js', 'baseline.js', 'redact.js', 'pr.js', 'progress.js');
   write(dir, 'specs/_templates/progress.md', progressTemplate);
   write(dir, 'specs/current/home.md', `# Home\n\n## Requirements\n\n${req('Greeting')}`);
   commit(dir, 'the app');
@@ -287,6 +287,7 @@ test('build: the plan\'s features one session each, in order, notes and all; the
   assert.match(r.logs, /Build ended: waiting for the plan[\s\S]*Built: a, b\nBlocked: none\nTo go on: node scripts\/amk\/autopilot\.js/);
   assert.match(read(dir, '.amk/build/report.md'), /Built: a, b/);
   assert.deepStrictEqual(r.notes, ['Build ended: waiting for the plan. Built: 2, blocked: 0']);
+  assert.ok(!fs.existsSync(path.join(dir, '.amk/progress/autopilot.json')), 'the status line\'s record ends with the build');
   const codex = auto.TOOLS.codex('m-continue a', 'NOTE', { model: 'gpt-5.5' });
   assert.deepStrictEqual(codex.args.slice(0, 5), ['exec', '--json', '--sandbox', 'workspace-write', '-c']);
   assert.strictEqual(codex.args[codex.args.length - 1], '$m-continue a\n\nNOTE');
@@ -298,6 +299,7 @@ test('build: review fixes first, then the bug queue, then the plan\'s features, 
   git(dir, 'branch', 'feature/z');
   const answered = new Set();
   const asked = [];
+  const stages = [];
   const r = await buildIn(dir, [
     () => { answered.add(12); return {}; },
     () => { write(dir, 'src/fix.ts', 'export const fixed = 1;\n'); commit(dir, 'fix: saving twice\n\nFixes #34'); return {}; },
@@ -310,8 +312,11 @@ test('build: review fixes first, then the bug queue, then the plan\'s features, 
     unanswered: n => !answered.has(n),
     prFor: b => (b === 'fix/34' ? 'https://github.com/o/r/pull/40' : null),
     needsInfo: (n, t) => { asked.push([n, t]); return true; },
+    progress: at => stages.push(at && [at.stage, at.done, at.total, at.label]),
   });
   assert.deepStrictEqual(r.calls.map(c => c.args[1]), ['/m-review the review comments on pull request #12', '/m-bugfix #34', '/m-bugfix #35', '/m-continue a', '/m-continue b']);
+  // where the build stands, for the status line: each queue's item of how many, then the plan's features built of all
+  assert.deepStrictEqual(stages, [['review comments', 0, 1, '#12'], ['bugs', 0, 2, '#34'], ['bugs', 1, 2, '#35'], ['features', 0, 3, 'a'], ['features', 1, 3, 'b'], null]);
   const note = i => r.calls[i].args[r.calls[i].args.indexOf('--append-system-prompt') + 1];
   assert.match(note(0), /Pull request #12, on this branch \(feature\/z\), has review comments nobody answered yet[\s\S]*gh pr comment 12 --body-file/);
   assert.match(note(1), /a command line that holds several lines or backticks is refused/, 'descriptions and comments go in a file');

@@ -1,9 +1,9 @@
 <!-- KIT:START agentic-mobile-kit {{KIT_VERSION}} ci={{KIT_CI}} stack={{KIT_STACK}} (edit outside these markers; the kit updates what's inside) -->
 # {{APP_NAME}}: instructions for AI agents
 
-Read by Claude Code (through CLAUDE.md), Codex, Cursor, OpenCode, Kiro and Antigravity; details live in `docs/amk/`.
+Read by every AI tool here (Claude Code through CLAUDE.md); details live in `docs/amk/`.
 
-This project may also use other AI workflow frameworks (for example Superpowers, BMAD or proAgents). They keep working for everything else. When the user starts a task with an `m-` skill (`/m-feature`, `$m-feature`, …), follow that skill's steps for the whole task; where another framework's instructions differ, the `m-` skill wins.
+Other AI workflow frameworks in this project (Superpowers, BMAD, proAgents, …) keep working for everything else. When the user starts a task with an `m-` skill (`/m-feature`, `$m-feature`, …), follow that skill's steps for the whole task; where another framework's instructions differ, the `m-` skill wins.
 
 ## Project
 
@@ -26,7 +26,7 @@ This project may also use other AI workflow frameworks (for example Superpowers,
 | Check devices at the same time | `sh scripts/amk/verify.sh plan --spec <id>` prints a command per device, each for an `m-device-checker` subagent |
 | After each task: lint, typecheck and the tests of the changed files | `sh scripts/amk/verify.sh quick --related` |
 | React Native mistakes, flow problems and oversized files or functions in this branch's changes (`verify.sh quick` runs it) | `node scripts/amk/rn-check.js` |
-| Specs and the plan: progress, checks, the tests of the areas a spec touches, flows, the living spec, planning | `node scripts/amk/specs.js status` (or `check`, `tests <id>`, `flow <id>`, `merge <id>`, `check --plan`, `plan-folder`, `import <file>`, `start [<id>]`) |
+| Specs and the plan: progress, checks, a spec's tests and flows, the living spec, planning | `node scripts/amk/specs.js status` (or `check`, `tests <id>`, `flow <id>`, `merge <id>`, `check --plan`, `plan-folder`, `import <file>`, `start [<id>]`) |
 | Unattended (a person starts it; never skipping permission prompts): its PRs' review fixes, `amk-fix` bugs, then approved features | `node scripts/amk/autopilot.js [--reviews \| --bugs \| --features]`; first `node scripts/amk/autopilot.js check` |
 | A feature's PR: checks (with a failure's log), review comments, auto-merge, main merged into stacked branches | `node scripts/amk/pr.js checks` (or `comments`, `automerge`, `forward`) |
 | Check a release before tagging it (versions, store review rules, debug leftovers) | `node scripts/amk/release-check.js` |
@@ -52,9 +52,10 @@ Never say a check passed unless you ran it in this session.
 - Don't hand-edit `ios/*.xcodeproj/project.pbxproj`. If a native file must be added to the Xcode project, stop and ask.
 - Never read, print or commit `.env` files, keystores, signing files or the files `.amk-secrets` lists. Secrets don't belong in this repo.
 - Never use `git commit --no-verify`, `git push --force`, `git reset --hard` or `rm -rf`, and never throw away work that can't be brought back (uncommitted changes with `git checkout .` or `git restore .`, stashes with `git stash drop` or `clear`, unmerged commits with `git branch -D`): ask first. To undo your own edit to a file, `git checkout -- <that file>`.
-- When `rn-check` (in `verify.sh quick`) reports a problem (✗), show it to the user and let them choose, for each one: fix it, or keep the line with `// amk-ok <today's date>: <their reason>`. Never add an `amk-ok`, or a cap in `.amk-size-caps`, on your own. One kept over two weeks ago comes back when its file changes: ask again. Fix the warnings (!) in code the task changed, or tell the user why one stays.
+- When `rn-check` (in `verify.sh quick`) reports a problem (✗), show it to the user and let them choose, for each one: fix it, or keep the line with `// amk-ok <today's date>: <their reason>`. Never add an `amk-ok`, or a cap in `.amk-size-caps`, on your own. Fix the warnings (!) in code the task changed, or tell the user why one stays.
 - Run shell commands one at a time, as the skills write them, not joined with `&&` or `;`: a tool asks about a joined line, or refuses it, as a whole. When one is refused, run its parts on their own before deciding anything is blocked.
 - After 2 failed attempts at the same fix, stop and report what you found.
+- Ending your turn while something you started still runs (a background command, a subagent, CI)? Say what you wait for, and whether you go on by yourself.
 - Chat is not memory: write decisions into the spec or `docs/amk/decisions.md` straight away.
 - Follow `docs/amk/react-native.md`. Before fixing a build error, check `docs/amk/known-issues.md`.
 

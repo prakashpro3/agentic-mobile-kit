@@ -246,7 +246,28 @@ unclaim() { l=$(lock_path "$1"); rm -f "$l/owner"; rmdir "$l" 2> /dev/null || tr
 release() { for l in $held; do rm -f "$l/owner"; rmdir "$l" 2> /dev/null || true; done; held=""; }
 temps="" # the temporary devices this run made for a part of the flows (--part), deleted at its end
 tree_flow="" # the copy of a flow with view-tree steps (Android), next to it while it runs
-trap 'release; drop_temps; [ -z "$tree_flow" ] || rm -f "$tree_flow"' EXIT
+# where this run stands, for the status line and node scripts/amk/status.js --watch: a record per check in
+# .amk/progress/ (scripts/amk/progress.js), gone when the check ends. Git Bash's $$ isn't the process ID node sees
+me=$$
+[ ! -r "/proc/$$/winpid" ] || me=$(cat "/proc/$$/winpid")
+step() { # quick, ios or android; its stage; for the flows: how many ran, of how many, and the one running
+  step_title="Quick check" step_kind=quick-$related
+  case $1 in
+    ios | android)
+      step_title=iOS
+      [ "$1" = ios ] || step_title=Android
+      if [ "$build_only" = 1 ]; then step_title="$step_title build"; else step_title="$step_title check${part:+ part $part}"; fi
+      step_kind=$1-$build_only$no_build${part:+-part} ;;
+  esac
+  if [ -n "${3:-}" ]; then
+    node "$root/scripts/amk/progress.js" set "verify-$1-$me" --pid "$me" --title "$step_title" --kind "$step_kind" --stage "$2" --done "$3" --total "$4" --label "$5"
+  else
+    node "$root/scripts/amk/progress.js" set "verify-$1-$me" --pid "$me" --title "$step_title" --kind "$step_kind" --stage "$2"
+  fi > /dev/null 2>&1 || true
+}
+# its length is kept as a guide for the next of its kind when it passed
+finish() { node "$root/scripts/amk/progress.js" end "verify-$1-$me" --result "$([ "$status" = 0 ] && echo passed || echo failed)" > /dev/null 2>&1 || true; }
+trap 'release; drop_temps; [ -z "$tree_flow" ] || rm -f "$tree_flow"; node "$root/scripts/amk/progress.js" end-pid "$me" > /dev/null 2>&1 || true' EXIT
 trap 'exit 130' INT TERM
 holder() {
   l=$(lock_path "$1")
@@ -435,9 +456,13 @@ run_flows() { # screen device app_id orientation (PORTRAIT, or LANDSCAPE_LEFT to
   passed=0
   total=0
   flakies=0
+  count=$(echo $files | wc -w | tr -d ' ')
+  view=${1#"${1%%-*}"}
+  case $view in '') view=phone ;; -landscape) view="phone landscape" ;; *) view=$(echo "${view#-}" | tr - ' ') ;; esac
   for f in $files; do
     total=$((total + 1))
     name=$(basename "$f" .yaml)
+    step "${1%%-*}" "$view" $((total - 1)) "$count" "$name"
     ok=0 why="" shot="" first=""
     # an earlier run's first try, when the flow was flaky then
     [ ! -d "$evidence/maestro-logs/$1-$name-first-try" ] || rm -r "$evidence/maestro-logs/$1-$name-first-try"
@@ -601,9 +626,9 @@ check_screens() { # platform phone tablet app_id screens…
 
 quick() {
   # each one passes when the app's script passes, or when all its failures were already on the base branch
-  if node scripts/amk/baseline.js lint > "$evidence/lint.log" 2>&1 &&
-    node scripts/amk/baseline.js typecheck > "$evidence/typecheck.log" 2>&1 &&
-    node scripts/amk/baseline.js test $([ "$related" = 0 ] || echo --related) > "$evidence/test.log" 2>&1; then
+  if step quick lint && node scripts/amk/baseline.js lint > "$evidence/lint.log" 2>&1 &&
+    step quick typecheck && node scripts/amk/baseline.js typecheck > "$evidence/typecheck.log" 2>&1 &&
+    step quick tests && node scripts/amk/baseline.js test $([ "$related" = 0 ] || echo --related) > "$evidence/test.log" 2>&1; then
     if [ "$related" = 0 ]; then echo "quick: lint, typecheck and tests passed"; else echo "quick: lint, typecheck and the tests related to this branch's changes passed"; fi
     # what didn't run (no such script, or an Expo app without ESLint yet), and failures the base branch already had
     cat "$evidence/lint.log" "$evidence/typecheck.log" "$evidence/test.log" |
@@ -615,6 +640,7 @@ quick() {
   fi
   # React Native mistakes in the lines this branch changed (the app's rules list them): its problems fail quick, its
   # warnings don't
+  step quick "React Native check"
   node scripts/amk/rn-check.js > "$evidence/rn-check.log" 2>&1 || status=1
   head -n 40 "$evidence/rn-check.log"
   [ "$(wc -l < "$evidence/rn-check.log")" -le 40 ] || echo "  … all of it in ${evidence#"$root"/}/rn-check.log"
@@ -629,6 +655,7 @@ ios() {
   fi
   [ "$build_only" = 1 ] || command -v maestro > /dev/null || { echo "ios: Maestro isn't installed (https://maestro.dev)"; status=1; return; }
   same_api ios || { status=1; return; }
+  step ios "$([ "$no_build" = 1 ] && echo devices || echo build)"
   if [ "$no_build" = 0 ]; then
     # Expo apps without native folders in git: generate ios/ first
     if ! sh scripts/amk/prebuild.sh ios > "$evidence/prebuild-ios.log" 2>&1; then
@@ -704,6 +731,7 @@ ios() {
     echo "ios: there's no build to check yet: run sh scripts/amk/verify.sh build first"; status=1; return
   fi
   app_id=$(/usr/libexec/PlistBuddy -c 'Print CFBundleIdentifier' "$a/Info.plist")
+  step ios installing
   for d in $device $tablet; do
     if is_real "$d"; then
       launch_check "$d" || { status=1; return; }
@@ -982,6 +1010,7 @@ android_ready() {
 android() {
   [ "$build_only" = 1 ] || command -v maestro > /dev/null || { echo "android: Maestro isn't installed (https://maestro.dev)"; status=1; return; }
   same_api android || { status=1; return; }
+  step android "$([ "$no_build" = 1 ] && echo devices || echo build)"
   case $(uname -s) in # where Android Studio puts the SDK by default
     Darwin) default_sdk=$HOME/Library/Android/sdk ;;
     MINGW* | MSYS* | CYGWIN*) default_sdk=${LOCALAPPDATA:-$HOME/AppData/Local}/Android/Sdk ;;
@@ -1092,6 +1121,7 @@ android() {
   aapt2="$(ls -d "$sdk"/build-tools/*/ 2> /dev/null | sort -V | tail -n 1)aapt2"
   app_id=$("$aapt2" dump badging "$apk" 2> /dev/null | sed -n "s/^package: name='\([^']*\)'.*/\1/p")
   [ -n "$app_id" ] || app_id=$(sed -n 's/.*applicationId *=\{0,1\} *"\([^"]*\)".*/\1/p' android/app/build.gradle* | head -n 1)
+  step android installing
   if [ -n "$device" ]; then
     android_ready "$device" || { echo "android: $device didn't finish starting (see: adb devices)"; status=1; return; }
     "$adb" -s "$device" install -r "$apk" > /dev/null
@@ -1116,10 +1146,10 @@ build() {
   build_only=1
   ios_pid=""
   if [ "$(uname -s)" = Darwin ]; then
-    (trap release EXIT; ios; exit $status) > "$evidence/build-ios.out" 2>&1 &
+    (trap release EXIT; ios; finish ios; exit $status) > "$evidence/build-ios.out" 2>&1 &
     ios_pid=$!
   fi
-  (trap release EXIT; android; exit $status) > "$evidence/build-android.out" 2>&1 &
+  (trap release EXIT; android; finish android; exit $status) > "$evidence/build-android.out" 2>&1 &
   android_pid=$!
   [ -z "$ios_pid" ] || wait "$ios_pid" || status=1
   wait "$android_pid" || status=1
@@ -1242,10 +1272,10 @@ case $mode in ios | android | all | build)
 esac
 
 case $mode in
-  quick) quick ;;
-  ios) ios ;;
-  android) android ;;
-  all) quick; ios; android ;;
+  quick) quick; finish quick ;;
+  ios) ios; finish ios ;;
+  android) android; finish android ;;
+  all) quick; finish quick; ios; finish ios; android; finish android ;;
   build) build ;;
   plan) plan; exit 0 ;;
   approve) node scripts/amk/shots.js approve "$evidence"; exit $? ;;

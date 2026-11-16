@@ -37,11 +37,17 @@ const queue = (...xs) => Object.assign(xs, { queue: true });
 const PR = { number: 12, url: 'https://github.com/o/r/pull/12', state: 'OPEN', baseRefName: 'main', reviewDecision: 'REVIEW_REQUIRED' };
 
 test('checks: waits while they run, passes when they pass, and says so without a pull request or any checks', async () => {
-  const g = fakeGh({ 'pr view': PR, 'pr checks': queue([], [{ name: 'checks', bucket: 'pending' }], [{ name: 'checks', bucket: 'pass' }, { name: 'android', bucket: 'skipping' }]) });
+  const g = fakeGh({ 'pr view': PR, 'pr checks': queue([], [{ name: 'checks', bucket: 'pending' }, { name: 'ios', bucket: 'pending' }, { name: 'lint', bucket: 'pass' }], [{ name: 'checks', bucket: 'pass' }, { name: 'android', bucket: 'skipping' }]) });
+  const progress = [];
+  const note = g.io.note;
+  g.io.note = (t, at) => { progress.push(at); note(t); };
   assert.strictEqual(await pr.checks('feature/a', {}, g.io), 0);
+  // how far the checks are, for the status line
+  assert.deepStrictEqual(progress, [{ stage: 'PR #12', done: 0, total: 0, label: 'no checks reported yet' },
+    { stage: 'PR #12', done: 1, total: 3, label: 'waiting for checks and 1 more' }, { stage: 'PR #12', done: 2, total: 2, label: 'no checks reported yet' }]);
   assert.match(g.lines.join('\n'), /✓ the checks passed on https:\/\/github\.com\/o\/r\/pull\/12: checks, android/);
   assert.strictEqual(g.calls.filter(c => c.startsWith('pr checks 12')).length, 3, 'asked again until none was pending');
-  assert.ok(g.lines.includes('note: https://github.com/o/r/pull/12: waiting for checks'), 'where the wait stands, for the stall watchdog');
+  assert.ok(g.lines.includes('note: https://github.com/o/r/pull/12: waiting for checks, ios'), 'where the wait stands, for the stall watchdog');
   const none = fakeGh({ 'pr view': PR, 'pr checks': [] });
   assert.strictEqual(await pr.checks('feature/a', {}, none.io), 0);
   assert.match(none.lines.join('\n'), /No checks reported on .*: nothing to wait for/);
@@ -143,7 +149,7 @@ function stacked() {
   write(dir, 'package.json', '{"name":"app"}\n');
   write(dir, 'yarn.lock', 'a@1\n');
   write(dir, 'src/home.ts', 'export const title = "Home";\n');
-  for (const f of ['specs.js', 'baseline.js', 'redact.js', 'pr.js']) write(dir, `scripts/amk/${f}`, read(KIT, `scripts/amk/${f}`));
+  for (const f of ['specs.js', 'baseline.js', 'redact.js', 'pr.js', 'progress.js']) write(dir, `scripts/amk/${f}`, read(KIT, `scripts/amk/${f}`));
   write(dir, 'scripts/amk/verify.sh', 'exit 0\n');
   write(dir, 'scripts/amk/install-deps.sh', 'echo installed >> .installs\n');
   write(dir, '.gitignore', '.installs\n');
@@ -236,7 +242,7 @@ test('forward: a feature built feature by feature on another one\'s branch (spec
   git(dir, 'config', 'user.name', 't');
   git(dir, 'config', 'user.email', 't@example.invalid');
   write(dir, 'package.json', '{"name":"app"}\n');
-  for (const f of ['specs.js', 'baseline.js', 'redact.js', 'pr.js']) write(dir, `scripts/amk/${f}`, read(KIT, `scripts/amk/${f}`));
+  for (const f of ['specs.js', 'baseline.js', 'redact.js', 'pr.js', 'progress.js']) write(dir, `scripts/amk/${f}`, read(KIT, `scripts/amk/${f}`));
   write(dir, 'scripts/amk/verify.sh', 'exit 0\n');
   write(dir, 'specs/_templates/progress.md', read(KIT, 'specs/_templates/progress.md'));
   const req = n => `### Requirement: ${n}\nThe app SHALL do ${n.toLowerCase()}.\n\n#### Scenario: ${n} works\n- WHEN asked\n- THEN it does\n`;

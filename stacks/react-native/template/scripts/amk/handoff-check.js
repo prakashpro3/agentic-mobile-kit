@@ -43,8 +43,13 @@ if (payload.hook_event_name === 'SessionStart') {
   process.exit(0);
 }
 
-// the turn really ends here (nothing below asks to go on): tell the developer, who may be in another window
-const ends = () => { try { require('./notify.js').notify({ ...payload, hook_event_name: 'Stop' }); } catch {} process.exit(0); };
+// the turn really ends here (nothing below asks to go on): the status line hears of it, and the developer, who may be in
+// another window, is told
+const ends = () => {
+  try { require('./status.js').mark(payload, { ended: Date.now() }); } catch {}
+  try { require('./notify.js').notify({ ...payload, hook_event_name: 'Stop' }); } catch {}
+  process.exit(0);
+};
 
 if (payload.stop_hook_active && !unattended) ends(); // already reminded once; don't loop
 

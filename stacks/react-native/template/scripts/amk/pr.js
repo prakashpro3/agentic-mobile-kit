@@ -20,6 +20,7 @@ const path = require('path');
 const { spawnSync } = require('child_process');
 const { untrusted } = require('./redact.js');
 const specs = require('./specs.js');
+const progress = require('./progress.js');
 
 const ROOT = path.join(__dirname, '..', '..');
 const read = f => { try { return fs.readFileSync(f, 'utf8').replace(/\r\n/g, '\n'); } catch { return null; } };
@@ -36,8 +37,12 @@ const IO = {
   ghText: args => { const r = sh('gh', args, { timeout: 120000 }); return r.status === 0 ? r.stdout : null; },
   ghRun: args => sh('gh', args, { timeout: 120000 }),
   sleep: ms => new Promise(r => setTimeout(r, ms)),
-  // where a wait stands, under .amk/: autopilot.js's stall watchdog counts a change there as activity
-  note: t => { try { fs.mkdirSync(path.join(ROOT, '.amk'), { recursive: true }); fs.writeFileSync(path.join(ROOT, '.amk/pr-checks.txt'), `${new Date().toISOString()} ${t}\n`); } catch {} },
+  // where a wait stands, under .amk/: autopilot.js's stall watchdog counts a change there as activity, and the status
+  // line shows how many checks are done (progress.js)
+  note: (t, at) => {
+    try { fs.mkdirSync(path.join(ROOT, '.amk'), { recursive: true }); fs.writeFileSync(path.join(ROOT, '.amk/pr-checks.txt'), `${new Date().toISOString()} ${t}\n`); } catch {}
+    if (at) progress.set('pr-checks', { title: 'CI', pid: process.pid, ...at });
+  },
   now: Date.now,
   log: t => console.log(t),
 };
@@ -77,7 +82,8 @@ async function checks(branch, { waitMs = 30 * 60e3, pollMs = 30e3, firstMs = 3 *
   for (;;) {
     list = checkList(pr, io);
     const pending = list.filter(c => c.bucket === 'pending');
-    io.note(`${pr.url}: ${list.length ? `waiting for ${pending.map(c => c.name).join(', ')}` : 'no checks reported yet'}`);
+    io.note(`${pr.url}: ${list.length ? `waiting for ${pending.map(c => c.name).join(', ')}` : 'no checks reported yet'}`,
+      { stage: `PR #${pr.number}`, done: list.length - pending.length, total: list.length, label: pending.length ? `waiting for ${pending[0].name}${pending.length > 1 ? ` and ${pending.length - 1} more` : ''}` : 'no checks reported yet' });
     if (list.length && !pending.length) break;
     // a repository without CI never reports any: after a few minutes, there's nothing to wait for
     if (!list.length && io.now() - start >= firstMs) { io.log(`No checks reported on ${pr.url}: nothing to wait for.`); return 0; }
@@ -233,7 +239,7 @@ if (require.main === module) {
   const branch = named || branchNow();
   const main = specs.mainRef();
   const done = c => { process.exitCode = c; };
-  if (cmd === 'checks') checks(branch, { waitMs: (parseFloat(opt('--wait')) || 30) * 60e3 }).then(done);
+  if (cmd === 'checks') checks(branch, { waitMs: (parseFloat(opt('--wait')) || 30) * 60e3 }).then(c => { progress.end('pr-checks', c === 0 ? 'passed' : ''); done(c); });
   else if (cmd === 'automerge') done(automerge(branch, main));
   else if (cmd === 'comments') done(comments(branch));
   else if (cmd === 'forward') done(forward(main));

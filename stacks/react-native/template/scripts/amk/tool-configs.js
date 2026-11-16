@@ -5,6 +5,10 @@
 //     Antigravity rejects, dropping the whole hook set, the guard included
 //   - Codex asks with options to pick from (request_user_input) in every mode, not only in plan mode: rulesync writes no
 //     [features] table, and Codex reads it from the project's config once the folder is trusted
+//   - Codex shows its plan as a checklist while it works (update_plan, off since Codex 0.152), in step with the spec's tasks
+//   - Claude Code shows what's going on under the prompt (scripts/amk/status.js, every 2 seconds), and keeps a task list on
+//     every model (newer ones have none unless it's switched on), in step with the spec's tasks. rulesync has neither,
+//     and keeps both once they're there. A team's own status line in the project's settings stays
 // Usage: node scripts/amk/tool-configs.js (in the project's folder)
 'use strict';
 const fs = require('fs');
@@ -34,8 +38,29 @@ function codexQuestions(dir) {
     : `${text.replace(/\n*$/, '\n')}\n# agentic-mobile-kit: questions as options to pick from, in every mode\n[features]\n${on}\n`);
 }
 
-const afterGenerate = dir => { flattenAntigravityStop(dir); codexQuestions(dir); };
+function codexPlan(dir) {
+  const file = path.join(dir, '.codex/config.toml');
+  const text = read(file);
+  if (text === null || /^[^#\n]*\bupdate_plan\b/m.test(text)) return;
+  fs.writeFileSync(file, `${text.replace(/\n*$/, '\n')}\n# agentic-mobile-kit: the plan as a checklist while it works, in step with the spec's tasks\n[tools.update_plan]\nenabled = true\n`);
+}
 
-module.exports = { afterGenerate, flattenAntigravityStop, codexQuestions };
+// found from wherever Claude Code runs it, as the hooks are (.rulesync/hooks.jsonc)
+const STATUS_LINE = { type: 'command', command: "node -e \"require(require('child_process').execSync('git rev-parse --show-toplevel').toString().trim() + '/scripts/amk/status.js').statusLine()\"", refreshInterval: 2 };
+function claudeStatus(dir) {
+  const file = path.join(dir, '.claude/settings.json');
+  let settings;
+  try { settings = JSON.parse(read(file)); } catch { return; }
+  if (!settings || typeof settings !== 'object') return;
+  const before = JSON.stringify(settings);
+  if (!settings.statusLine || /scripts\/amk\/status\.js/.test(settings.statusLine.command || '')) settings.statusLine = STATUS_LINE;
+  settings.env = { ...settings.env };
+  if (settings.env.CLAUDE_CODE_ENABLE_TODO_TOOLS === undefined) settings.env.CLAUDE_CODE_ENABLE_TODO_TOOLS = '1';
+  if (JSON.stringify(settings) !== before) fs.writeFileSync(file, `${JSON.stringify(settings, null, 2)}\n`);
+}
+
+const afterGenerate = dir => { flattenAntigravityStop(dir); codexQuestions(dir); codexPlan(dir); claudeStatus(dir); };
+
+module.exports = { afterGenerate, flattenAntigravityStop, codexQuestions, codexPlan, claudeStatus, STATUS_LINE };
 
 if (require.main === module) afterGenerate(process.cwd());

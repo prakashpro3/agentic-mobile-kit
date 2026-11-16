@@ -653,10 +653,55 @@ test('scripts/amk/tool-configs.js, which CI\'s tool-config check runs after rule
   fs.mkdirSync(path.join(dir, '.codex'));
   fs.writeFileSync(path.join(dir, '.agents/hooks.json'), JSON.stringify({ rulesync: { Stop: [{ hooks: [{ type: 'command', command: 'node stop.js' }] }] } }));
   fs.writeFileSync(path.join(dir, '.codex/config.toml'), 'default_permissions = "rulesync"\n');
+  fs.mkdirSync(path.join(dir, '.claude'));
+  fs.writeFileSync(path.join(dir, '.claude/settings.json'), '{ "hooks": {} }\n');
   const r = require('child_process').spawnSync(process.execPath, [path.join(__dirname, '../stacks/react-native/template/scripts/amk/tool-configs.js')], { cwd: dir, encoding: 'utf8' });
   assert.strictEqual(r.status, 0, r.stderr);
   assert.deepStrictEqual(JSON.parse(read(dir, '.agents/hooks.json')).rulesync.Stop, [{ type: 'command', command: 'node stop.js' }]);
-  assert.match(read(dir, '.codex/config.toml'), /\[features\]\ndefault_mode_request_user_input = true\n$/);
+  assert.match(read(dir, '.codex/config.toml'), /\[features\]\ndefault_mode_request_user_input = true\n\n# agentic-mobile-kit: .*\n\[tools\.update_plan\]\nenabled = true\n$/);
+  assert.match(JSON.parse(read(dir, '.claude/settings.json')).statusLine.command, /scripts\/amk\/status\.js'\)\.statusLine\(\)/);
+});
+
+test('Codex shows its plan as a checklist while it works: switched on once, and a team\'s own setting of it stays', () => {
+  const { codexPlan } = require('../stacks/react-native/template/scripts/amk/tool-configs.js');
+  const dir = tmpDir('amk-codex-plan-');
+  fs.mkdirSync(path.join(dir, '.codex'));
+  fs.writeFileSync(path.join(dir, '.codex/config.toml'), 'default_permissions = "rulesync"\n');
+  codexPlan(dir);
+  const on = read(dir, '.codex/config.toml');
+  assert.strictEqual(on, 'default_permissions = "rulesync"\n\n# agentic-mobile-kit: the plan as a checklist while it works, in step with the spec\'s tasks\n[tools.update_plan]\nenabled = true\n');
+  codexPlan(dir);
+  assert.strictEqual(read(dir, '.codex/config.toml'), on, 'once');
+  // Codex reads only the table (update_plan = true fails to load): a team's own, as a table or a dotted key, stays
+  for (const own of ['[tools.update_plan]\nenabled = false\n', 'tools.update_plan.enabled = false\n']) {
+    fs.writeFileSync(path.join(dir, '.codex/config.toml'), own);
+    codexPlan(dir);
+    assert.strictEqual(read(dir, '.codex/config.toml'), own);
+  }
+  fs.writeFileSync(path.join(dir, '.codex/config.toml'), '# update_plan is off by default\n');
+  codexPlan(dir);
+  assert.match(read(dir, '.codex/config.toml'), /\[tools\.update_plan\]\nenabled = true\n$/, 'a comment isn\'t a setting');
+  codexPlan(tmpDir('amk-codex-plan-none-')); // no Codex: nothing to do
+});
+
+test('Claude Code: the status line, every 2 seconds, and a task list on every model; a team\'s own status line and value stay', () => {
+  const { claudeStatus, STATUS_LINE } = require('../stacks/react-native/template/scripts/amk/tool-configs.js');
+  const dir = tmpDir('amk-claude-status-');
+  fs.mkdirSync(path.join(dir, '.claude'));
+  const settings = x => { if (x) fs.writeFileSync(path.join(dir, '.claude/settings.json'), `${JSON.stringify(x, null, 2)}\n`); claudeStatus(dir); return JSON.parse(read(dir, '.claude/settings.json')); };
+  const hooks = { Stop: [{ hooks: [{ type: 'command', command: 'node stop.js' }] }] };
+  const fresh = settings({ hooks });
+  assert.deepStrictEqual(fresh, { hooks, statusLine: STATUS_LINE, env: { CLAUDE_CODE_ENABLE_TODO_TOOLS: '1' } });
+  assert.strictEqual(STATUS_LINE.refreshInterval, 2);
+  assert.match(STATUS_LINE.command, /^node -e "require\(require\('child_process'\)\.execSync\('git rev-parse --show-toplevel'\)/, 'found from wherever Claude Code runs it, as the hooks are');
+  const text = read(dir, '.claude/settings.json');
+  claudeStatus(dir);
+  assert.strictEqual(read(dir, '.claude/settings.json'), text, 'nothing more to change');
+  // an earlier kit's status line is brought up to date; the team's own, and their value of the switch, stay
+  assert.deepStrictEqual(settings({ statusLine: { type: 'command', command: 'node scripts/amk/status.js --old' } }).statusLine, STATUS_LINE);
+  const own = { type: 'command', command: '~/.claude/statusline.sh' };
+  assert.deepStrictEqual(settings({ statusLine: own, env: { CLAUDE_CODE_ENABLE_TODO_TOOLS: '0', MY: 'x' } }), { statusLine: own, env: { CLAUDE_CODE_ENABLE_TODO_TOOLS: '0', MY: 'x' } });
+  claudeStatus(tmpDir('amk-claude-status-none-')); // no Claude Code: nothing to do
 });
 
 test('an earlier kit install next to husky: core.hooksPath goes back to husky and the kit\'s postinstall goes', () => {

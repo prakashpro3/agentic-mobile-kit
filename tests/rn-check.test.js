@@ -457,6 +457,10 @@ test('verify.sh quick: rn-check runs after lint, typecheck and tests, and its pr
   const passed = quick();
   assert.match(passed.stdout, /^rn-check: 0 problems, 1 warning/m);
   assert.strictEqual(passed.status, 0, passed.stdout + passed.stderr);
+  // the status line's record of the run is gone once it ends; a run that passed is the guide for the next one's length
+  const kept = path.join(dir, '.amk/progress');
+  assert.deepStrictEqual(fs.readdirSync(kept), ['history.json']);
+  assert.deepStrictEqual(Object.keys(JSON.parse(fs.readFileSync(path.join(kept, 'history.json'), 'utf8'))), ['quick-0'], 'the failed run first isn\'t');
   // --related asks for the tests of the changed files; a test script that isn't Jest runs them all, and says so
   const related = spawnSync('sh', ['scripts/amk/verify.sh', 'quick', '--related'], { cwd: dir, encoding: 'utf8', env: { ...process.env, AMK_BASE: 'main', TMPDIR: temp } });
   assert.match(related.stdout, /^quick: lint, typecheck and the tests related to this branch's changes passed\n {2}test: every test ran, as the test script isn't Jest$/m);

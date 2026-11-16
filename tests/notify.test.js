@@ -10,7 +10,10 @@ const { execFileSync, spawnSync } = require('child_process');
 const tmpDir = require('./tmp');
 
 const KIT = path.join(__dirname, '../stacks/react-native/template/scripts/amk');
-const { message, lastWords } = require(path.join(KIT, 'notify.js'));
+// the scripts in a folder of their own: what the status line keeps (.amk/state/) stays out of the kit
+const COPY = path.join(tmpDir('amk-notify-kit-'), 'scripts/amk');
+fs.cpSync(KIT, COPY, { recursive: true });
+const { message, lastWords } = require(path.join(COPY, 'notify.js'));
 const write = (dir, f, text, mode) => { fs.mkdirSync(path.dirname(path.join(dir, f)), { recursive: true }); fs.writeFileSync(path.join(dir, f), text, mode ? { mode } : undefined); };
 const on = { AMK_NOTIFY: '' };
 const transcript = (...texts) => {
@@ -46,7 +49,7 @@ test('notify: what each hook says, and when it says nothing', () => {
 // a project with the kit's hook scripts, and a stand-in for the desktop notifier that records what it was asked
 function project() {
   const dir = tmpDir('amk-notify-');
-  for (const f of ['notify.js', 'redact.js', 'handoff-check.js', 'specs.js']) write(dir, `scripts/amk/${f}`, fs.readFileSync(path.join(KIT, f), 'utf8'));
+  for (const f of ['notify.js', 'redact.js', 'handoff-check.js', 'specs.js', 'status.js', 'progress.js']) write(dir, `scripts/amk/${f}`, fs.readFileSync(path.join(KIT, f), 'utf8'));
   write(dir, 'src/App.tsx', 'export {};\n');
   execFileSync('git', ['init', '-q'], { cwd: dir });
   execFileSync('git', ['add', '-A'], { cwd: dir });
@@ -89,6 +92,34 @@ test('notify: the desktop notification, its text redacted, and the stop hook not
   const quiet = shown();
   hook('notify.js', { hook_event_name: 'Notification', message: 'x' }, { AMK_NOTIFY: 'off' });
   assert.strictEqual(shown(), quiet);
+});
+
+test('notify: a turn that ends while a job it started runs (Claude Code) says what it waits for, and the status line hears of it', { skip: !desktop && 'no stand-in for this platform' }, () => {
+  const { dir, env, shown } = project();
+  const t = transcript('Both checks run in the background: I go on when they end.');
+  const job = (s, id, extra) => JSON.stringify({ type: 'user', timestamp: new Date(Date.now() - s * 1000).toISOString(), message: { content: [{ type: 'tool_result', tool_use_id: id }] }, toolUseResult: extra });
+  fs.appendFileSync(t, `\n${job(90, 'b', { backgroundTaskId: 'bg1' })}\n${job(80, 'a', { isAsync: true, status: 'async_launched', agentId: 'ag1', description: 'the iOS check' })}\n`);
+  const hook = (script, payload, more = {}) => spawnSync('node', ['-e', `require(${JSON.stringify(path.join(dir, 'scripts/amk', script))})${script === 'notify.js' ? '.hook()' : ''}`],
+    { cwd: dir, input: JSON.stringify(payload), encoding: 'utf8', env: { ...env, ...more } });
+  const r = hook('handoff-check.js', { session_id: 'w1', transcript_path: t });
+  assert.strictEqual(r.status, 0, r.stderr);
+  assert.match(shown(), /Claude Code is waiting for a command/, 'the first job it waits for');
+  assert.match(shown(), /It goes on by itself when that ends: nothing is needed from you now\./);
+  assert.strictEqual(r.stdout, '', 'Claude Code titles the tab itself, and rewrites it as the turn ends');
+  assert.ok(JSON.parse(fs.readFileSync(path.join(dir, '.amk/state/marks-w1.json'), 'utf8')).ended, 'the status line hears the turn ended');
+  // AMK_NOTIFY=ask: nothing is needed from the developer, so no notification
+  const quiet = shown();
+  hook('handoff-check.js', { session_id: 'w1', transcript_path: t }, { AMK_NOTIFY: 'ask' });
+  assert.strictEqual(shown(), quiet);
+  // a turn that ends with nothing running: notified as before
+  hook('handoff-check.js', { session_id: 'w2', transcript_path: transcript('All 12 tests pass.') });
+  assert.match(shown().slice(quiet.length), /Claude Code finished[\s\S]*All 12 tests pass\.|All 12 tests pass\.[\s\S]*Claude Code finished/);
+  // the notification hook marks what waits for the developer, or a reply waited for a minute: the turn is over
+  hook('notify.js', { hook_event_name: 'Notification', session_id: 'w3', notification_type: 'permission_prompt', message: 'Claude needs your permission to use Bash' });
+  const marks = JSON.parse(fs.readFileSync(path.join(dir, '.amk/state/marks-w3.json'), 'utf8'));
+  assert.strictEqual(marks.attention.text, 'Claude needs your permission to use Bash');
+  hook('notify.js', { hook_event_name: 'Notification', session_id: 'w3', notification_type: 'idle_prompt', message: 'Claude is waiting for your input' }, { AMK_NOTIFY: 'off' });
+  assert.ok(JSON.parse(fs.readFileSync(path.join(dir, '.amk/state/marks-w3.json'), 'utf8')).ended, 'marked with notifications off too');
 });
 
 test('notify: the webhook, posted from a process of its own so the hook returns at once', async () => {

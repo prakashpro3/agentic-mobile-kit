@@ -4,8 +4,10 @@
 // Google Chat, Discord). Hooks of the AI tool start it:
 //   Notification (Claude Code)  a permission prompt, or a reply it has waited a minute for
 //   PermissionRequest (Codex)   an approval (Claude Code says those through Notification)
-//   Stop (every tool)           every finished turn, from handoff-check.js once the turn really ends: what it asks
+//   Stop (every tool)           every finished turn, from handoff-check.js once the turn really ends: what it asks, or
+//                               (Claude Code) what it waits for, when it ends the turn while something it started runs
 // AMK_NOTIFY=off turns it off; AMK_NOTIFY=ask keeps the approvals, the waiting and the turns that end with a question.
+// The hook also tells the status line (status.js) that the agent waits for you, whether or not it notifies.
 // An unattended build (autopilot.js) notifies by itself, so nothing comes from here then.
 'use strict';
 const fs = require('fs');
@@ -30,6 +32,7 @@ function lastWords(p) {
   } catch {}
   return '';
 }
+const waiting = (p, words) => { try { const a = require('./status.js').stateOf(p, words); return a && a.state === 'waiting' ? a : null; } catch { return null; } };
 const toolOf = (p, env) => (/[\\/]\.claude[\\/]/.test(p.transcript_path || '') || env.CLAUDECODE ? 'Claude Code'
   : /[\\/]\.codex[\\/]/.test(p.transcript_path || '') ? 'Codex' : 'The AI');
 
@@ -47,7 +50,12 @@ function message(p, env = process.env) {
     return { title: `${project}: ${tool} needs your approval`, text: String(input.command || input.file_path || p.tool_name || 'a command') };
   }
   if (event !== 'Stop') return null;
-  const lines = lastWords(p).split('\n').map(l => l.replace(/[*_`#>]/g, '').trim()).filter(Boolean);
+  const words = lastWords(p);
+  // a turn that ends while what it started still runs (a command in the background, a subagent): Claude Code goes on
+  // by itself when that ends, as its log says
+  const a = tool === 'Claude Code' ? waiting(p, words) : null;
+  if (a) return mode === 'ask' ? null : { title: `${project}: ${tool} is waiting for ${a.pending[0].what}`, text: 'It goes on by itself when that ends: nothing is needed from you now.' };
+  const lines = words.split('\n').map(l => l.replace(/[*_`#>]/g, '').trim()).filter(Boolean);
   const question = lines.filter(l => /\?$/.test(l)).pop() || lines.find(l => /\bapprov/i.test(l));
   if (mode === 'ask' && !question) return null;
   return { title: `${project}: ${tool} ${question ? 'asks you' : 'finished'}`, text: question || lines[0] || 'Its turn is over.' };
@@ -75,10 +83,15 @@ function send(n, env = process.env) {
 }
 
 const notify = (p, env = process.env) => { const n = message(p, env); if (n) send(n, env); return n; };
-// a hook's own start: its payload on stdin
+// a hook's own start: its payload on stdin. The status line hears of it too: a reply Claude Code has waited a minute
+// for means the turn is over; anything else (a permission prompt, Codex's approvals) waits for you until the next step
 function hook() {
   let p = {};
   try { p = JSON.parse(fs.readFileSync(0, 'utf8')); } catch {}
+  try {
+    const idle = p.notification_type === 'idle_prompt' || /waiting for your input/i.test(p.message || '');
+    require('./status.js').mark(p, idle ? { ended: Date.now() } : { attention: { at: Date.now(), text: String(p.message || (p.tool_input || {}).command || 'your approval').slice(0, 200) } });
+  } catch {}
   notify(p);
 }
 
