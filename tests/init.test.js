@@ -684,23 +684,23 @@ test('Codex shows its plan as a checklist while it works: switched on once, and 
   codexPlan(tmpDir('amk-codex-plan-none-')); // no Codex: nothing to do
 });
 
-test('Claude Code: the status line, every 2 seconds, and a task list on every model; a team\'s own status line and value stay', () => {
+test('Claude Code: the status line, every 2 seconds; a team\'s own status line stays', () => {
   const { claudeStatus, STATUS_LINE } = require('../stacks/react-native/template/scripts/amk/tool-configs.js');
   const dir = tmpDir('amk-claude-status-');
   fs.mkdirSync(path.join(dir, '.claude'));
   const settings = x => { if (x) fs.writeFileSync(path.join(dir, '.claude/settings.json'), `${JSON.stringify(x, null, 2)}\n`); claudeStatus(dir); return JSON.parse(read(dir, '.claude/settings.json')); };
   const hooks = { Stop: [{ hooks: [{ type: 'command', command: 'node stop.js' }] }] };
   const fresh = settings({ hooks });
-  assert.deepStrictEqual(fresh, { hooks, statusLine: STATUS_LINE, env: { CLAUDE_CODE_ENABLE_TODO_TOOLS: '1' } });
+  assert.deepStrictEqual(fresh, { hooks, statusLine: STATUS_LINE });
   assert.strictEqual(STATUS_LINE.refreshInterval, 2);
   assert.match(STATUS_LINE.command, /^node -e "require\(require\('child_process'\)\.execSync\('git rev-parse --show-toplevel'\)/, 'found from wherever Claude Code runs it, as the hooks are');
   const text = read(dir, '.claude/settings.json');
   claudeStatus(dir);
   assert.strictEqual(read(dir, '.claude/settings.json'), text, 'nothing more to change');
-  // an earlier kit's status line is brought up to date; the team's own, and their value of the switch, stay
+  // an earlier kit's status line is brought up to date; the team's own stays, as do their other settings
   assert.deepStrictEqual(settings({ statusLine: { type: 'command', command: 'node scripts/amk/status.js --old' } }).statusLine, STATUS_LINE);
   const own = { type: 'command', command: '~/.claude/statusline.sh' };
-  assert.deepStrictEqual(settings({ statusLine: own, env: { CLAUDE_CODE_ENABLE_TODO_TOOLS: '0', MY: 'x' } }), { statusLine: own, env: { CLAUDE_CODE_ENABLE_TODO_TOOLS: '0', MY: 'x' } });
+  assert.deepStrictEqual(settings({ statusLine: own, env: { MY: 'x' } }), { statusLine: own, env: { MY: 'x' } });
   claudeStatus(tmpDir('amk-claude-status-none-')); // no Claude Code: nothing to do
 });
 

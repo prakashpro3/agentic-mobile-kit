@@ -6,9 +6,9 @@
 //   - Codex asks with options to pick from (request_user_input) in every mode, not only in plan mode: rulesync writes no
 //     [features] table, and Codex reads it from the project's config once the folder is trusted
 //   - Codex shows its plan as a checklist while it works (update_plan, off since Codex 0.152), in step with the spec's tasks
-//   - Claude Code shows what's going on under the prompt (scripts/amk/status.js, every 2 seconds), and keeps a task list on
-//     every model (newer ones have none unless it's switched on), in step with the spec's tasks. rulesync has neither,
-//     and keeps both once they're there. A team's own status line in the project's settings stays
+//   - Claude Code shows what's going on under the prompt (scripts/amk/status.js, every 2 seconds), the spec's tasks
+//     included. rulesync has no statusLine, and keeps it once it's there. A team's own status line in the project's
+//     settings stays
 // Usage: node scripts/amk/tool-configs.js (in the project's folder)
 'use strict';
 const fs = require('fs');
@@ -54,8 +54,6 @@ function claudeStatus(dir) {
   if (!settings || typeof settings !== 'object') return;
   const before = JSON.stringify(settings);
   if (!settings.statusLine || /scripts\/amk\/status\.js/.test(settings.statusLine.command || '')) settings.statusLine = STATUS_LINE;
-  settings.env = { ...settings.env };
-  if (settings.env.CLAUDE_CODE_ENABLE_TODO_TOOLS === undefined) settings.env.CLAUDE_CODE_ENABLE_TODO_TOOLS = '1';
   if (JSON.stringify(settings) !== before) fs.writeFileSync(file, `${JSON.stringify(settings, null, 2)}\n`);
 }
 
