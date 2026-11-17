@@ -707,3 +707,20 @@ The new known-issues entry (the iOS build error when Xcode holds the project) me
   - `daemon stop` left its session processes (and Codex's app-servers) running.
 - **What it found in the kit:** a denied permission ends Claude's turn without the stop hook, so `status.js` showed it working. It now reads that tool result as the agent waiting for the developer.
 
+
+## Answering from Telegram through hooks: shelved (2026-11-17)
+
+A kit-built Telegram bridge was tried with Claude Code 2.1.326 and shelved. The approach:
+
+- Questions and approvals were asked in the reply instead of in pop-ups.
+- An `asyncRewake` Stop hook sent the question to a bot and woke Claude with the tapped answer.
+
+The delivery worked, but Claude Code hands a woken hook's message to Claude labeled as a system notification, "not user input". Claude rightly won't take it as the developer's answer, and that guard shouldn't be worked around.
+
+Also found:
+
+- **Background service:** an interactive session can run inside a pre-started process of Claude Code's background service (`claude bg-spare`; `"sessionKind":"bg"` in the log). Its hooks get the service's variables, not the terminal's: `AMK_NOTIFY_URL` from `~/.zshrc` was missing there, so the alerts' chat webhook didn't go out. Now `node scripts/amk/notify.js save` keeps the webhook in `~/.amk/notify.json`, which the hooks read.
+- **Late log writes:** such a session writes its log late. The last message can land after the Stop hook has started.
+- **Reproducing:** test runs that start `claude` with a clean environment don't go through the service. `claude --bg` does.
+
+The supported ways to answer from a phone are Remote Control and Claude Code's Channels (its Telegram plugin, in research preview).

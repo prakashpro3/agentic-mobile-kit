@@ -4,8 +4,10 @@ const os = require('os');
 const path = require('path');
 
 const made = [];
-// a test never notifies the developer (scripts/amk/notify.js, from the hooks it runs)
+// a test never notifies the developer (scripts/amk/notify.js, from the hooks it runs), nor posts to their chat: a test
+// that checks the webhook passes its own
 process.env.AMK_NOTIFY = process.env.AMK_NOTIFY || 'off';
+process.env.AMK_NOTIFY_URL = 'off';
 process.on('exit', () => made.forEach(d => fs.rmSync(d, { recursive: true, force: true })));
 
 module.exports = prefix => {

@@ -138,6 +138,42 @@ test('notify: the webhook, posted from a process of its own so the hook returns 
   } finally { server.close(); }
 });
 
+test('notify: the webhook saved once (notify.js save) reaches a session that doesn\'t see the terminal\'s variables (Claude Code\'s background service); AMK_NOTIFY_URL comes first, and off sends none', async () => {
+  const { dir, env } = project();
+  const got = [];
+  const server = http.createServer((req, res) => { let b = ''; req.on('data', d => { b += d; }); req.on('end', () => { got.push({ at: req.url, ...JSON.parse(b) }); res.end('ok'); }); });
+  await new Promise(r => server.listen(0, '127.0.0.1', r));
+  const posts = async n => { for (let i = 0; i < 50 && got.length < n; i++) await new Promise(r => setTimeout(r, 100)); await new Promise(r => setTimeout(r, 300)); return got.length; };
+  try {
+    const url = `http://127.0.0.1:${server.address().port}/saved`;
+    const home = tmpDir('amk-notify-home-');
+    const bare = { ...env, HOME: home, USERPROFILE: home };
+    delete bare.AMK_NOTIFY_URL;
+    // save: the pasted URL, kept where only its owner reads it, and a test message through it
+    const saved = spawnSync('node', [path.join(dir, 'scripts/amk/notify.js'), 'save'], { cwd: dir, input: `${url}\n`, encoding: 'utf8', env: bare });
+    assert.strictEqual(saved.status, 0, saved.stderr);
+    const file = path.join(home, '.amk/notify.json');
+    assert.deepStrictEqual(JSON.parse(fs.readFileSync(file, 'utf8')), { url });
+    if (process.platform !== 'win32') assert.strictEqual(fs.statSync(file).mode & 0o777, 0o600, 'only its owner reads it');
+    assert.strictEqual(await posts(1), 1);
+    assert.match(got[0].text, /: alerts: This chat gets the AI's alerts\.$/);
+    // a hook without the variable: the saved webhook; off: none; the variable: that one
+    const hookWith = more => spawnSync('node', ['-e', `require(${JSON.stringify(path.join(dir, 'scripts/amk/notify.js'))}).hook()`],
+      { cwd: dir, input: JSON.stringify({ hook_event_name: 'PermissionRequest', tool_input: { command: 'git push' } }), encoding: 'utf8', env: { ...bare, ...more } });
+    hookWith({});
+    assert.strictEqual(await posts(2), 2);
+    assert.deepStrictEqual([got[1].at, /git push$/.test(got[1].text)], ['/saved', true]);
+    hookWith({ AMK_NOTIFY_URL: 'off' });
+    hookWith({ AMK_NOTIFY_URL: url.replace('/saved', '/variable') });
+    assert.strictEqual(await posts(3), 3, 'off sends none');
+    assert.strictEqual(got[2].at, '/variable');
+    // not a URL: nothing saved
+    const other = tmpDir('amk-notify-home-');
+    const bad = spawnSync('node', [path.join(dir, 'scripts/amk/notify.js'), 'save'], { cwd: dir, input: 'my chat\n', encoding: 'utf8', env: { ...bare, HOME: other, USERPROFILE: other } });
+    assert.deepStrictEqual([bad.status, fs.existsSync(path.join(other, '.amk/notify.json'))], [2, false]);
+  } finally { server.close(); }
+});
+
 test('notify: each chat gets only the field it reads (Google Chat refuses "Unknown name content"), from the hook and an unattended build alike', () => {
   const { webhookBody } = require(path.join(COPY, 'notify.js'));
   const body = u => JSON.parse(webhookBody(u, 'app: Claude Code asks you: Push it?'));
@@ -145,7 +181,9 @@ test('notify: each chat gets only the field it reads (Google Chat refuses "Unkno
   assert.deepStrictEqual(body('https://hooks.slack.com/services/T/B/x'), { text: 'app: Claude Code asks you: Push it?' });
   for (const u of ['https://discord.com/api/webhooks/1/x', 'https://ptb.discord.com/api/webhooks/1/x', 'https://discordapp.com/api/webhooks/1/x']) assert.deepStrictEqual(body(u), { content: 'app: Claude Code asks you: Push it?' }, u);
   assert.deepStrictEqual(Object.keys(body('https://example.invalid/discord.com/x')), ['text'], 'a path naming Discord isn\'t Discord');
-  assert.match(fs.readFileSync(path.join(KIT, 'autopilot.js'), 'utf8'), /body: require\('\.\/notify\.js'\)\.webhookBody\(/, 'the unattended build posts the same body');
+  const autopilot = fs.readFileSync(path.join(KIT, 'autopilot.js'), 'utf8');
+  assert.match(autopilot, /const \{ webhookUrl, webhookBody \} = require\('\.\/notify\.js'\);/, 'the unattended build posts to the same webhook');
+  assert.match(autopilot, /body: webhookBody\(url, /, 'the unattended build posts the same body');
 });
 
 test('notify: a notifier that can\'t start (Windows without PowerShell on the PATH) doesn\'t fail the hook', () => {

@@ -8,7 +8,8 @@
 // more from the handoff; a second stall with nothing changed blocks the feature, as any other stop that stays does.
 // Each session is logged, redacted, to .amk/build/<id>/build.log, and why a feature stopped to .amk/build/<id>/stop.md.
 // .amk/build/notes.md reaches each new session; .amk/build/STOP ends the build once the current task is committed.
-// It notifies on the Mac (notify-send on Linux) and through a chat webhook in AMK_NOTIFY_URL, when set.
+// It notifies on the Mac (notify-send on Linux) and through the chat webhook notify.js has (AMK_NOTIFY_URL, or the one
+// `node scripts/amk/notify.js save` kept).
 // Before the features, the work that unblocks merges, a session each: review fixes (its open pull requests whose review
 // asked for changes, or with an AI reviewer's comments, that nobody answered yet: the plan's features' and the bug
 // queue's own, never one opened by hand; m-review on the pull request's branch),
@@ -564,10 +565,11 @@ async function notify(title, text) {
     if (process.platform === 'darwin') spawnSync('osascript', ['-e', `display notification ${JSON.stringify(t)} with title ${JSON.stringify(title)}`], { stdio: 'ignore', timeout: 10000 });
     else if (process.platform === 'linux') spawnSync('notify-send', [title, t], { stdio: 'ignore', timeout: 10000 });
   } catch {}
-  if (!process.env.AMK_NOTIFY_URL) return;
+  const { webhookUrl, webhookBody } = require('./notify.js');
+  const url = webhookUrl();
+  if (!url) return;
   // at most 10 seconds
-  const post = fetch(process.env.AMK_NOTIFY_URL, { method: 'POST', headers: { 'content-type': 'application/json' },
-    body: require('./notify.js').webhookBody(process.env.AMK_NOTIFY_URL, `${title}: ${t}`) }).catch(() => {});
+  const post = fetch(url, { method: 'POST', headers: { 'content-type': 'application/json' }, body: webhookBody(url, `${title}: ${t}`) }).catch(() => {});
   await Promise.race([post, new Promise(r => setTimeout(r, 10000).unref())]);
 }
 

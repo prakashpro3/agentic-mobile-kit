@@ -1,7 +1,10 @@
 #!/usr/bin/env node
 // Tells you when the AI waits for you, so a session in another window doesn't sit there unanswered: a desktop
-// notification (macOS, Linux with notify-send, Windows) and, with AMK_NOTIFY_URL set, a chat or phone webhook (Slack,
-// Google Chat, Discord). Hooks of the AI tool start it:
+// notification (macOS, Linux with notify-send, Windows) and, with a webhook set up, a chat or phone message (Slack,
+// Google Chat, Discord). `node scripts/amk/notify.js save` keeps the webhook for every project on the computer, in
+// ~/.amk/notify.json (only its owner reads it): Claude Code can run a session in its background service, which doesn't
+// see the terminal's variables. AMK_NOTIFY_URL, where set, comes first; AMK_NOTIFY_URL=off sends no chat messages.
+// Hooks of the AI tool start it:
 //   Notification (Claude Code)  a permission prompt, or a reply it has waited a minute for
 //   PermissionRequest (Codex)   an approval (Claude Code says those through Notification)
 //   Stop (every tool)           every finished turn, from handoff-check.js once the turn really ends: what it asks, or
@@ -75,10 +78,18 @@ function send(n, env = process.env) {
         { detached: true, stdio: 'ignore', windowsHide: true, cwd: os.tmpdir() }).on('error', () => {}).unref();
     }
   } catch {}
-  if (!env.AMK_NOTIFY_URL) return;
-  const body = webhookBody(env.AMK_NOTIFY_URL, `${title}: ${text}`);
+  const url = webhookUrl(env);
+  if (!url) return;
+  const body = webhookBody(url, `${title}: ${text}`);
   spawn(process.execPath, ['-e', 'fetch(process.argv[1], { method: "POST", headers: { "content-type": "application/json" }, body: process.argv[2], signal: AbortSignal.timeout(10000) }).catch(() => {})',
-    env.AMK_NOTIFY_URL, body], { detached: true, stdio: 'ignore', env, cwd: os.tmpdir() }).on('error', () => {}).unref();
+    url, body], { detached: true, stdio: 'ignore', env, cwd: os.tmpdir() }).on('error', () => {}).unref();
+}
+
+// the chat webhook: AMK_NOTIFY_URL (off: none), or the one `save` kept
+const savedFile = () => path.join(os.homedir(), '.amk', 'notify.json');
+function webhookUrl(env = process.env) {
+  if (env.AMK_NOTIFY_URL) return /^off$/i.test(env.AMK_NOTIFY_URL) ? '' : env.AMK_NOTIFY_URL;
+  try { return String(JSON.parse(fs.readFileSync(savedFile(), 'utf8')).url || ''); } catch { return ''; }
 }
 
 // what a chat's webhook reads: Discord content, the others (Slack, Google Chat, Teams) text. Only that field: Google Chat
@@ -98,4 +109,26 @@ function hook() {
   notify(p);
 }
 
-module.exports = { message, send, notify, hook, lastWords, webhookBody };
+// once a computer: keeps the webhook (the terminal's AMK_NOTIFY_URL, or one pasted) and sends a test message through it
+async function save(env = process.env) {
+  const url = env.AMK_NOTIFY_URL && !/^off$/i.test(env.AMK_NOTIFY_URL) ? env.AMK_NOTIFY_URL : await new Promise(r => {
+    const rl = require('readline').createInterface({ input: process.stdin, output: process.stdout });
+    rl.on('close', () => { process.stdin.destroy(); r(''); }); // stdin, once read, would keep the process alive
+    rl.question('Paste the chat\'s webhook URL (Google Chat, Slack or Discord): ', a => { r(a.trim()); rl.close(); });
+  });
+  if (!/^https?:\/\/\S+$/.test(url)) { console.error('That isn\'t a webhook URL (https://…). Nothing saved.'); return 2; }
+  const file = savedFile();
+  fs.mkdirSync(path.dirname(file), { recursive: true, mode: 0o700 });
+  fs.writeFileSync(file, `${JSON.stringify({ url }, null, 2)}\n`, { mode: 0o600 });
+  fs.chmodSync(file, 0o600); // the URL is a secret: anyone with it can post to the chat
+  send({ title: `${path.basename(root)}: alerts`, text: 'This chat gets the AI\'s alerts.' }, { ...env, AMK_NOTIFY: '', AMK_NOTIFY_URL: url });
+  console.log(`Saved in ${file}, for every project on this computer, and sent a test message.`);
+  return 0;
+}
+
+module.exports = { message, send, notify, hook, lastWords, webhookBody, webhookUrl, save };
+
+if (require.main === module) {
+  if (process.argv[2] === 'save') save().then(code => { process.exitCode = code; });
+  else { console.error('usage: node scripts/amk/notify.js save   (the AI tools\' hooks call hook())'); process.exitCode = 2; }
+}
