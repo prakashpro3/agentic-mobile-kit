@@ -76,11 +76,14 @@ function send(n, env = process.env) {
     }
   } catch {}
   if (!env.AMK_NOTIFY_URL) return;
-  // Slack and Google Chat read text, Discord content
-  const body = JSON.stringify({ text: `${title}: ${text}`, content: `${title}: ${text}` });
+  const body = webhookBody(env.AMK_NOTIFY_URL, `${title}: ${text}`);
   spawn(process.execPath, ['-e', 'fetch(process.argv[1], { method: "POST", headers: { "content-type": "application/json" }, body: process.argv[2], signal: AbortSignal.timeout(10000) }).catch(() => {})',
     env.AMK_NOTIFY_URL, body], { detached: true, stdio: 'ignore', env, cwd: os.tmpdir() }).on('error', () => {}).unref();
 }
+
+// what a chat's webhook reads: Discord content, the others (Slack, Google Chat, Teams) text. Only that field: Google Chat
+// refuses a message with any field it doesn't know
+const webhookBody = (url, text) => JSON.stringify(/^https:\/\/([\w-]+\.)*discord(app)?\.com\//i.test(String(url)) ? { content: text } : { text });
 
 const notify = (p, env = process.env) => { const n = message(p, env); if (n) send(n, env); return n; };
 // a hook's own start: its payload on stdin. The status line hears of it too: a reply Claude Code has waited a minute
@@ -95,4 +98,4 @@ function hook() {
   notify(p);
 }
 
-module.exports = { message, send, notify, hook, lastWords };
+module.exports = { message, send, notify, hook, lastWords, webhookBody };

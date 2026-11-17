@@ -134,8 +134,18 @@ test('notify: the webhook, posted from a process of its own so the hook returns 
     for (let i = 0; i < 50 && !got.length; i++) await new Promise(r => setTimeout(r, 100));
     assert.strictEqual(got.length, 1);
     assert.match(got[0].text, /needs your approval: git push$/);
-    assert.strictEqual(got[0].content, got[0].text);
+    assert.deepStrictEqual(Object.keys(got[0]), ['text'], 'only text: Google Chat refuses a message with a field it doesn\'t know');
   } finally { server.close(); }
+});
+
+test('notify: each chat gets only the field it reads (Google Chat refuses "Unknown name content"), from the hook and an unattended build alike', () => {
+  const { webhookBody } = require(path.join(COPY, 'notify.js'));
+  const body = u => JSON.parse(webhookBody(u, 'app: Claude Code asks you: Push it?'));
+  assert.deepStrictEqual(body('https://chat.googleapis.com/v1/spaces/AAAA/messages?key=k&token=t'), { text: 'app: Claude Code asks you: Push it?' });
+  assert.deepStrictEqual(body('https://hooks.slack.com/services/T/B/x'), { text: 'app: Claude Code asks you: Push it?' });
+  for (const u of ['https://discord.com/api/webhooks/1/x', 'https://ptb.discord.com/api/webhooks/1/x', 'https://discordapp.com/api/webhooks/1/x']) assert.deepStrictEqual(body(u), { content: 'app: Claude Code asks you: Push it?' }, u);
+  assert.deepStrictEqual(Object.keys(body('https://example.invalid/discord.com/x')), ['text'], 'a path naming Discord isn\'t Discord');
+  assert.match(fs.readFileSync(path.join(KIT, 'autopilot.js'), 'utf8'), /body: require\('\.\/notify\.js'\)\.webhookBody\(/, 'the unattended build posts the same body');
 });
 
 test('notify: a notifier that can\'t start (Windows without PowerShell on the PATH) doesn\'t fail the hook', () => {

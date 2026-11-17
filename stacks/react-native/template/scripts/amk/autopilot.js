@@ -565,9 +565,9 @@ async function notify(title, text) {
     else if (process.platform === 'linux') spawnSync('notify-send', [title, t], { stdio: 'ignore', timeout: 10000 });
   } catch {}
   if (!process.env.AMK_NOTIFY_URL) return;
-  // Slack and Google Chat read text, Discord content; at most 10 seconds
+  // at most 10 seconds
   const post = fetch(process.env.AMK_NOTIFY_URL, { method: 'POST', headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ text: `${title}: ${t}`, content: `${title}: ${t}` }) }).catch(() => {});
+    body: require('./notify.js').webhookBody(process.env.AMK_NOTIFY_URL, `${title}: ${t}`) }).catch(() => {});
   await Promise.race([post, new Promise(r => setTimeout(r, 10000).unref())]);
 }
 
