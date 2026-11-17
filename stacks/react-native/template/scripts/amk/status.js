@@ -66,7 +66,9 @@ function take(s, line) {
         const job = r.backgroundTaskId || (r.status === 'async_launched' && r.agentId) || r.taskId;
         if (job) s.pending[job] = { what: String(r.description || s.uses[p.tool_use_id] || 'a command').slice(0, 80), at };
         delete s.uses[p.tool_use_id];
-        s.last = { kind: 'result', at };
+        // a permission the developer said no to: Claude Code stops there and waits for them, without its stop hook
+        const said = typeof p.content === 'string' ? p.content : Array.isArray(p.content) ? p.content.map(c => (c && c.text) || '').join('') : '';
+        s.last = { kind: /^The user doesn't want to proceed with this tool use/.test(said) ? 'stopped' : 'result', at };
       } else if (p.type === 'text') s.last = { kind: /^\[Request interrupted by user/.test(p.text || '') ? 'stopped' : 'prompt', at };
     }
   }

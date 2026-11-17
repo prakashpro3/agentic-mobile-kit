@@ -132,6 +132,19 @@ CI runs what a change calls for. A change to specs or docs only runs neither the
 
 Everything in git carries over: the spec, the handoff and the code. Chat history doesn't, on purpose, so anything decided in a chat must be written into the spec or `docs/amk/decisions.md`. `m-pause` does that.
 
+## Answer the AI from your phone
+
+The kit's alerts tell you when the AI waits for you, on your desktop and, with `AMK_NOTIFY_URL` set to a Google Chat, Slack or Discord webhook, on your phone. The alerts only go one way: to answer, use one of these.
+
+- **Claude Code:** Remote Control. Type `/rc` in a running session (or start it with `claude --rc`), then go on in the Claude app or at claude.ai/code. It needs a claude.ai plan (Pro, Max, Ultra, Team or Enterprise).
+- **Codex:** pair the ChatGPT app with the Codex Mac app.
+- **One app for several tools: [Happier](https://github.com/happier-dev/happier)** (open source, MIT). Start the session with `happier` instead of `claude` (or `happier codex`, `happier opencode`) in any terminal, VS Code's included: the same session shows in its phone app, where you reply and approve. A session started with plain `claude` can't be picked up later.
+  - **With the kit (tested with Happier 0.2.21):** in Claude Code sessions the guard, the stop hook and the alerts run as usual, and a permission you answer from Happier reaches the agent. Codex keeps a project's hooks off until you approve them once in Codex, with or without Happier.
+  - **Where sessions go:** Happier's hosted relay keeps them end-to-end encrypted. A relay of your own also works, but it's heavier: its server is an 847 MB download, and it listens on your whole network unless you set `HAPPIER_SERVER_HOST=127.0.0.1` (or reach it through Tailscale).
+- **Any AI tool in a terminal:** start it inside `tmux`, then attach from an SSH app on your phone (Termius, Blink) over Tailscale. Nothing new sees your code, and the phone shows the terminal itself.
+
+Check your company's rules before a client project's sessions go through anyone else's relay.
+
 ## What "done" means
 
 An agent's work is done only when:

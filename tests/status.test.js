@@ -90,6 +90,12 @@ test('status: a question it asks, a permission prompt, and the developer stoppin
   assert.strictEqual(state(attention).state, 'working', 'approved: on it goes');
   log(t, rec.interrupt(11));
   assert.strictEqual(state({}).state, 'stopped');
+  // a permission the developer said no to (in the terminal, or from a phone): Claude Code stops and waits, with no stop hook
+  log(t, rec.prompt(11.2), rec.tool(11.4, 'n', 'Bash', { command: 'npm install left-pad' }),
+    { type: 'user', timestamp: at(11.6), message: { content: [{ type: 'tool_result', tool_use_id: 'n', is_error: true, content: [{ type: 'text', text: "The user doesn't want to proceed with this tool use. The tool use was rejected (eg. if it was a file edit, the new_string was NOT written to the file). STOP what you are doing and wait for the user to tell you how to proceed." }] }] } });
+  assert.strictEqual(state({}).state, 'stopped', 'your turn, not working');
+  log(t, rec.prompt(11.8, 'use yarn then'));
+  assert.strictEqual(state({}).state, 'working');
   log(t, rec.prompt(12), rec.tool(13, 'c', 'Bash', { command: 'sleep 600', run_in_background: true }), rec.result(14, 'c', { backgroundTaskId: 'bgc' }), rec.interrupt(15));
   assert.strictEqual(state({}).state, 'waiting', 'stopped, but the job goes on, and its end starts the next turn');
   // the hooks' marks go in .amk/state/, by session

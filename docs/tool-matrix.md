@@ -690,3 +690,20 @@ The new known-issues entry (the iOS build error when Xcode holds the project) me
 - **Eval round** (Haiku 5.5, 21 cases): 19 passed. The two failures, `plan-feature-map` (it asked before planning) and `plan-continue-blocked` (it stopped before the last steps), failed the same way on 0.15.0's code in reruns, at the same rate: 3 of 4 and 2 of 4 passed on this change, 2 of 3 and 2 of 3 on 0.15.0. With the task tools on and off, two feature cases used about the same tokens.
 - **rulesync 27** keeps `statusLine` and `env` in `.claude/settings.json` when it generates the file again, so `tool-configs.js` adds them once. Generated twice, the files came out the same.
 - **AGENTS.md** stays under doctor's 8 KB. The waiting rule went in, and four sentences got shorter (one was something rn-check already prints), so an installed Expo app's is 8145 bytes (8180 before), a bare app's 7893.
+
+## Answering from a phone: Happier with the kit (2026-11-17)
+
+- **Setup:** Happier 0.2.21 (CLI from npm, relay through `@happier-dev/relay-server`, on 127.0.0.1 with its data in a scratch folder) against a scratch app with the kit for Claude Code and Codex. Sessions were driven from the CLI's session actions, as the phone app does.
+- **Claude Code** (Happier's default runtime, through the Agent SDK): the project's hooks run.
+  - `guard.js` blocked `cd android && rm -rf build`.
+  - The stop hook marked the turn's end.
+  - The permission hook fired for `npm install left-pad`, which reached Happier within 6 seconds. Denied from Happier, it reached Claude as "The user doesn't want to proceed with this tool use", and Claude stopped and waited.
+  - The relay stores the sessions end-to-end encrypted (`encryptionMode: e2ee`).
+- **Codex** (app-server): the model refused `rm -rf` from the kit's rules. The kit's hooks didn't run, as Codex keeps a project's hooks off until they're approved in Codex.
+- **Things to know about Happier itself:**
+  - The relay's runner downloads an 847 MB server into `~/Library/Caches/happier`. It listens on 0.0.0.0 unless `HAPPIER_SERVER_HOST` says otherwise, keeps its data in `~/.happy`, and takes port 9090 for metrics.
+  - `--help` runs some commands.
+  - It wrote `~/.happier` despite `HAPPIER_HOME_DIR`.
+  - `daemon stop` left its session processes (and Codex's app-servers) running.
+- **What it found in the kit:** a denied permission ends Claude's turn without the stop hook, so `status.js` showed it working. It now reads that tool result as the agent waiting for the developer.
+
