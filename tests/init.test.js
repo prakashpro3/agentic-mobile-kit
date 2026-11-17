@@ -144,7 +144,7 @@ test('only the chosen tools: no Claude link, rulesync targets Codex only', () =>
 test('refuses: uncommitted changes, not React Native, no native folders, unknown tool', () => {
   const dirty = fakeApp();
   fs.writeFileSync(path.join(dirty, 'x.txt'), 'x');
-  assert.throws(() => init(dirty, { skipGenerate: true }), e => e instanceof InitError && /uncommitted/.test(e.message));
+  assert.throws(() => init(dirty, { skipGenerate: true }), e => e instanceof InitError && /uncommitted changes \(x\.txt\)/.test(e.message), 'it names what it found');
 
   const notRn = fakeApp({ pkg: { dependencies: { react: '19.2.3' } } });
   assert.throws(() => init(notRn, { skipGenerate: true }), /not a React Native project/);
@@ -155,6 +155,24 @@ test('refuses: uncommitted changes, not React Native, no native folders, unknown
   assert.throws(() => init(noIos, { skipGenerate: true }), /isn.t an Expo app/);
 
   assert.throws(() => init(fakeApp(), { skipGenerate: true, tools: ['vscode'] }), /Unknown tool/);
+});
+
+test('the repository\'s own worktrees inside the project (Claude Code\'s .claude/worktrees/) aren\'t uncommitted changes; anything else is', () => {
+  const { checkProject } = require('../lib/init');
+  // a kit before 0.15.0 doesn't ignore .claude/worktrees/, and the update that does would be refused because of it
+  const dir = fakeApp();
+  git(dir, 'worktree', 'add', '-q', '-b', 'fix/a', '.claude/worktrees/a');
+  git(dir, 'worktree', 'add', '-q', '-b', 'chore/b', '.claude/worktrees/feature+b');
+  assert.match(git(dir, 'status', '--porcelain'), /^\?\? \.claude\//m, 'git shows the folder as untracked');
+  assert.strictEqual(checkProject(dir).stack, 'bare');
+  assert.doesNotThrow(() => init(dir, { skipGenerate: true }));
+  // a file of its own in that folder is a change
+  const other = fakeApp();
+  git(other, 'worktree', 'add', '-q', '-b', 'fix/a', '.claude/worktrees/a');
+  fs.writeFileSync(path.join(other, '.claude/worktrees/notes.txt'), 'x');
+  assert.throws(() => checkProject(other), /uncommitted changes \(\.claude\/worktrees\/notes\.txt\)/);
+  for (let i = 0; i < 4; i++) fs.writeFileSync(path.join(other, `n${i}.txt`), 'x');
+  assert.throws(() => checkProject(other), /uncommitted changes \(\S+, \S+, \S+ and 2 more\)/);
 });
 
 test('JavaScript projects with typescript installed get no typecheck script, and AGENTS.md says JavaScript', () => {
