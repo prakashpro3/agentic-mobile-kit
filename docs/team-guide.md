@@ -129,7 +129,7 @@ CI runs what a change calls for. A change to specs or docs only runs neither the
 ## Switching tool or machine in the middle of a task
 
 1. If the current tool still works, run `m-pause`. If it stopped at a usage limit, commit what's there yourself (`wip: <id> …`) and push.
-2. In the next tool or on the next machine: `git pull`, then `m-continue <id>`.
+2. In the next tool or on the next machine: `git pull`, then `m-continue <id>`. To pick up a paused `m-feature build`, run `m-continue` without an id. It asks about every blocked feature in one round, finishes each one, then goes on with the next ready features, as the build would. `m-continue <id>` finishes only that feature. A build started with `--one` still stops after its feature.
 
 Everything in git carries over: the spec, the handoff and the code. Chat history doesn't, on purpose, so anything decided in a chat must be written into the spec or `docs/amk/decisions.md`. `m-pause` does that.
 

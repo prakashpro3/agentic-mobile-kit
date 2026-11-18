@@ -15,4 +15,4 @@ On the `plan` branch, planning is paused instead: its state is `specs/plan.md` (
 3. **Commit the work in progress** on the feature branch (never `main`): message `wip: <id> <short summary>`, ending with `Spec: specs/<id>`.
    - Never use `--no-verify`. If a git hook blocks the commit, fix the problem if it's quick. Otherwise say so, record it in the handoff under "Blocked", and stop.
 4. **Push the branch**: `git push -u origin <branch>`.
-5. **Tell the user** the branch name, and that they can continue anywhere with `git pull`, then `m-continue <id>`.
+5. **Tell the user** the branch name, and that they can continue anywhere with `git pull`, then `m-continue <id>` (a paused `/m-feature build`: `m-continue` alone, which goes on with the whole build).

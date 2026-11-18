@@ -6,7 +6,7 @@ The features approved in `specs/plan.md` (on the `plan` branch) are built one af
 
 First, once per session: `node scripts/amk/pr.js forward` merges main into this build's stacked branches whose parent has merged.
 
-1. **Start it:** `node scripts/amk/specs.js start`. It takes the next ready feature (approved, not taken, its dependencies built or on this build's stack) and makes `feature/<id>` from main or the stacked branch holding them, with the spec as of its approval commit. Exit 3: nothing is ready; report what waits, and stop. Exit 4: a requirement it changes was changed outside the plan since its approval: a stop that stays.
+1. **Start it:** `node scripts/amk/specs.js start`. It takes the next ready feature (approved, not taken, its dependencies built or on this build's stack) and makes `feature/<id>` from main or the stacked branch holding them, with the spec as of its approval commit. With `--one`, write `Build: --one` under Notes in its handoff. Exit 3: nothing is ready; report what waits, and stop. Exit 4: a requirement it changes was changed outside the plan since its approval: a stop that stays.
 2. **Fit the design to the code as it is now:** refresh "Existing code to reuse", "Files to change" and the Regression line of `## Tests` in `design.md`. Stop only if that would change approved behavior. Commit.
 3. **Build the tasks** as m-feature step 4 says, without its look stop. In this build's first feature with screens, after its main screen's task, give that screenshot and the look `specs/plan.md` approved to the `m-design-reviewer` subagent: a mismatch is a stop that stays.
 4. **Test:** follow `.agents/skills/m-test/SKILL.md` for `<id>` (m-feature step 5), with two attempts at each fix. Then the design review of the screenshots that changed; once it passes, `sh scripts/amk/verify.sh approve --label <id>` makes them the approved ones (the plan approved the look). Device checks this machine can't run (iOS off a Mac, no emulator), and manual steps, are blocked, not failed: the report, `progress.md` and the PR say so (no merge until someone runs them), and the feature still finishes.
@@ -30,6 +30,6 @@ Disk full, signed out, a usage limit, or anything else every feature would hit e
 
 ## At the end
 
-Report what was built (with each PR), what's blocked and why, and what waits for the plan. Once unblocked (an approval, a spec change), a feature goes on with `m-continue <id>`.
+Report what was built (with each PR), what's blocked and why, and what waits for the plan. Once unblocked, a feature goes on with `m-continue <id>`; `m-continue` alone takes up the whole build.
 
 Never approve or merge a pull request, push `main` or `plan`, or change an approved requirement without the user's approval.
