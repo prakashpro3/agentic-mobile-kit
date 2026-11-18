@@ -93,7 +93,7 @@ test('lint: old errors in a changed file pass, a new error fails, and a changed 
   assert.strictEqual(check(dir, 'lint').code, 0, 'the kit\'s own .eslintignore lines are no setup change');
   write(dir, '.eslintrc.json', '{}\n');
   const setup = check(dir, 'lint');
-  assert.strictEqual(setup.code, 1);
+  assert.strictEqual(setup.code, 3, 'not compared: 3');
   assert.match(setup.out, /the change edits the ESLint setup/);
 });
 
@@ -131,7 +131,7 @@ test('a default branch left at an old first commit without the app is passed ove
   assert.strictEqual(base.stdout, 'master\n');
   // named, but without the app: says so, not a stack trace
   const named = check(dir, 'typecheck', { AMK_BASE: 'main' });
-  assert.strictEqual(named.code, 1);
+  assert.strictEqual(named.code, 3, 'not compared: 3');
   assert.match(named.out, /typecheck: failed, and it can't be compared with main \([0-9a-f]{7}\), which has no package\.json: set AMK_BASE to the branch this work is based on/);
   assert.doesNotMatch(named.out, /ENOENT|at /);
 });
@@ -165,9 +165,38 @@ test('no base branch to compare with: a failure stays a failure', () => {
   const dir = app();
   git(dir, 'branch', '-q', '-m', 'main', 'trunk');
   const r = check(dir, 'typecheck');
-  assert.strictEqual(r.code, 1);
+  assert.strictEqual(r.code, 3, 'a failure it can\'t compare: 3, which the pre-push hook names');
   assert.match(r.out, /no base branch to compare with \(set AMK_BASE\)/);
   assert.strictEqual(check(dir, 'typecheck', { AMK_BASE: 'trunk' }).code, 0, 'AMK_BASE picks it');
+});
+
+test('git worktrees: another one inside this checkout (.claude/worktrees/) isn\'t this branch\'s; one with no node_modules of its own compares all the same; a comparison it can\'t make says why, with 3', () => {
+  const dir = app();
+  // a stand-in tsc the app finds in node_modules, as Node does: in its own folder or one above
+  write(dir, 'node_modules/faketsc/index.js', fs.readFileSync(path.join(dir, 'tsc.js'), 'utf8'));
+  const pkg = JSON.parse(fs.readFileSync(path.join(dir, 'package.json'), 'utf8'));
+  write(dir, 'package.json', JSON.stringify({ ...pkg, scripts: { ...pkg.scripts, typecheck: 'node -e "require(\'faketsc\')"' } }));
+  commit(dir, 'typecheck through node_modules');
+  git(dir, 'worktree', 'add', '-q', '.claude/worktrees/rel', '-b', 'rel');
+  const wt = path.join(dir, '.claude/worktrees/rel');
+  // the main checkout: the other worktree's failures are left out
+  write(dir, 'types.txt', `${fs.readFileSync(path.join(dir, 'types.txt'), 'utf8')}.claude/worktrees/rel/src/old.ts(3,7): error TS2322: Type 'string' is not assignable to type 'number'.\n`);
+  write(dir, 'tests.json', JSON.stringify({ 'src/__tests__/old.test.js': ['Old › still broken'], 'src/__tests__/empty.test.js': null, '.claude/worktrees/rel/src/__tests__/old.test.js': ['Old › still broken'] }));
+  for (const what of ['typecheck', 'test']) {
+    const r = check(dir, what);
+    assert.strictEqual(r.code, 0, r.out);
+    assert.match(r.out, new RegExp(`${what}: left out 1 in other git worktrees inside this folder \\(\\.claude/worktrees/rel/\\)`));
+  }
+  // the worktree, with no node_modules: the app's dependencies can't be found, so neither run can be read: why, and 3
+  fs.renameSync(path.join(dir, 'node_modules'), path.join(dir, 'nm-away'));
+  const none = check(wt, 'typecheck', { AMK_BASE: 'main' });
+  assert.strictEqual(none.code, 3, none.out);
+  assert.match(none.out, /typecheck: failed, and it can't be compared with main \([0-9a-f]{7}\): this branch's output couldn't be read \(exit 1: .+\)/);
+  // installed in the main checkout: found from the worktree, and linked into the base's copy made before they were
+  fs.renameSync(path.join(dir, 'nm-away'), path.join(dir, 'node_modules'));
+  const r = check(wt, 'typecheck', { AMK_BASE: 'main' });
+  assert.strictEqual(r.code, 0, r.out);
+  assert.match(r.out, /typecheck: 1 problem\(s\), all already on main/);
 });
 
 test('a release branch is compared with the last release: a test that broke on main since then is new', () => {

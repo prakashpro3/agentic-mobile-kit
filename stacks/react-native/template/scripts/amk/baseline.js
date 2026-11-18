@@ -42,6 +42,25 @@ const jest = check === 'test' && /\bjest\b/.test((pkg.scripts || {}).test || '')
 // the real path: on macOS the temp folder is behind a symlink, and test runners report real paths
 const scratch = path.join(fs.realpathSync(os.tmpdir()), 'amk-baseline', hash(root));
 const slash = p => p.split(path.sep).join('/');
+const real = p => { try { return fs.realpathSync.native(p); } catch { return p; } };
+// other git worktrees inside this checkout (Claude Code's .claude/worktrees/): TypeScript and Jest find their files too,
+// which aren't this branch's
+const nested = git('worktree', 'list', '--porcelain').split('\n').filter(l => l.startsWith('worktree '))
+  .map(l => path.relative(real(root), real(l.slice(9)))).filter(r => r && !r.startsWith('..') && !path.isAbsolute(r)).map(r => `${slash(r)}/`);
+let leftOut = 0;
+const ours = problems => problems.filter(p => {
+  const theirs = nested.some(n => p.startsWith(n));
+  if (theirs) leftOut++;
+  return !theirs;
+});
+// the node_modules the app uses: its own, or the nearest above it, as Node and npm find it (a worktree inside the main
+// checkout, with no install of its own)
+const nodeModules = (() => {
+  for (let d = root; ; d = path.dirname(d)) {
+    if (fs.existsSync(path.join(d, 'node_modules'))) return path.join(d, 'node_modules');
+    if (path.dirname(d) === d) return null;
+  }
+})();
 // a minus b, counting duplicates
 const minus = (a, b) => {
   const left = [...b];
@@ -66,7 +85,7 @@ function runScript(dir, extra = []) {
 // TypeScript errors without their position, which moves when lines are added above them
 function typeErrors(r) {
   const errors = [...r.out.matchAll(/^(\S.*?)\(\d+,\d+\): error (TS\d+): (.*)$/gm)].map(m => `${slash(m[1])}: ${m[2]} ${m[3]}`);
-  return errors.length ? errors : null;
+  return errors.length ? ours(errors) : null;
 }
 
 // failing tests, and test files that fail to run, from Jest's JSON report
@@ -77,11 +96,11 @@ function failingTests(r) {
   } catch {
     return null;
   }
-  return report.testResults.flatMap(suite => {
+  return ours(report.testResults.flatMap(suite => {
     const file = slash(path.relative(r.dir, suite.name));
     const failed = (suite.assertionResults || []).filter(a => a.status === 'failed').map(a => `${file} › ${a.fullName}`);
     return failed.length || suite.status !== 'failed' ? failed : [`${file} (the file fails to run)`];
-  });
+  }));
 }
 
 const hasApp = sha => Boolean(sha && git('rev-parse', '--verify', '--quiet', `${sha}:package.json`));
@@ -103,17 +122,21 @@ function baseRef() {
 // the base commit, checked out once into a temporary worktree that shares the app's node_modules
 function baseWorktree(sha) {
   const dir = path.join(scratch, sha);
-  if (fs.existsSync(path.join(dir, 'package.json'))) return dir;
-  for (const old of fs.readdirSync(scratch).filter(f => !f.startsWith(sha) && /^[0-9a-f]{40}/.test(f))) {
-    git('worktree', 'remove', '--force', path.join(scratch, old));
-    fs.rmSync(path.join(scratch, old), { recursive: true, force: true });
+  if (!fs.existsSync(path.join(dir, 'package.json'))) {
+    for (const old of fs.readdirSync(scratch).filter(f => !f.startsWith(sha) && /^[0-9a-f]{40}/.test(f))) {
+      git('worktree', 'remove', '--force', path.join(scratch, old));
+      fs.rmSync(path.join(scratch, old), { recursive: true, force: true });
+    }
+    git('worktree', 'prune');
+    execFileSync('git', ['worktree', 'add', '--detach', '--force', dir, sha], { cwd: root, stdio: 'ignore' });
   }
-  git('worktree', 'prune');
-  execFileSync('git', ['worktree', 'add', '--detach', '--force', dir, sha], { cwd: root, stdio: 'ignore' });
-  if (fs.existsSync(path.join(root, 'node_modules'))) fs.symlinkSync(path.join(root, 'node_modules'), path.join(dir, 'node_modules'), 'junction');
+  // linked when missing: a copy made before the app's dependencies were installed has none
+  const link = path.join(dir, 'node_modules');
+  if (nodeModules) try { fs.lstatSync(link); } catch { fs.symlinkSync(nodeModules, link, 'junction'); }
   return dir;
 }
 
+let baseRun = null;
 function baseProblems(sha, extract) {
   const cache = path.join(scratch, `${sha}.${check}.json`);
   try {
@@ -127,6 +150,7 @@ function baseProblems(sha, extract) {
     fs.writeFileSync(path.join(dir, 'package.json'), JSON.stringify(basePkg, null, 2));
   }
   const r = runScript(dir);
+  baseRun = r;
   const problems = r.code === 0 ? [] : extract(r);
   if (problems) fs.writeFileSync(cache, JSON.stringify(problems));
   return problems;
@@ -242,13 +266,13 @@ const found = baseRef();
 const sha = found && git('merge-base', 'HEAD', found.ref);
 if (!sha) {
   console.log(`${check}: failed, and there's no base branch to compare with (set AMK_BASE)`);
-  process.exit(1);
+  process.exit(3);
 }
 const label = `${found.ref} (${sha.slice(0, 7)})`;
 if (found.note) console.log(`${check}: ${found.note}`);
 if (!hasApp(sha)) {
   console.log(`${check}: failed, and it can't be compared with ${label}, which has no package.json: set AMK_BASE to the branch this work is based on`);
-  process.exit(1);
+  process.exit(3);
 }
 let fresh;
 let summary;
@@ -256,7 +280,7 @@ if (check === 'lint') {
   const r = newLintErrors(sha);
   if (r.reason) {
     console.log(`lint: failed, and it can't be compared with ${label}: ${r.reason}`);
-    process.exit(1);
+    process.exit(3);
   }
   fresh = r.fresh;
   summary = `lint: failed, but the ${r.files} file(s) changed since ${label} have no new errors: the failures were there already`;
@@ -265,11 +289,15 @@ if (check === 'lint') {
   const mine = check === 'test' && !jest ? null : extract(now);
   const old = mine && baseProblems(sha, extract);
   if (!mine || !old) {
-    console.log(`${check}: failed, and it can't be compared with ${label}: ${check === 'test' && !jest ? 'only Jest results can be compared' : 'its output couldn\'t be read'}`);
-    process.exit(1);
+    // which run's output, and how it ended: a check that couldn't start (no node_modules) says so in its last line
+    const ended = x => { const last = x.out.trim().split('\n').pop() || 'no output'; return ` (exit ${x.code}: ${last.slice(0, 200)})`; };
+    console.log(`${check}: failed, and it can't be compared with ${label}: ${check === 'test' && !jest ? 'only Jest results can be compared'
+      : !mine ? `this branch's output couldn't be read${ended(now)}` : `the base's output couldn't be read${ended(baseRun)}`}`);
+    process.exit(3);
   }
   fresh = minus(mine, old);
   summary = `${check}: ${mine.length} problem(s), all already on ${label}: this change adds none`;
+  if (leftOut) console.log(`${check}: left out ${leftOut} in other git worktrees inside this folder (${nested.join(', ')}): they aren't this branch's`);
 }
 if (!fresh.length) {
   console.log(summary);

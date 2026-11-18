@@ -3,5 +3,6 @@
 set -eu
 [ -d node_modules ] || { echo "pre-push: dependencies aren't installed; run: sh scripts/amk/install-deps.sh" >&2; exit 1; }
 # each passes when the app's script passes, or when all its failures were already on the base branch
-node scripts/amk/baseline.js typecheck || { echo "pre-push: fix the new type errors above" >&2; exit 1; }
-node scripts/amk/baseline.js test || { echo "pre-push: fix the new test failures above" >&2; exit 1; }
+# baseline.js exits with 3 when a failing check can't be compared with the base, which isn't the same as new problems
+node scripts/amk/baseline.js typecheck || { [ $? = 3 ] && echo "pre-push: the typecheck failed and couldn't be compared with the base: see why above" >&2 || echo "pre-push: fix the new type errors above" >&2; exit 1; }
+node scripts/amk/baseline.js test || { [ $? = 3 ] && echo "pre-push: the tests failed and couldn't be compared with the base: see why above" >&2 || echo "pre-push: fix the new test failures above" >&2; exit 1; }
