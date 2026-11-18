@@ -34,6 +34,7 @@ Every AI tool reads the same rules (`AGENTS.md`), the same project facts (`docs/
 2. Clone, then `sh scripts/amk/install-deps.sh`. This also turns on the git hooks.
 3. Run `npx agentic-mobile-kit doctor` and fix what it lists. It checks Node, Xcode, CocoaPods, simulators, the Android SDK, Java, Maestro, gitleaks and each AI tool's trust settings.
 4. Open the project once in each AI tool you use. In Codex, trust the project and approve its hooks; they stay off until you do. In Antigravity, trust the workspace.
+5. Optional: to get the AI's alerts in Google Chat, Slack or Discord on your phone, save a webhook once. See [Get the AI's alerts on your phone](#get-the-ais-alerts-on-your-phone).
 
 ## Daily work
 
@@ -101,7 +102,7 @@ The same steps in every workflow, with the skill that does each:
 2. **A GitHub token for this repository only:** make a fine-grained token (contents, pull requests and issues: read and write; actions: read) and set it as `GH_TOKEN` when you start the build. GitHub gives such a token no access to checks, so the build follows the pull request's GitHub Actions runs instead. Without one, the build works as your own login, with all its rights.
 3. **Start it** in the app's folder, with nothing uncommitted: `GH_TOKEN=… node scripts/amk/autopilot.js` (`--wait 10` to keep checking for approvals for 10 hours). On a Mac it keeps the machine awake while it runs; a closed lid still needs power.
 4. **Steer it without stopping it:** a line in `.amk/build/notes.md` reaches every new session ("use the new `Button`"). `touch .amk/build/STOP` ends the build once the current task is committed.
-5. **In the morning:** `.amk/build/report.md` lists what was built and what's blocked, with why. Each feature's session is in `.amk/build/<id>/build.log` (its time and tokens too), and why it stopped in `stop.md`. A blocked feature goes on with `m-continue <id>` once you've settled it. You hear about each block and the end through a notification on the Mac (`notify-send` on Linux), and through your chat, once its webhook is saved (`node scripts/amk/notify.js save`).
+5. **In the morning:** `.amk/build/report.md` lists what was built and what's blocked, with why. Each feature's session is in `.amk/build/<id>/build.log` (its time and tokens too), and why it stopped in `stop.md`. A blocked feature goes on with `m-continue <id>` once you've settled it. You hear about each block and the end through a notification on the Mac (`notify-send` on Linux), and in your chat, once its webhook is saved ([Get the AI's alerts on your phone](#get-the-ais-alerts-on-your-phone)).
 
 **What a session may do.** It gets only the variables a build needs, not your shell's API keys and other tokens. It runs only the build's commands: the kit's scripts, `git add`, `commit` and `switch`, pushing its own `feature/` branch by name, opening and commenting on pull requests, and the app's test, lint and typecheck scripts. Anything else is refused rather than asked about, and so is what the project's settings ask about first, such as editing `package.json` or installing packages: add the plan's new dependencies in a session with you before the night. It never skips permission prompts, calls GitHub's API directly, approves a pull request or merges one other than by turning on auto-merge, adds or removes the `amk-ready` or `amk-fix` labels, pushes `main`, or changes the kit's scripts, hooks and tool settings, the workflows or `AGENTS.md`: the guard and the pre-commit hook refuse those too.
 
@@ -132,9 +133,38 @@ CI runs what a change calls for. A change to specs or docs only runs neither the
 
 Everything in git carries over: the spec, the handoff and the code. Chat history doesn't, on purpose, so anything decided in a chat must be written into the spec or `docs/amk/decisions.md`. `m-pause` does that.
 
+## Get the AI's alerts on your phone
+
+The kit's hooks show a desktop notification when the AI waits for you: an approval, a question, or a finished turn. To get them in a chat on your phone as well, give the kit a webhook. This is a link that lets it post to one Google Chat space, Slack channel or Discord channel. Do this once a computer, in any project with the kit.
+
+1. **Create the webhook** (keep it to yourself: anyone with the link can post to that chat).
+   - **Google Chat** (needs a Business or Enterprise Google Workspace account, and webhooks allowed by your Workspace admin):
+     1. At chat.google.com in a browser (not the phone app), open the space or create one just for you.
+     2. Click the arrow next to the space's name, then **Apps & integrations**, then **Add webhooks**. If you can't click **Add webhooks**, your admin has turned webhooks off.
+     3. Enter a name (for example "AI alerts") and click **Save**.
+     4. Click **More**, then **Copy link**.
+   - **Slack:**
+     1. At api.slack.com/apps, click **Create New App**, then **Pick features**, give it a name and choose the workspace.
+     2. Under **Incoming Webhooks**, turn on **Activate Incoming Webhooks**.
+     3. Click **Add New Webhook to Workspace**, pick the channel and click **Authorize**.
+     4. Copy the URL under **Webhook URLs for Your Workspace**.
+   - **Discord:** in the server's settings, open **Integrations**, then **Webhooks**, and create a new webhook. Choose its channel and copy the webhook URL. You need permission to manage webhooks on that server.
+2. **Save it:** run `node scripts/amk/notify.js save` and paste the link. If your terminal already has `AMK_NOTIFY_URL` set, it takes that one without asking.
+   - It's kept in `~/.amk/notify.json`, which only you can read, for every project on the computer.
+   - It reaches every session, including those Claude Code runs in its background service, which doesn't see your terminal's variables.
+3. **Check it:** saving sends a test message ("This chat gets the AI's alerts"). If nothing arrives, run the save again and check the link.
+
+**Fewer or none:**
+- `AMK_NOTIFY=ask` keeps only the approvals, the questions and the waiting, not every finished turn.
+- `AMK_NOTIFY=off` turns all alerts off.
+- `AMK_NOTIFY_URL=off` keeps the desktop notifications and stops the chat messages.
+- To stop the chat messages for good, delete `~/.amk/notify.json`.
+
+**Another chat:** run the save again; the new link replaces the old one.
+
 ## Answer the AI from your phone
 
-The kit's alerts tell you when the AI waits for you, on your desktop and, once a Google Chat, Slack or Discord webhook is saved (`node scripts/amk/notify.js save`), on your phone. The alerts only go one way: to answer, use one of these.
+The kit's alerts (see above) tell you when the AI waits for you, on your desktop and in your chat. They only go one way: to answer, use one of these.
 
 - **Claude Code:** Remote Control. Type `/rc` in a running session (or start it with `claude --rc`), then go on in the Claude app or at claude.ai/code. It needs a claude.ai plan (Pro, Max, Ultra, Team or Enterprise).
 - **Codex:** pair the ChatGPT app with the Codex Mac app.
@@ -240,7 +270,7 @@ From `docs/amk/team-process.md`:
 | `verify.sh` takes too long while you fix something | `--changed` runs only the flows that reach what your branch changed (they use a `testID` a changed file sets), which `m-change` and `m-bugfix` use; `--screens` (or `AMK_SCREENS`) checks only some screens, for example `--screens phone` or `--screens tablet-landscape`, and a re-run after a fix uses phone upright. The definition of done still needs every screen the app supports, once, at the end, and a feature's PR every flow of the areas it touches. New flows start at their screen: they clear the app only for a scenario that needs a fresh install, log in only when the login screen shows, and open the screen by link where the app has them |
 | Part 2 of a feature while part 1's PR is still open | `m-feature` starts each feature with `node scripts/amk/specs.js branch <id>`, which builds it on the newest feature branch not merged yet (or the one you're on), so it has part 1's code, and its PR goes to that branch. Once part 1 merges, `node scripts/amk/pr.js forward` merges main into part 2 and moves its PR to main |
 | The kit says you have uncommitted changes, but your editor shows none | It names what it found. Often it's Claude Code's worktrees inside the project (`.claude/worktrees/`), which editors show as repositories of their own: from 0.16.1 on they don't count. With an older kit, add `.claude/worktrees/` to `.gitignore` and commit it, then update |
-| You're in another window while the AI works | The kit's hooks tell you when it waits for you: a permission prompt (Claude Code, Codex), a reply it has waited a minute for (Claude Code), and each finished turn, with its question when it asks one, or, when Claude Code ends a turn to wait for something it started (a command in the background, a subagent), what it waits for: it goes on by itself when that ends. A notification on the Mac (or Linux, or Windows), and in Slack, Google Chat or Discord once you've saved the chat's webhook: run `node scripts/amk/notify.js save` once and paste it. It's kept for every project in `~/.amk/notify.json`, which only you can read. `AMK_NOTIFY_URL` in a shell overrides it, and `AMK_NOTIFY_URL=off` sends no chat messages, but a variable only reaches sessions that see that shell: Claude Code can run a session in its background service, which doesn't. `AMK_NOTIFY=ask` keeps only the approvals, the waiting and the questions; `AMK_NOTIFY=off` turns it off |
+| You're in another window while the AI works | The kit's hooks tell you when it waits for you: a permission prompt (Claude Code, Codex), a reply it has waited a minute for (Claude Code), and each finished turn, with its question when it asks one, or, when Claude Code ends a turn to wait for something it started (a command in the background, a subagent), what it waits for: it goes on by itself when that ends. A notification on the Mac (or Linux, or Windows), and in Slack, Google Chat or Discord once its webhook is saved ([Get the AI's alerts on your phone](#get-the-ais-alerts-on-your-phone)). `AMK_NOTIFY=ask` keeps only the approvals, the waiting and the questions; `AMK_NOTIFY=off` turns it off |
 | You can't tell whether the AI is working, waiting for something, or waiting for you, or how far a check is | Claude Code shows it under the prompt, every 2 seconds: ⏳ what it waits for (a command in the background, a subagent) and that it goes on by itself when that ends, ❓ what it asks you, or ✓ done, your turn; then the feature's tasks (2/5 and the one it's on) and the kit's runs as they go: a device check's build, then each screen's flow k of n, the quick check's stage, CI's checks done of all (`pr.js checks`), an unattended build's feature k of n. Each says how long it has run and how long the last one that passed took. Your own status line stays, above the kit's. With Codex or another tool, or for a session in another window, run `node scripts/amk/status.js --watch` in a terminal of its own (`status.js` alone prints it once). Claude Code marks its tab's title itself: ◐ while it works, ✳ when its turn is over. Codex shows its plan as a checklist while it works, which follows the spec's `tasks.md`. `AMK_STATUS=off` in your shell turns off the kit's lines |
 | Checking devices at the same time | `sh scripts/amk/verify.sh plan --spec <id>` sizes it by memory: a device under test takes about 6 GB (a simulator or an emulator with Maestro), so 2 at once from 16 GB and 4 from 28 GB. It also needs 20 GB free disk and Maestro 2.6 or later, which runs several devices at once. It prints the steps: quick checks, `verify.sh build` (both release builds at the same time), then one `--no-build --screens …` command per device, in rounds when they don't all fit, which agents give to `m-device-checker` subagents round by round and check their reports. With room for more devices than kinds (a part's device counts about 6 GB for a simulator and 8 GB for an emulator, so Android parts start from about 20 GB), each kind's flows split into parts (`--part 1/2`, …): part 1 on the usual device, the others on temporary copies of it, deleted afterwards (an emulator copy restarts once first, as a new emulator's first boot drops its connection during flows); a real iPhone, iPad or phone isn't split. `AMK_MEMORY_GB` sets the memory to count on (less when your own emulator stays open), `AMK_DEVICES` the number of devices, and `AMK_PARALLEL=1` or `0` overrides |
 | Turned screens say "not checked: turning the device needs Maestro 2.0 or later" | Your Maestro is older than 2.0. Upright screens are still checked as before. Install the version CI uses (`npx agentic-mobile-kit doctor` names it) |
