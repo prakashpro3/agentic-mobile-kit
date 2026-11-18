@@ -46,11 +46,13 @@ const IO = {
   now: Date.now,
   log: t => console.log(t),
 };
-// the branch's name on GitHub: the one it tracks (a worktree's own branch, pushed as feature/<id>), else its own
+// the branch's name on GitHub: the one it tracks (a worktree's own branch, pushed as feature/<id>), else its own. Not
+// the base it was made from (git switch -c feature/x origin/main tracks main)
 const branchNow = () => {
   const local = git('symbolic-ref', '--quiet', '--short', 'HEAD');
-  const merge = local && git('config', '--get', `branch.${local}.merge`);
-  return (merge && merge.replace(/^refs\/heads\//, '')) || local;
+  const tracked = local && (git('config', '--get', `branch.${local}.merge`) || '').replace(/^refs\/heads\//, '');
+  const base = (specs.mainRef() || '').replace(/^origin\//, '');
+  return tracked && tracked !== base && !/^(main|master)$/.test(tracked) ? tracked : local;
 };
 const mainName = main => (main || '').replace(/^origin\//, '');
 

@@ -292,4 +292,9 @@ test('the branch on GitHub: the one a local branch tracks (a worktree\'s own bra
   git(dir, 'config', 'branch.worktree-agenda.remote', 'origin');
   git(dir, 'config', 'branch.worktree-agenda.merge', 'refs/heads/feature/20261113-agenda');
   assert.strictEqual(now(), 'feature/20261113-agenda');
+  // made from origin/main, it tracks main: its own name, not the base's
+  git(dir, 'switch', '-q', '-c', 'feature/x');
+  git(dir, 'config', 'branch.feature/x.remote', 'origin');
+  git(dir, 'config', 'branch.feature/x.merge', 'refs/heads/main');
+  assert.strictEqual(now(), 'feature/x');
 });

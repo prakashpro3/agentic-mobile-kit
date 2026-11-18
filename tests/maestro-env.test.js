@@ -40,7 +40,10 @@ test('maestro-env.sh in a git worktree: the main checkout\'s .maestro/.env.local
   const run = cwd => spawnSync('sh', ['-c', `. "${SCRIPT}"; printf '[%s][%s]' "$(printenv MAESTRO_EMAIL || true)" "$(printenv MAESTRO_PIN || true)"`], { cwd, encoding: 'utf8', env: { ...process.env, MAESTRO_EMAIL: '', MAESTRO_PIN: '' } });
   const none = run(wt);
   assert.strictEqual(none.stdout, '[][]');
-  assert.match(none.stderr, /the flows use \$\{MAESTRO_…\} values, but there's no \.maestro\/\.env\.local here or in the main checkout \(.+\): steps that need them will fail/);
+  assert.match(none.stderr, /the flows use MAESTRO_EMAIL, which nothing sets: no \.maestro\/\.env\.local here or in the main checkout \(.+\), and not in the shell\. Steps that need them will fail/);
+  // the values from the shell (CI's secrets): nothing to say
+  const fromShell = spawnSync('sh', ['-c', `. "${SCRIPT}"`], { cwd: wt, encoding: 'utf8', env: { ...process.env, MAESTRO_EMAIL: 'ci@example.com' } });
+  assert.strictEqual(fromShell.stderr, '');
   fs.writeFileSync(path.join(dir, '.maestro/.env.local'), 'MAESTRO_EMAIL=main@example.com\nMAESTRO_PIN=1234\n');
   const found = run(wt);
   assert.strictEqual(found.stdout, '[main@example.com][1234]', found.stderr);

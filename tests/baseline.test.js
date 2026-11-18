@@ -279,6 +279,38 @@ test('pushed: deleting a branch, or a branch changing only specs and docs (the p
   assert.match(hook.stderr, /^pre-push: only specs and docs change, so no typecheck or tests$/m);
 });
 
+test('the pre-commit hook: a git worktree without node_modules lints with its main checkout\'s ESLint; an app without its own ESLint isn\'t linted with one found above it', () => {
+  const dir = app();
+  write(dir, 'node_modules/.bin/eslint', '#!/bin/sh\nexec node "$(dirname "$0")/../eslint/bin/eslint.js" "$@"\n');
+  fs.chmodSync(path.join(dir, 'node_modules/.bin/eslint'), 0o755);
+  for (const f of ['baseline.js']) fs.copyFileSync(path.join(KIT, f), path.join(dir, `scripts/amk/${f}`));
+  fs.mkdirSync(path.join(dir, '.githooks'), { recursive: true });
+  fs.copyFileSync(path.join(KIT, '../../.githooks/pre-commit'), path.join(dir, '.githooks/pre-commit'));
+  commit(dir, 'the hook');
+  git(dir, 'worktree', 'add', '-q', '.claude/worktrees/wt', '-b', 'wt');
+  const wt = path.join(dir, '.claude/worktrees/wt');
+  write(wt, 'src/a.js', `${fs.readFileSync(path.join(wt, 'src/a.js'), 'utf8')}const y = 2; // BAD new\n`);
+  git(wt, 'add', 'src/a.js');
+  const hook = cwd => spawnSync('sh', ['.githooks/pre-commit'], { cwd, encoding: 'utf8', env: { ...process.env, PATH: `/nonexistent:${process.env.PATH}` } });
+  const inWt = hook(wt);
+  assert.strictEqual(inWt.status, 1, inWt.stdout + inWt.stderr);
+  assert.match(inWt.stdout + inWt.stderr, /lint: 1 new compared with HEAD[\s\S]*pre-commit: fix the ESLint errors listed above/);
+  // an app with no ESLint of its own, in a folder whose parent has one: not linted, as before
+  const outer = tmpDir('amk-baseline-outer-');
+  write(outer, 'node_modules/eslint/package.json', '{"name":"eslint","exports":{"./package.json":"./package.json"}}');
+  write(outer, 'node_modules/eslint/bin/eslint.js', 'console.error("the folder above\'s ESLint ran"); process.exit(2);\n');
+  write(outer, 'node_modules/.bin/eslint', '#!/bin/sh\nexec node "$(dirname "$0")/../eslint/bin/eslint.js" "$@"\n');
+  fs.chmodSync(path.join(outer, 'node_modules/.bin/eslint'), 0o755);
+  const inner = path.join(outer, 'app');
+  fs.cpSync(dir, inner, { recursive: true, filter: f => !/node_modules|\.claude/.test(f) });
+  write(inner, 'src/b.js', 'const z = 1; // BAD\n');
+  git(inner, 'add', 'src/b.js');
+  const alone = hook(inner);
+  assert.strictEqual(alone.status, 0, alone.stdout + alone.stderr);
+  assert.match(alone.stderr, /ESLint isn't installed, so staged files weren't linted/);
+  assert.doesNotMatch(alone.stderr, /the folder above's ESLint ran/);
+});
+
 test('a release branch is compared with the last release: a test that broke on main since then is new', () => {
   const dir = app();
   git(dir, 'switch', '-q', 'main');

@@ -23,8 +23,10 @@ for amk_file in .maestro/.env.local .maestro/.env ${amk_main:+"$amk_main/.maestr
     export "$amk_key=$amk_value"
   done < "$amk_file"
 done
-# flows that use ${MAESTRO_…} values (a test login) with none to read fail at that step: say why first
-if [ -z "$amk_read" ] && grep -rqs '\${MAESTRO_' .maestro 2> /dev/null; then
-  echo "verify.sh: the flows use \${MAESTRO_…} values, but there's no .maestro/.env.local here${amk_main:+ or in the main checkout ($amk_main)}: steps that need them will fail" >&2
+# flows that use ${MAESTRO_…} values (a test login) that neither a file nor the shell (CI's secrets) sets fail at that
+# step: say why first
+if [ -z "$amk_read" ]; then
+  amk_unset=$(grep -rhoE '\$\{MAESTRO_[A-Za-z0-9_]+' .maestro 2> /dev/null | sed 's/^..//' | sort -u | while read -r amk_key; do [ -n "$(printenv "$amk_key")" ] || printf '%s ' "$amk_key"; done)
+  [ -z "$amk_unset" ] || echo "verify.sh: the flows use ${amk_unset% }, which nothing sets: no .maestro/.env.local here${amk_main:+ or in the main checkout ($amk_main)}, and not in the shell. Steps that need them will fail" >&2
 fi
-unset amk_file amk_line amk_key amk_value amk_main amk_read
+unset amk_file amk_line amk_key amk_value amk_main amk_read amk_unset
