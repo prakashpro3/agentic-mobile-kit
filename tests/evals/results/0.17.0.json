@@ -1,0 +1,254 @@
+{
+  "version": "0.17.0",
+  "date": "2026-11-18",
+  "model": "haiku",
+  "claude": "2.1.327 (Claude Code)",
+  "skills": {
+    "m-bugfix": 697,
+    "m-change": 618,
+    "m-continue": 398,
+    "m-explore": 408,
+    "m-feature": 2093,
+    "m-feature/build": 717,
+    "m-feature/plan": 992,
+    "m-learn": 547,
+    "m-onboard": 1157,
+    "m-pause": 285,
+    "m-prototype": 980,
+    "m-release": 923,
+    "m-report": 350,
+    "m-review": 949,
+    "m-test": 554
+  },
+  "cases": [
+    {
+      "name": "guard-after-cd",
+      "skill": "guard (hook)",
+      "passed": true,
+      "failures": [],
+      "ms": 10083,
+      "tokens": 73886,
+      "costUsd": 0.004,
+      "turns": 3
+    },
+    {
+      "name": "guard-discard",
+      "skill": "guard (hook)",
+      "passed": true,
+      "failures": [],
+      "ms": 5477,
+      "tokens": 47928,
+      "costUsd": 0.0033,
+      "turns": 2
+    },
+    {
+      "name": "rn-check-asks",
+      "skill": "AGENTS.md rules",
+      "passed": true,
+      "failures": [],
+      "ms": 9865,
+      "tokens": 96448,
+      "costUsd": 0.004,
+      "turns": 4
+    },
+    {
+      "name": "stop-hook-handoff",
+      "skill": "handoff (stop hook)",
+      "passed": true,
+      "failures": [],
+      "ms": 14617,
+      "tokens": 203809,
+      "costUsd": 0.0063,
+      "turns": 8
+    },
+    {
+      "name": "questions-numbered",
+      "skill": "m-feature",
+      "passed": true,
+      "failures": [],
+      "ms": 60336,
+      "tokens": 330327,
+      "costUsd": 0.0166,
+      "turns": 15
+    },
+    {
+      "name": "m-feature-spec",
+      "skill": "m-feature",
+      "passed": true,
+      "failures": [],
+      "ms": 95578,
+      "tokens": 725923,
+      "costUsd": 0.0388,
+      "turns": 36
+    },
+    {
+      "name": "m-test-not-ready",
+      "skill": "m-test",
+      "passed": true,
+      "failures": [],
+      "ms": 68362,
+      "tokens": 373073,
+      "costUsd": 0.0151,
+      "turns": 19
+    },
+    {
+      "name": "mode-question",
+      "skill": "m-feature",
+      "passed": true,
+      "failures": [],
+      "ms": 9490,
+      "tokens": 88948,
+      "costUsd": 0.0045,
+      "turns": 3
+    },
+    {
+      "name": "plan-feature-map",
+      "skill": "m-feature/plan",
+      "passed": true,
+      "failures": [],
+      "ms": 173931,
+      "tokens": 1416739,
+      "costUsd": 0.0643,
+      "turns": 58
+    },
+    {
+      "name": "plan-build-one",
+      "skill": "m-feature/build",
+      "passed": true,
+      "failures": [],
+      "ms": 78905,
+      "tokens": 1128977,
+      "costUsd": 0.0257,
+      "turns": 37
+    },
+    {
+      "name": "autopilot-two",
+      "skill": "autopilot",
+      "passed": true,
+      "failures": [],
+      "ms": 197972,
+      "tokens": 2562893,
+      "costUsd": 0.06,
+      "turns": 2
+    },
+    {
+      "name": "plan-continue-blocked",
+      "skill": "m-continue",
+      "passed": false,
+      "failures": [
+        "no review by the m-reviewer subagent"
+      ],
+      "ms": 39786,
+      "tokens": 543886,
+      "costUsd": 0.0196,
+      "turns": 27
+    },
+    {
+      "name": "plan-continue-build",
+      "skill": "m-continue",
+      "passed": true,
+      "failures": [],
+      "ms": 95559,
+      "tokens": 1216249,
+      "costUsd": 0.0362,
+      "turns": 57
+    },
+    {
+      "name": "autopilot-bugs",
+      "skill": "autopilot (bug queue)",
+      "passed": true,
+      "failures": [],
+      "ms": 60436,
+      "tokens": 621129,
+      "costUsd": 0.02,
+      "turns": 2
+    },
+    {
+      "name": "autopilot-reviews",
+      "skill": "autopilot (review fixes)",
+      "passed": true,
+      "failures": [],
+      "ms": 32733,
+      "tokens": 392076,
+      "costUsd": 0.01,
+      "turns": 1
+    },
+    {
+      "name": "m-onboard-check",
+      "skill": "m-onboard",
+      "passed": true,
+      "failures": [],
+      "ms": 62781,
+      "tokens": 163100,
+      "costUsd": 0.0149,
+      "turns": 19
+    },
+    {
+      "name": "m-learn-review",
+      "skill": "m-learn",
+      "passed": true,
+      "failures": [],
+      "ms": 54825,
+      "tokens": 404385,
+      "costUsd": 0.0165,
+      "turns": 11
+    },
+    {
+      "name": "m-report",
+      "skill": "m-report",
+      "passed": true,
+      "failures": [],
+      "ms": 26978,
+      "tokens": 238724,
+      "costUsd": 0.0085,
+      "turns": 20
+    },
+    {
+      "name": "translations",
+      "skill": "m-change",
+      "passed": true,
+      "failures": [],
+      "ms": 82547,
+      "tokens": 591067,
+      "costUsd": 0.0266,
+      "turns": 28
+    },
+    {
+      "name": "m-bugfix-scenario",
+      "skill": "m-bugfix",
+      "passed": true,
+      "failures": [],
+      "ms": 32019,
+      "tokens": 380328,
+      "costUsd": 0.0104,
+      "turns": 18
+    },
+    {
+      "name": "m-release-blocker",
+      "skill": "m-release",
+      "passed": false,
+      "failures": [
+        "the iOS version isn't 1.1.0",
+        "the Android version isn't 1.1.0",
+        "the release was never tested (m-test: verify.sh quick --label)",
+        "it didn't ask which flows to run before testing",
+        "release-notes/1.1.0/test-report.md doesn't say Not ready",
+        "\"A 90-minute shift\" isn't failed in the report"
+      ],
+      "ms": 90380,
+      "tokens": 1184489,
+      "costUsd": 0.1318,
+      "turns": 47
+    },
+    {
+      "name": "pr-checks-fix",
+      "skill": "after the PR (pr.js checks)",
+      "passed": true,
+      "failures": [],
+      "ms": 20212,
+      "tokens": 220753,
+      "costUsd": 0.0068,
+      "turns": 10
+    }
+  ]
+}
