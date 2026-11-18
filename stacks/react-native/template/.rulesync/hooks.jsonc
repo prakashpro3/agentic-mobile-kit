@@ -4,14 +4,15 @@
     // Each command finds the project through git, so it runs from wherever the tool starts it: Claude Code keeps the
     // agent's cd between commands, Antigravity runs hooks from .agents/, Codex from the project. A relative path
     // isn't found there, which turns the guard off (or, in Antigravity, blocks every command). No shell variables,
-    // so it also runs in PowerShell. No matcher: runs for every tool call; guard.js decides from the payload
-    "preToolUse": [{ "command": "node -e \"require(require('child_process').execSync('git rev-parse --show-toplevel').toString().trim() + '/scripts/amk/guard.js')\"" }],
-    "stop": [{ "command": "node -e \"require(require('child_process').execSync('git rev-parse --show-toplevel').toString().trim() + '/scripts/amk/handoff-check.js')\"" }],
+    // so it also runs in PowerShell. A branch without the kit's scripts (one made before it was installed) runs none,
+    // quietly. No matcher: runs for every tool call; guard.js decides from the payload
+    "preToolUse": [{ "command": "node -e \"const f = require('child_process').execSync('git rev-parse --show-toplevel').toString().trim() + '/scripts/amk/guard.js'; if (require('fs').existsSync(f)) require(f)\"" }],
+    "stop": [{ "command": "node -e \"const f = require('child_process').execSync('git rev-parse --show-toplevel').toString().trim() + '/scripts/amk/handoff-check.js'; if (require('fs').existsSync(f)) require(f)\"" }],
     // when the AI waits for you, a notification (scripts/amk/notify.js): Claude Code's permission prompts and replies it
     // has waited a minute for, Codex's approvals. Every finished turn comes from the stop hook (handoff-check.js)
-    "notification": [{ "command": "node -e \"require(require('child_process').execSync('git rev-parse --show-toplevel').toString().trim() + '/scripts/amk/notify.js').hook()\"" }],
-    "permissionRequest": [{ "command": "node -e \"require(require('child_process').execSync('git rev-parse --show-toplevel').toString().trim() + '/scripts/amk/notify.js').hook()\"" }],
+    "notification": [{ "command": "node -e \"const f = require('child_process').execSync('git rev-parse --show-toplevel').toString().trim() + '/scripts/amk/notify.js'; if (require('fs').existsSync(f)) require(f).hook()\"" }],
+    "permissionRequest": [{ "command": "node -e \"const f = require('child_process').execSync('git rev-parse --show-toplevel').toString().trim() + '/scripts/amk/notify.js'; if (require('fs').existsSync(f)) require(f).hook()\"" }],
     // after a compaction (Claude Code, and Codex where it calls it), the spec's handoff, next task and definition of done
-    "sessionStart": [{ "matcher": "compact", "command": "node -e \"require(require('child_process').execSync('git rev-parse --show-toplevel').toString().trim() + '/scripts/amk/handoff-check.js')\"" }]
+    "sessionStart": [{ "matcher": "compact", "command": "node -e \"const f = require('child_process').execSync('git rev-parse --show-toplevel').toString().trim() + '/scripts/amk/handoff-check.js'; if (require('fs').existsSync(f)) require(f)\"" }]
   }
 }

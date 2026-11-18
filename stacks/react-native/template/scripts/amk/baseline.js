@@ -12,9 +12,14 @@
 // for the next run.
 // `test --related` runs only the Jest tests related to the files changed since the base (Jest's --changedSince, which
 // follows the imports), for each task while building; the whole suite runs before a pull request.
+// `pushed` reads what a push sends (the pre-push hook's lines) and prints `skip: <why>` when it needs no checks (it
+// deletes branches, or changes only specs and docs), `no-deps` when it needs them and nothing is installed, else
+// `checks`.
 // `base` prints the base, for reviews of a branch's changes. `staged <files>` is the pre-commit hook's lint: it passes
 // when the files have no ESLint error they didn't have at HEAD, and exits with 3 when it can't find ESLint's CLI.
 // Usage: node scripts/amk/baseline.js lint|typecheck|test [--related]|base|staged <files>
+// Exit codes: 0 passes, 1 new problems, 3 failed and couldn't be compared (staged: no ESLint found), 4 (staged) ESLint
+// couldn't run
 'use strict';
 const fs = require('fs');
 const os = require('os');
@@ -24,8 +29,8 @@ const { spawnSync, execFileSync } = require('child_process');
 
 const check = process.argv[2];
 const related = check === 'test' && process.argv.includes('--related');
-if (!['lint', 'typecheck', 'test', 'base', 'staged'].includes(check)) {
-  console.error('usage: node scripts/amk/baseline.js lint|typecheck|test|base|staged <files>');
+if (!['lint', 'typecheck', 'test', 'base', 'staged', 'pushed'].includes(check)) {
+  console.error('usage: node scripts/amk/baseline.js lint|typecheck|test|base|staged <files>|pushed');
   process.exit(2);
 }
 const root = process.cwd();
@@ -82,9 +87,21 @@ function runScript(dir, extra = []) {
   return { code: r.status, out: `${r.stdout || ''}${r.stderr || ''}`, json, dir };
 }
 
-// TypeScript errors without their position, which moves when lines are added above them
+// TypeScript errors without their position, which moves when lines are added above them, and with the words that
+// differ from one checkout to another for the same error: absolute paths (a worktree's, the base's copy in the temp
+// folder) and "and 117 more" counts. Each one's words as TypeScript wrote them, for the list of new ones
+const wrote = new Map();
 function typeErrors(r) {
-  const errors = [...r.out.matchAll(/^(\S.*?)\(\d+,\d+\): error (TS\d+): (.*)$/gm)].map(m => `${slash(m[1])}: ${m[2]} ${m[3]}`);
+  const here = [r.dir, real(r.dir)].map(d => `${slash(d)}/`);
+  const errors = [...r.out.matchAll(/^(\S.*?)\(\d+,\d+\): error (TS\d+): (.*)$/gm)].map(m => {
+    let words = slash(m[3]);
+    for (const d of here) words = words.split(d).join('');
+    words = words.replace(/(?:[A-Za-z]:)?\/[^\s"'()]*?\/node_modules\//g, 'node_modules/').replace(/\band \d+ more\b/g, 'and N more');
+    const key = `${slash(m[1])}: ${m[2]} ${words}`;
+    if (!wrote.has(key)) wrote.set(key, []);
+    wrote.get(key).push(`${slash(m[1])}: ${m[2]} ${m[3]}`);
+    return key;
+  });
   return errors.length ? ours(errors) : null;
 }
 
@@ -138,7 +155,8 @@ function baseWorktree(sha) {
 
 let baseRun = null;
 function baseProblems(sha, extract) {
-  const cache = path.join(scratch, `${sha}.${check}.json`);
+  // .2: type errors kept as they compare since 0.17 (paths and counts left out)
+  const cache = path.join(scratch, `${sha}.${check}.2.json`);
   try {
     return JSON.parse(fs.readFileSync(cache, 'utf8'));
   } catch {}
@@ -174,10 +192,24 @@ function eslintCli() {
   }
 }
 
+// ESLint 8 also reads the config files of the folders above the app (a git worktree inside the main checkout), and
+// a plugin found from two folders stops it ("couldn't determine the plugin … uniquely"): plugins from the app's
+// folder only, then. Not with a flat config (eslint.config.*), where ESLint doesn't take the option
+const eslintArgs = (() => {
+  const configs = d => { try { return fs.readdirSync(d).filter(f => /^(\.eslintrc(\.\w+)?|eslint\.config\.\w+)$/.test(f)); } catch { return []; } };
+  if (configs(root).some(f => f.startsWith('eslint.config'))) return [];
+  for (let d = path.dirname(root); d !== path.dirname(d); d = path.dirname(d)) {
+    const found = configs(d);
+    if (found.some(f => f.startsWith('eslint.config'))) return [];
+    if (found.length) return ['--resolve-plugins-relative-to', root];
+  }
+  return [];
+})();
+
 // ESLint errors in files that they didn't have at sha (null without ESLint's report)
 function lintErrorsNotAt(sha, files, eslint) {
   const lint = (args, input) => {
-    const r = spawnSync(process.execPath, [eslint, '--format', 'json', ...args], { cwd: root, input, encoding: 'utf8', maxBuffer: 2 ** 28 });
+    const r = spawnSync(process.execPath, [eslint, '--format', 'json', ...eslintArgs, ...args], { cwd: root, input, encoding: 'utf8', maxBuffer: 2 ** 28 });
     try {
       return JSON.parse(r.stdout);
     } catch {
@@ -227,6 +259,23 @@ if (check === 'base') {
   process.exit(0);
 }
 
+if (check === 'pushed') {
+  const zero = s => /^0+$/.test(s);
+  const refs = fs.readFileSync(0, 'utf8').split('\n').map(l => l.trim().split(/\s+/)).filter(w => w.length === 4);
+  const docs = f => /^(specs|docs)\//.test(f) || /\.md$/i.test(f);
+  // each ref's files since what the remote has, or, for a new branch, since it left the base
+  const onlyDocs = refs.length > 0 && refs.every(([, sha, , theirs]) => {
+    if (zero(sha)) return true;
+    const known = !zero(theirs) && git('rev-parse', '--verify', '--quiet', `${theirs}^{commit}`);
+    const found = !known && baseRef();
+    const from = known || (found && git('merge-base', sha, found.ref));
+    return Boolean(from) && git('diff', '--name-only', from, sha).split('\n').filter(Boolean).every(docs);
+  });
+  if (onlyDocs) console.log(`skip: ${refs.every(([, sha]) => zero(sha)) ? 'only deleting' : 'only specs and docs change'}, so no typecheck or tests`);
+  else console.log(nodeModules ? 'checks' : 'no-deps');
+  process.exit(0);
+}
+
 if (check === 'staged') {
   // ESLint's own report on the files first, then whether any error in them is new since HEAD: a commit that touches
   // a file with errors from before isn't blocked by them, as verify.sh isn't
@@ -235,7 +284,11 @@ if (check === 'staged') {
   const eslint = eslintCli();
   if (!eslint) process.exit(3); // can't compare: the hook lints the files as they are
 
-  if (spawnSync(process.execPath, [eslint, ...files], { cwd: root, stdio: 'inherit' }).status === 0) process.exit(0);
+  // 2: ESLint itself failed (its setup, a crash), which isn't an error in the files: 4, which the hook says
+  const own = spawnSync(process.execPath, [eslint, ...eslintArgs, ...files], { cwd: root, stdio: 'inherit' }).status;
+  if (own === 0) process.exit(0);
+  const couldnt = () => { console.log('lint: ESLint couldn\'t check the files (its error is above), so nothing is known about them'); process.exit(4); };
+  if (own === 2) couldnt();
   if (!git('rev-parse', '--verify', '--quiet', 'HEAD')) process.exit(1); // the first commit: nothing to compare with
   const setup = eslintSetupChanges(git('diff', '--cached', '--name-only', '--diff-filter=ACMR').split('\n').filter(Boolean), 'HEAD');
   if (setup.length) {
@@ -243,7 +296,7 @@ if (check === 'staged') {
     process.exit(1);
   }
   const fresh = lintErrorsNotAt('HEAD', files, eslint);
-  if (!fresh) process.exit(1);
+  if (!fresh) couldnt();
   if (!fresh.length) {
     console.log('lint: the files had all of these errors before this commit, so none is new');
     process.exit(0);
@@ -304,6 +357,6 @@ if (!fresh.length) {
   process.exit(0);
 }
 console.log(`${check}: ${fresh.length} new compared with ${label}:`);
-for (const p of fresh.slice(0, 30)) console.log(`  ${p}`);
+for (const p of fresh.slice(0, 30)) console.log(`  ${(wrote.get(p) || [p]).shift() || p}`);
 if (fresh.length > 30) console.log(`  … and ${fresh.length - 30} more`);
 process.exit(1);

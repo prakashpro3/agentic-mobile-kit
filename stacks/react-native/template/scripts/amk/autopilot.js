@@ -175,7 +175,8 @@ const BIN = { claude: 'claude', codex: 'codex', antigravity: 'agy' };
 // Codex runs a project's hooks (the guard among them) only once someone approved them there, and asks again after a kit
 // update changes one. autopilot.js vets them instead: only the kit's two commands, in a .codex/hooks.json that git tracks,
 // with it and their scripts as committed. Then it runs them without that approval (--dangerously-bypass-hook-trust)
-const KIT_HOOK = /^node -e "require\(require\('child_process'\)\.execSync\('git rev-parse --show-toplevel'\)\.toString\(\)\.trim\(\) \+ '\/scripts\/amk\/(?:guard|handoff-check)\.js'\)"$/;
+// (as written before 0.17, or with the check that the script is there)
+const KIT_HOOK = /^node -e "(?:require\(require\('child_process'\)\.execSync\('git rev-parse --show-toplevel'\)\.toString\(\)\.trim\(\) \+ '\/scripts\/amk\/(?:guard|handoff-check)\.js'\)|const f = require\('child_process'\)\.execSync\('git rev-parse --show-toplevel'\)\.toString\(\)\.trim\(\) \+ '\/scripts\/amk\/(?:guard|handoff-check)\.js'; if \(require\('fs'\)\.existsSync\(f\)\) require\(f\))"$/;
 function codexHooksVetted() {
   let hooks;
   try { hooks = JSON.parse(read(path.join(ROOT, '.codex', 'hooks.json'))).hooks; } catch { return false; }

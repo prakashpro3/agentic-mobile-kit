@@ -199,6 +199,86 @@ test('git worktrees: another one inside this checkout (.claude/worktrees/) isn\'
   assert.match(r.out, /typecheck: 1 problem\(s\), all already on main/);
 });
 
+test('typecheck: an old error whose words differ only by a checkout\'s path or an "and N more" count isn\'t new', () => {
+  const dir = app();
+  git(dir, 'switch', '-q', 'main');
+  // a stand-in tsc that writes the folder it runs in, as TypeScript does in an import("…/node_modules/…") type
+  write(dir, 'tsc.js', `const e = require('fs').readFileSync('types.txt', 'utf8').trim().split('\\n').filter(Boolean).map(l => l.split('{cwd}').join(process.cwd()));
+e.forEach(l => console.log(l)); process.exit(e.length ? 2 : 0);
+`);
+  const old = n => `src/nav.ts(4,7): error TS2322: Type 'import("{cwd}/node_modules/lib/types").Routes' is not assignable to type 'Props', and ${n} more.\n`;
+  write(dir, 'types.txt', old(117));
+  commit(dir, 'a typecheck that writes its folder');
+  git(dir, 'switch', '-q', '-C', 'feature');
+  write(dir, 'src/routes.ts', 'export const more = 1;\n');
+  write(dir, 'types.txt', old(118).replace('(4,7)', '(5,7)'));
+  const same = check(dir, 'typecheck');
+  assert.strictEqual(same.code, 0, same.out);
+  assert.match(same.out, /typecheck: 1 problem\(s\), all already on main/);
+  write(dir, 'types.txt', `${old(118)}src/routes.ts(1,1): error TS2304: Cannot find name 'c' in import("{cwd}/node_modules/x").\n`);
+  const fresh = check(dir, 'typecheck');
+  assert.strictEqual(fresh.code, 1, fresh.out);
+  assert.match(fresh.out, /typecheck: 1 new compared with main[^\n]*:\n {2}src\/routes\.ts: TS2304 Cannot find name 'c' in import\(".+\/node_modules\/x"\)\./, 'listed as TypeScript wrote it');
+});
+
+test('pre-commit lint (staged) in a git worktree inside the main checkout: ESLint gets plugins from the worktree\'s folder; ESLint failing itself is 4, not an error in the files', () => {
+  const dir = app();
+  write(dir, '.eslintrc.json', '{}\n');
+  // a stand-in ESLint 8: run in a folder below another one with a config, it finds a plugin twice and stops, unless
+  // told where to get plugins from
+  write(dir, 'node_modules/eslint/bin/eslint.js', `const fs = require('fs'), path = require('path');
+let args = process.argv.slice(2).filter(a => a !== '--format' && a !== 'json');
+const at = args.indexOf('--resolve-plugins-relative-to');
+if (process.env.FAKE_CRASH || (process.cwd() !== path.resolve(__dirname, '../../..') && at < 0)) { console.error('ESLint couldn\\'t determine the plugin "@typescript-eslint" uniquely.'); process.exit(2); }
+if (at >= 0) args.splice(at, 2);
+const report = (file, text) => ({ filePath: path.resolve(file), messages: text.split('\\n').filter(l => /BAD/.test(l)).map(l => ({ ruleId: 'no-bad', message: l.trim(), severity: 2 })) });
+const i = args.indexOf('--stdin-filename');
+const results = i >= 0 ? [report(args[i + 1], fs.readFileSync(0, 'utf8'))] : args.map(f => report(f, fs.readFileSync(f, 'utf8')));
+console.log(JSON.stringify(results));
+process.exit(results.some(r => r.messages.length) ? 1 : 0);
+`);
+  commit(dir, 'an ESLint config');
+  git(dir, 'worktree', 'add', '-q', '.claude/worktrees/wt', '-b', 'wt');
+  const wt = path.join(dir, '.claude/worktrees/wt');
+  write(wt, 'src/a.js', `${fs.readFileSync(path.join(wt, 'src/a.js'), 'utf8')}const y = 2; // BAD new\n`);
+  const staged = env => spawnSync(process.execPath, [path.join(KIT, 'baseline.js'), 'staged', 'src/a.js'], { cwd: wt, encoding: 'utf8', env: { ...process.env, ...env } });
+  const r = staged();
+  assert.strictEqual(r.status, 1, r.stdout + r.stderr);
+  assert.match(r.stdout, /lint: 1 new compared with HEAD:\n {2}src\/a\.js: no-bad: const y = 2; \/\/ BAD new/);
+  const crash = staged({ FAKE_CRASH: '1' });
+  assert.strictEqual(crash.status, 4, crash.stdout + crash.stderr);
+  assert.match(crash.stdout, /lint: ESLint couldn't check the files \(its error is above\)/);
+});
+
+test('pushed: deleting a branch, or a branch changing only specs and docs (the plan\'s), needs no checks; code does, and needs dependencies', () => {
+  const dir = app();
+  const sha = ref => git(dir, 'rev-parse', ref);
+  const ZERO = '0'.repeat(40);
+  const pushed = (lines, cwd = dir) => spawnSync(process.execPath, [path.join(KIT, 'baseline.js'), 'pushed'], { cwd, input: lines, encoding: 'utf8' }).stdout.trim();
+  assert.strictEqual(pushed(`(delete) ${ZERO} refs/heads/old ${sha('main')}\n`), 'skip: only deleting, so no typecheck or tests');
+  git(dir, 'switch', '-q', '-c', 'plan');
+  write(dir, 'specs/plan.md', '# Plan\n');
+  write(dir, 'docs/amk/glossary.md', '# Glossary\n');
+  commit(dir, 'docs(plan): a draft');
+  assert.strictEqual(pushed(`refs/heads/plan ${sha('plan')} refs/heads/plan ${ZERO}\n`), 'skip: only specs and docs change, so no typecheck or tests', 'a new branch: since it left main');
+  const before = sha('plan');
+  write(dir, 'src/plan.ts', 'export const p = 1;\n');
+  commit(dir, 'code on it');
+  assert.strictEqual(pushed(`refs/heads/plan ${sha('plan')} refs/heads/plan ${before}\n`), 'checks', 'since what the remote has');
+  fs.renameSync(path.join(dir, 'node_modules'), path.join(dir, 'nm-away'));
+  assert.strictEqual(pushed(`refs/heads/plan ${sha('plan')} refs/heads/plan ${before}\n`), 'no-deps');
+  fs.renameSync(path.join(dir, 'nm-away'), path.join(dir, 'node_modules'));
+  assert.strictEqual(pushed(''), 'checks', 'nothing read: checks');
+  // the hook itself: a docs-only push goes through without its checks
+  fs.mkdirSync(path.join(dir, '.githooks'), { recursive: true });
+  fs.copyFileSync(path.join(KIT, '../../.githooks/pre-push'), path.join(dir, '.githooks/pre-push'));
+  fs.copyFileSync(path.join(KIT, 'baseline.js'), path.join(dir, 'scripts/amk/baseline.js'));
+  git(dir, 'reset', '-q', '--hard', before);
+  const hook = spawnSync('sh', ['.githooks/pre-push', 'origin', 'url'], { cwd: dir, input: `refs/heads/plan ${before} refs/heads/plan ${ZERO}\n`, encoding: 'utf8' });
+  assert.strictEqual(hook.status, 0, hook.stderr);
+  assert.match(hook.stderr, /^pre-push: only specs and docs change, so no typecheck or tests$/m);
+});
+
 test('a release branch is compared with the last release: a test that broke on main since then is new', () => {
   const dir = app();
   git(dir, 'switch', '-q', 'main');

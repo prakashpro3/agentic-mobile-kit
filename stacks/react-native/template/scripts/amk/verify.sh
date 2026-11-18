@@ -6,6 +6,7 @@
 #
 # Usage: sh scripts/amk/verify.sh [quick|ios|android|all|build|plan|approve] [--spec <ids>] [--flow <file>] [--label <name>]
 #                                [--flavor <name>] [--scheme <name>] [--screens <list>] [--no-build] [--related] [--mock]
+#                                [--large-text]
 #   quick           lint, typecheck, tests
 #   --related       quick: only the Jest tests related to the files this branch changed, for each task while building
 #                   (without it, the whole suite)
@@ -25,6 +26,11 @@
 #   --label <n>     evidence folder name (default: the spec id, or no-spec)
 #   --flavor <name> Android product flavor to check (default: the first one in build.gradle)
 #   --scheme <name> iOS scheme to check (default: the one named like the workspace)
+#                   another flavor or scheme than a plain run checks, or --large-text, keeps its evidence in
+#                   <spec>-<flavor or scheme>[-large-text]/ (or --label's folder): a plain run doesn't replace it
+#   --large-text    the largest text size on the simulators and emulators (iOS's largest accessibility size, Android's
+#                   font scale 2), set once the device is this run's and put back at the end; a real device's is set by
+#                   hand
 #   --screens <l>   only these of the screens the app supports, comma-separated: phone, tablet, portrait,
 #                   landscape, or one such as tablet-landscape (portrait and landscape include the tablet's)
 #   --no-build      check the last build instead of building again (after `build`), when it has the same API (--mock)
@@ -77,14 +83,17 @@ related=0
 changed=0
 build_only=0
 part=""
+flavor_arg="" scheme_arg="" scheme_default=${AMK_IOS_SCHEME:-}
+large=0
 while [ $# -gt 0 ]; do
   case $1 in
     --spec) spec=$2; shift 2 ;;
     --flow) flow=$2; shift 2 ;;
     --tags) tags=$2; shift 2 ;;
     --label) label=$2; shift 2 ;;
-    --flavor) flavor=$2; shift 2 ;;
-    --scheme) AMK_IOS_SCHEME=$2; export AMK_IOS_SCHEME; shift 2 ;;
+    --flavor) flavor=$2; flavor_arg=$2; shift 2 ;;
+    --scheme) AMK_IOS_SCHEME=$2; export AMK_IOS_SCHEME; scheme_arg=$2; shift 2 ;;
+    --large-text) large=1; shift ;;
     --screens) only=$2; shift 2 ;;
     --no-build) no_build=1; shift ;;
     --mock) mock=1; shift ;;
@@ -106,6 +115,20 @@ fi
 case $spec in *,*) [ -n "$label" ] || { echo "verify: --spec $spec runs several specs' flows: name their evidence folder with --label <name>"; exit 2; } ;; esac
 
 root=$(pwd)
+# a check of another flavor or scheme than a plain run checks (the first flavor, the workspace's scheme), or at the
+# largest text size, keeps its own evidence: the next plain run would replace its screenshots
+lower() { printf %s "$1" | tr '[:upper:]' '[:lower:]'; }
+apart=""
+if [ -n "$flavor_arg" ]; then
+  usual=${AMK_ANDROID_FLAVOR:-$(node scripts/amk/android-flavors.js 2> /dev/null | head -n 1)}
+  [ -z "$usual" ] || [ "$(lower "$flavor_arg")" = "$(lower "$usual")" ] || apart=$flavor_arg
+fi
+if [ -n "$scheme_arg" ]; then
+  usual=${scheme_default:-$(ls -d ios/*.xcworkspace 2> /dev/null | head -n 1 | sed 's|.*/||; s|\.xcworkspace$||')}
+  [ -z "$usual" ] || [ "$(lower "$scheme_arg")" = "$(lower "$usual")" ] || [ "$(lower "$scheme_arg")" = "$(lower "$apart")" ] || apart="${apart:+$apart-}$scheme_arg"
+fi
+[ "$large" = 0 ] || apart="${apart:+$apart-}large-text"
+[ -z "$apart" ] || [ -n "$label" ] || label="${spec:-no-spec}-$apart"
 # --flow: a path in the project, or an absolute one (C:/… on Windows too); a Windows path's backslashes become slashes
 case $flow in *\\*) flow=$(printf '%s' "$flow" | tr '\\' /) ;; esac
 case $flow in "" | /* | [A-Za-z]:/*) ;; *) flow=$root/$flow ;; esac
@@ -267,7 +290,30 @@ step() { # quick, ios or android; its stage; for the flows: how many ran, of how
 }
 # its length is kept as a guide for the next of its kind when it passed
 finish() { node "$root/scripts/amk/progress.js" end "verify-$1-$me" --result "$([ "$status" = 0 ] && echo passed || echo failed)" > /dev/null 2>&1 || true; }
-trap 'release; drop_temps; [ -z "$tree_flow" ] || rm -f "$tree_flow"; node "$root/scripts/amk/progress.js" end-pid "$me" > /dev/null 2>&1 || true' EXIT
+# --large-text: each device's text size as it was, put back at the end ("a:<serial>=<size>", "i:<UDID>=<size>")
+sizes_before=""
+text_back() {
+  for p in $sizes_before; do
+    d=${p#?:} d=${d%%=*}
+    case $p in
+      a:*) "$adb" -s "$d" shell settings put system font_scale "${p#*=}" > /dev/null 2>&1 || true ;;
+      i:*) xcrun simctl ui "$d" content_size "${p#*=}" > /dev/null 2>&1 || true ;;
+    esac
+  done
+}
+large_text() { # emulator|simulator|real, device
+  [ "$large" = 1 ] || return 0
+  case $1 in
+    emulator) was=$("$adb" -s "$2" shell settings get system font_scale 2> /dev/null | tr -d '\r')
+      sizes_before="$sizes_before a:$2=${was:-1.0}"
+      "$adb" -s "$2" shell settings put system font_scale 2.0 > /dev/null 2>&1 || echo "verify: --large-text: couldn't set the text size on $2" ;;
+    simulator) was=$(xcrun simctl ui "$2" content_size 2> /dev/null | tr -d '\r')
+      sizes_before="$sizes_before i:$2=${was:-large}"
+      xcrun simctl ui "$2" content_size accessibility-extra-extra-extra-large > /dev/null 2>&1 || echo "verify: --large-text: couldn't set the text size on $2" ;;
+    *) echo "verify: --large-text: set the largest text size on $2 by hand (a real device's settings are left alone)" ;;
+  esac
+}
+trap 'text_back; release; drop_temps; [ -z "$tree_flow" ] || rm -f "$tree_flow"; node "$root/scripts/amk/progress.js" end-pid "$me" > /dev/null 2>&1 || true' EXIT
 trap 'exit 130' INT TERM
 holder() {
   l=$(lock_path "$1")
@@ -551,9 +597,10 @@ run_flows() { # screen device app_id orientation (PORTRAIT, or LANDSCAPE_LEFT to
       done ;;
   esac
   # a screen checked in the wrong orientation would pass for another screen: a turned one's screenshots are wider than
-  # tall, an upright one's taller than wide. A device that didn't turn usually does the next time
+  # tall, an upright one's taller than wide. A device that didn't turn usually does the next time. A screenshot taken
+  # after the app left (the phone's home screen, another app), named <…>-outside, shows what the phone shows instead
   case $1 in *-landscape) want=wide was=upright ;; *) want=tall was=turned ;; esac
-  wrong=$(find "$out" -name '*.png' -newer "$out/.started" | WANT=$want node -e '
+  wrong=$(find "$out" -name '*.png' ! -name '*-outside.png' -newer "$out/.started" | WANT=$want node -e '
     const fs = require("fs");
     for (const f of fs.readFileSync(0, "utf8").split("\n").filter(Boolean)) {
       const b = Buffer.alloc(24), fd = fs.openSync(f, "r");
@@ -586,7 +633,7 @@ run_flows() { # screen device app_id orientation (PORTRAIT, or LANDSCAPE_LEFT to
       case $was in upright) other=landscape ;; *) other=portrait ;; esac
       echo "  $1: the app sets its orientation in its code (${set_in% }), which can keep it $was. If it's meant to stay $was, take $other out of its native settings (UISupportedInterfaceOrientations in Info.plist, screenOrientation in AndroidManifest.xml) and this screen isn't checked any more; otherwise change that code"
     fi
-    echo "  $1: a flow that leaves the app (a call, the camera, a picker) comes back $was when the other app's screen turned the device: turn it back after that step with - setOrientation: \${ORIENTATION}"
+    echo "  $1: a flow that leaves the app (a call, the camera, a picker) comes back $was when the other app's screen turned the device: turn it back after that step with - setOrientation: \${ORIENTATION}. A screenshot of the other screen (the phone's home screen, another app) ends its name with -outside, and isn't checked for this"
   fi
 }
 
@@ -625,6 +672,8 @@ check_screens() { # platform phone tablet app_id screens…
 }
 
 quick() {
+  # a check this run doesn't reach (lint failed first) has no log, not the last run's
+  rm -f "$evidence/lint.log" "$evidence/typecheck.log" "$evidence/test.log"
   # each one passes when the app's script passes, or when all its failures were already on the base branch
   if step quick lint && node scripts/amk/baseline.js lint > "$evidence/lint.log" 2>&1 &&
     step quick typecheck && node scripts/amk/baseline.js typecheck > "$evidence/typecheck.log" 2>&1 &&
@@ -739,6 +788,7 @@ ios() {
       xcrun simctl bootstatus "$d" -b > /dev/null
       xcrun simctl install "$d" "$app"
     fi
+    if is_real "$d"; then large_text real "$d"; else large_text simulator "$d"; fi
   done
   check_screens ios "$device" "$tablet" "$app_id" $screens
   for d in $reals; do crash_reports "$d"; done
@@ -998,6 +1048,19 @@ start_emulator() {
 }
 
 # waits for the Android device $1 to finish starting, for up to 5 minutes
+# installs the build on $1, or prints why it didn't. An emulator with the app signed with another key (an earlier
+# build of another kind) gets it removed first, with its data: a phone's app and data are left alone
+install_on() {
+  out=$("$adb" -s "$1" install -r "$apk" 2>&1) && return 0
+  case "$1 $out" in
+    emulator-*INSTALL_FAILED_UPDATE_INCOMPATIBLE* | emulator-*"signatures do not match"*)
+      echo "android: $1 had the app signed with another key: removing it there (an emulator) and installing again" >&2
+      "$adb" -s "$1" uninstall "$app_id" > /dev/null 2>&1 || true
+      out=$("$adb" -s "$1" install -r "$apk" 2>&1) && return 0 ;;
+  esac
+  printf '%s\n' "$out" | grep -v '^\s*$' | tail -n 1
+  return 1
+}
 android_ready() {
   tries=0
   until [ "$("$adb" -s "$1" shell getprop sys.boot_completed 2> /dev/null | tr -d '\r')" = 1 ]; do
@@ -1124,18 +1187,26 @@ android() {
   step android installing
   if [ -n "$device" ]; then
     android_ready "$device" || { echo "android: $device didn't finish starting (see: adb devices)"; status=1; return; }
-    "$adb" -s "$device" install -r "$apk" > /dev/null
+    why=$(install_on "$device") || { echo "android: the app didn't install on $device: $why"; status=1; return; }
   fi
   if [ -n "$tablet" ]; then
     if ! android_ready "$tablet"; then echo "android: $tablet didn't finish starting, so tablets aren't checked"; tablet=""
-    elif ! "$adb" -s "$tablet" install -r "$apk" > /dev/null 2>&1; then
-      echo "android: the app didn't install on the tablet $tablet (a different CPU type?), so tablets aren't checked"; tablet=""
+    elif ! why=$(install_on "$tablet"); then
+      echo "android: the app didn't install on the tablet $tablet ($why), so tablets aren't checked"; tablet=""
     fi
   fi
   for d in $device $tablet; do
     # system "isn't responding" pop-ups (common on busy emulators) cover the app and fail flows; app crashes still fail
-    # them. Emulators only: the setting is device-wide and stays, so a phone keeps showing them
-    case $d in emulator-*) "$adb" -s "$d" shell settings put global hide_error_dialogs 1 ;; esac
+    # them. Emulators only: the setting is device-wide and stays, so a phone keeps showing them. An emulator that
+    # dozed off gives black screenshots: its screen stays on, and wakes, unlocked
+    case $d in emulator-*)
+      "$adb" -s "$d" shell settings put global hide_error_dialogs 1
+      "$adb" -s "$d" shell svc power stayon true > /dev/null 2>&1 || true
+      "$adb" -s "$d" shell input keyevent KEYCODE_WAKEUP > /dev/null 2>&1 || true
+      "$adb" -s "$d" shell wm dismiss-keyguard > /dev/null 2>&1 || true
+      large_text emulator "$d" ;;
+    *) large_text real "$d" ;;
+    esac
     "$adb" -s "$d" shell am broadcast -a android.intent.action.CLOSE_SYSTEM_DIALOGS > /dev/null 2>&1 || true
   done
   check_screens android "$device" "$tablet" "$app_id" $screens

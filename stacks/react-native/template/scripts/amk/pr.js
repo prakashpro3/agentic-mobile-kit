@@ -46,7 +46,12 @@ const IO = {
   now: Date.now,
   log: t => console.log(t),
 };
-const branchNow = () => git('symbolic-ref', '--quiet', '--short', 'HEAD');
+// the branch's name on GitHub: the one it tracks (a worktree's own branch, pushed as feature/<id>), else its own
+const branchNow = () => {
+  const local = git('symbolic-ref', '--quiet', '--short', 'HEAD');
+  const merge = local && git('config', '--get', `branch.${local}.merge`);
+  return (merge && merge.replace(/^refs\/heads\//, '')) || local;
+};
 const mainName = main => (main || '').replace(/^origin\//, '');
 
 // ---------- checks: wait for them, and hand over a failure's log ----------
@@ -229,7 +234,7 @@ function forward(main, { check = true } = {}, cfg = settings(), io = IO) {
   return code;
 }
 
-module.exports = { checks, automerge, comments, forward, settings, mergeMethod, IO };
+module.exports = { checks, automerge, comments, forward, settings, mergeMethod, branchNow, IO };
 
 if (require.main === module) {
   const args = process.argv.slice(2);

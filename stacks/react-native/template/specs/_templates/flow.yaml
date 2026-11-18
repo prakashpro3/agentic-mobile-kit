@@ -9,6 +9,8 @@
 # Steps several flows share (logging in, skipping onboarding, a permission prompt) and resetting test data go in
 # .maestro/subflows/ (specs/_templates/subflow.yaml), run with "- runFlow: subflows/<name>.yaml".
 # Test logins: ${MAESTRO_EMAIL}, ${MAESTRO_PASSWORD} and the like, set in .maestro/.env.local, which isn't committed.
+# A screenshot taken after the app left (the phone's home screen, another app): end its name with -outside, as the
+# turned screens' check can't expect the other screen to turn.
 # On a real iPhone (maestro-runner): text with an apostrophe can't be searched for (use a testID), and permission
 # prompts aren't answered for the flow (tapOn: { text: "Allow", optional: true }). setAirplaneMode works only on an
 # iPhone in English (it looks for "Airplane Mode" in Settings) and leaves Settings in front: launchApp: { stopApp: false }

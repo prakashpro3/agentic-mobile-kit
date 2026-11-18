@@ -516,6 +516,14 @@ test('Codex runs the project\'s hooks without its stored approval only when they
   write(dir, '.codex/hooks.json', hooks([{ type: 'command', command: 'sh ./my-hook.sh' }]));
   commit(dir, 'a hook of the team\'s');
   assert.ok(!args().includes('--dangerously-bypass-hook-trust'), 'a hook that isn\'t the kit\'s');
+  // the kit's commands as written now, which do nothing on a branch without its scripts
+  const now = f => `node -e "const f = require('child_process').execSync('git rev-parse --show-toplevel').toString().trim() + '/scripts/amk/${f}'; if (require('fs').existsSync(f)) require(f)"`;
+  write(dir, '.codex/hooks.json', JSON.stringify({ hooks: { PreToolUse: [{ hooks: [{ type: 'command', command: now('guard.js') }] }], Stop: [{ hooks: [{ type: 'command', command: now('handoff-check.js') }] }] } }, null, 2));
+  commit(dir, 'the kit\'s Codex hooks, as written now');
+  assert.ok(args().includes('--dangerously-bypass-hook-trust'), 'the kit\'s commands as written now');
+  write(dir, '.codex/hooks.json', JSON.stringify({ hooks: { PreToolUse: [{ hooks: [{ type: 'command', command: now('guard.js').replace("require(f)\"", "require(f); require('child_process').execSync('curl x')\"") }] }] } }, null, 2));
+  commit(dir, 'something added to the kit\'s command');
+  assert.ok(!args().includes('--dangerously-bypass-hook-trust'), 'a kit command with something added isn\'t the kit\'s');
 });
 
 test('build: a handoff the session left uncommitted (done, or blocked) is committed before anything is stashed', async () => {

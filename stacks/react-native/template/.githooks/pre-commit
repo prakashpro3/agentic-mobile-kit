@@ -46,16 +46,18 @@ fi
 #    Errors a file had before this commit don't block it, as verify.sh doesn't block them: only new ones do
 files=$(echo "$staged" | grep -E '\.(js|jsx|ts|tsx)$' | grep -v '^scripts/amk/' || true)
 if [ -n "$files" ]; then
-  if [ -x node_modules/.bin/eslint ]; then
-    # ponytail: file names with spaces aren't supported here; split on newlines if that ever matters
-    r=0
-    node scripts/amk/baseline.js staged $files || r=$?
-    # 3: it couldn't compare with HEAD, so every error blocks, as before
-    [ "$r" != 3 ] || { r=0; node_modules/.bin/eslint $files || r=$?; }
-    [ "$r" = 0 ] || fail "fix the ESLint errors listed above"
-  else
-    echo "pre-commit: ESLint isn't installed, so staged files weren't linted (Expo: run 'npx expo lint' once)" >&2
-  fi
+  # ponytail: file names with spaces aren't supported here; split on newlines if that ever matters
+  # baseline.js finds ESLint as Node does: the app's, or a folder's above it (a git worktree inside the main checkout)
+  r=0
+  node scripts/amk/baseline.js staged $files || r=$?
+  case $r in
+    0) ;;
+    # 3: no ESLint found to compare with: lint the files as they are, as before, or say they weren't
+    3) if [ -x node_modules/.bin/eslint ]; then node_modules/.bin/eslint $files || fail "fix the ESLint errors listed above"
+       else echo "pre-commit: ESLint isn't installed, so staged files weren't linted (Expo: run 'npx expo lint' once)" >&2; fi ;;
+    4) fail "ESLint couldn't run on the staged files: fix what its error above says (often its setup), then commit again" ;;
+    *) fail "fix the ESLint errors listed above" ;;
+  esac
 fi
 
 # 5. spec format: requirements in force need a SHALL and a scenario (format: specs/current/README.md)

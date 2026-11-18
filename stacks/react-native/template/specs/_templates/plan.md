@@ -38,11 +38,15 @@ Approved: <the layers approved so far, with their dates: feature map; stories an
 
 ## Approved up front
 
-<!-- What the build does without asking, approved with the stories and shared design. -->
+<!-- What the build does without asking, approved with the stories and shared design. The build stops at anything
+     else (a native change, a backend change, a new permission) and waits for an answer, so settle those here: list
+     each one the features need, or write "none". -->
 
 - Pushing a `feature/<id>` branch and opening a pull request for each feature
 - Adding the dependencies the shared design lists
 - The look: <the prototype's screenshots, or docs/amk/design-system.md>
+- Native code: <the iOS and Android changes and permissions the features need (files, permissions), or none>
+- Backend: <database migrations, server functions and their deploys the features need, and where they may go (a test project, or live), or none>
 
 ## Summaries
 

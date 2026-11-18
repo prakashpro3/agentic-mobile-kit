@@ -195,6 +195,19 @@ test('iOS may reuse its build number for a new version; Android may not', () => 
   assert.match(out, /! Android build number unchanged/);
 });
 
+test('a new version: iOS may start its build numbers again; Android\'s version code must still go up', () => {
+  const dir = app(bumped);
+  commit(dir, 'release 1.1');
+  git(dir, 'tag', 'v1.1.0');
+  for (const [f, t] of Object.entries({ 'ios/Demo.xcodeproj/project.pbxproj': pbx('1.2', 1), 'android/app/build.gradle': gradle(1, '1.2') })) write(dir, f, t);
+  const { out, code } = check(dir);
+  assert.match(out, /✓ iOS build number \(2 → 1, for a new version\)/);
+  assert.match(out, /✗ Android build number went down \(2 → 1\)/);
+  assert.strictEqual(code, 1, 'Android\'s still fails');
+  write(dir, 'android/app/build.gradle', gradle(3, '1.2'));
+  assert.strictEqual(check(dir).code, 0, out);
+});
+
 test('signing keys and passwords in git warn; the standard debug keystore does not', () => {
   const signed = `android {
   defaultConfig { versionCode 2

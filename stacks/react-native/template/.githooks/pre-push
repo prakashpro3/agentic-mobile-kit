@@ -1,7 +1,13 @@
 #!/bin/sh
 # agentic-mobile-kit pre-push: typecheck and tests before code leaves the machine.
 set -eu
-[ -d node_modules ] || { echo "pre-push: dependencies aren't installed; run: sh scripts/amk/install-deps.sh" >&2; exit 1; }
+# what's pushed: deleting branches, or changes only to specs and docs (the plan's branch), needs no checks. The
+# dependencies: the app's, or a folder's above it, as Node finds them (a git worktree inside the main checkout)
+what=$(node scripts/amk/baseline.js pushed) || what=checks
+case $what in
+  skip:*) echo "pre-push: ${what#skip: }" >&2; exit 0 ;;
+  no-deps) echo "pre-push: dependencies aren't installed; run: sh scripts/amk/install-deps.sh" >&2; exit 1 ;;
+esac
 # each passes when the app's script passes, or when all its failures were already on the base branch
 # baseline.js exits with 3 when a failing check can't be compared with the base, which isn't the same as new problems
 node scripts/amk/baseline.js typecheck || { [ $? = 3 ] && echo "pre-push: the typecheck failed and couldn't be compared with the base: see why above" >&2 || echo "pre-push: fix the new type errors above" >&2; exit 1; }

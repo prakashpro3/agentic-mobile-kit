@@ -724,3 +724,28 @@ Also found:
 - **Reproducing:** test runs that start `claude` with a clean environment don't go through the service. `claude --bg` does.
 
 The supported ways to answer from a phone are Remote Control and Claude Code's Channels (its Telegram plugin, in research preview).
+
+## Kit problems from four days of sessions (2026-11-18)
+
+Two production apps' Claude Code sessions (13 to 18 November) were read for where the kit got in the way. What came out of it, all fixed for 0.17:
+
+- **Worktrees inside the project (`.claude/worktrees/`):**
+  - ESLint 8 also read the main checkout's `.eslintrc` and stopped on a plugin found twice. The kit's own ESLint runs now get `--resolve-plugins-relative-to <app>` when a folder above has an `.eslintrc` and none has a flat config. The pre-commit hook tells an ESLint failure from errors in the files.
+  - The gitignored test login was missing; `maestro-env.sh` now also reads the main checkout's.
+  - `pre-push` refused a worktree that uses the project's `node_modules`.
+  - `pr.js` looked the PR up by the local branch's name, not the one it tracks.
+- **The guard:**
+  - Text that was only searched for, written or used as a commit message counted as a command, and an existence check on a secret file counted as reading it. Commands are now split on `;`, `&` and `|` outside quotes only. The relief stops when the command also runs a shell, `$( )` or a heredoc of code.
+  - A PreToolUse hook's `permissionDecision: "ask"` brings up Claude Code's approval prompt, also in auto mode, which didn't approve it by itself (Claude Code 2.1.326, an interactive session). So `git reset --hard` and `--no-verify` ask there, and are still blocked in an unattended build and in the other tools.
+- **Noise:**
+  - rn-check reported scenarios checked by a Jest test or in a flavor's flow folder, and gaps the base already had, ahead of the code's warnings.
+  - `baseline.js` counted an old type error as new when its message held a checkout's path or an "and N more" count.
+  - `verify.sh quick` showed an earlier run's logs after a lint failure.
+  - `release-check` failed an iOS build number that started again for a new version.
+- **Device runs:**
+  - A flavor's run replaced the usual run's evidence.
+  - A screenshot of the phone's home screen failed the turned screens' check.
+  - A dozing emulator gave black screenshots.
+  - A signature mismatch aborted the run without a word.
+  - Agents changed the font size by hand, outside the device lock; `--large-text` does that now.
+- **Planning:** the plan's "Approved up front" now asks about native and backend changes, which had stopped a build overnight.

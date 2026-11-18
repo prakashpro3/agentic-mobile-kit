@@ -278,3 +278,18 @@ test('forward: a feature built feature by feature on another one\'s branch (spec
   assert.strictEqual(git(dir, 'merge-base', '--is-ancestor', 'main', 'feature/two'), '', 'main is in feature/two now');
   assert.ok(g.calls.includes('pr edit 21 --base main'), g.calls.join('\n'));
 });
+
+test('the branch on GitHub: the one a local branch tracks (a worktree\'s own branch, pushed as feature/<id>), else its own name', () => {
+  const dir = tmpDir('amk-pr-branch-');
+  for (const f of ['pr.js', 'specs.js', 'progress.js', 'redact.js']) write(dir, `scripts/amk/${f}`, fs.readFileSync(path.join(KIT, 'scripts/amk', f), 'utf8'));
+  write(dir, 'package.json', '{}');
+  git(dir, 'init', '-q', '-b', 'main');
+  git(dir, 'add', '-A');
+  git(dir, '-c', 'user.name=t', '-c', 'user.email=t@example.invalid', 'commit', '-qm', 'app');
+  git(dir, 'switch', '-q', '-c', 'worktree-agenda');
+  const now = () => execFileSync(process.execPath, ['-e', 'console.log(require("./scripts/amk/pr.js").branchNow())'], { cwd: dir, encoding: 'utf8' }).trim();
+  assert.strictEqual(now(), 'worktree-agenda', 'nothing tracked: its own name');
+  git(dir, 'config', 'branch.worktree-agenda.remote', 'origin');
+  git(dir, 'config', 'branch.worktree-agenda.merge', 'refs/heads/feature/20261113-agenda');
+  assert.strictEqual(now(), 'feature/20261113-agenda');
+});

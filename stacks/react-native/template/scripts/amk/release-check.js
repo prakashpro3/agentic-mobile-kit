@@ -87,7 +87,10 @@ function compare(platform, now, before, kind, versionChanged) {
   if (!before) { info(`${platform} ${kind}: ${now.join(', ')}`); return; }
   if (!before.length || now.join() !== before.join()) {
     if (kind === 'build number' && before.length && maxNum(now) < maxNum(before)) {
-      fail(`${platform} build number went down (${before.join(', ')} → ${now.join(', ')})`, 'stores reject a build number lower than the last upload');
+      // the App Store needs a higher build number only within a version: a new version may start again. Google Play's
+      // version code goes up always
+      if (platform === 'iOS' && versionChanged) ok(`${platform} build number (${before.join(', ')} → ${now.join(', ')}, for a new version)`);
+      else fail(`${platform} build number went down (${before.join(', ')} → ${now.join(', ')})`, 'stores reject a build number lower than the last upload');
     } else ok(`${platform} ${kind}`, `${before.join(', ') || '?'} → ${now.join(', ')}`);
   } else if (kind === 'build number' && platform === 'iOS' && versionChanged) {
     // the App Store needs a new build number only within a version, so 1 again for a new version is fine

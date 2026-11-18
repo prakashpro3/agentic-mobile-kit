@@ -918,7 +918,7 @@ function importList(file) {
 }
 
 module.exports = {
-  norm, same, stripYamlComments, scenarios, flowBlocks, blockFor, allFlows, flowsOf, tagsOf, csv,
+  norm, same, stripYamlComments, scenarios, flowBlocks, blockFor, allFlows, flowsOf, tagsOf, csv, jestTests,
   // the plan, for autopilot.js
   NONE, stateOf, planRef, show, planFeatures, building, builtOn, mainRef, fetchOrigin,
 };

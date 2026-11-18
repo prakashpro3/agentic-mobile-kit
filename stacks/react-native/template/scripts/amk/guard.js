@@ -25,11 +25,76 @@ const paths = [];
 })(payload, '');
 
 // rm with a recursive flag and a force flag anywhere before the next ; & | (-rf, -Rf, -r -f, --recursive --force);
-// a push with --force, -f or a +refspec
-const destructive = /\brm(?=[^;&|\n]*\s(-[a-zA-Z]*[rR][a-zA-Z]*|--recursive)\b)(?=[^;&|\n]*\s(-[a-zA-Z]*f[a-zA-Z]*|--force)\b)|git\s+reset\s+--hard|git\s+push\s+(.*\s)?((--force|-f)\b|\+\S)|git\s+clean\s+-[a-z]*f|--no-verify|xcrun\s+simctl\s+erase/;
+// a push with --force, -f or a +refspec. The ones the rules say to ask about first (ask) can be approved in Claude Code
+const DESTRUCTIVE = [
+  /\brm(?=[^;&|\n]*\s(-[a-zA-Z]*[rR][a-zA-Z]*|--recursive)\b)(?=[^;&|\n]*\s(-[a-zA-Z]*f[a-zA-Z]*|--force)\b)/,
+  { re: /git\s+reset\s+--hard/, ask: 'throws away every uncommitted change' },
+  /git\s+push\s+(.*\s)?((--force|-f)\b|\+\S)/, /git\s+clean\s+-[a-z]*f/,
+  { re: /--no-verify/, ask: 'skips the checks of the git hooks' },
+  /xcrun\s+simctl\s+erase/,
+].map(r => (r instanceof RegExp ? { re: r } : r));
+
+// heredoc bodies out of a command, each replaced by a mark on the line that starts it ("<<<" is no heredoc)
+function heredocs(c) {
+  const bodies = [];
+  const lines = c.split('\n');
+  const kept = [];
+  for (let i = 0; i < lines.length; i++) {
+    kept.push(lines[i]);
+    for (const m of [...lines[i].matchAll(/(?<!<)<<(-?)\s*(['"]?)([A-Za-z_][\w.-]*)\2/g)]) {
+      const body = [];
+      while (++i < lines.length && (m[1] ? lines[i].replace(/^\t+/, '') : lines[i]) !== m[3]) body.push(lines[i]);
+      kept[kept.length - 1] += ` \u0000${bodies.push(body.join('\n')) - 1}\u0000`;
+    }
+  }
+  return { text: kept.join('\n'), bodies };
+}
+// a command's parts between ; & | && || and line ends outside quotes ("a\|b" in a grep pattern stays whole), each
+// with its first word and the heredoc bodies it feeds
+function parts(c) {
+  const { text, bodies } = heredocs(c.replace(/\d*>&\d*-?/g, ' '));
+  const out = [];
+  let cur = '';
+  let q = null;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (q) { cur += ch; if (ch === '\\' && q === '"') cur += text[++i] || ''; else if (ch === q) q = null; continue; }
+    if (ch === '\\') { cur += ch + (text[++i] || ''); continue; }
+    if (ch === "'" || ch === '"') q = ch;
+    if (!q && ';&|\n'.includes(ch)) { out.push(cur); cur = ''; continue; }
+    cur += ch;
+  }
+  out.push(cur);
+  return out.map(s => s.trim()).filter(Boolean).map(s => {
+    const words = s.replace(/\u0000\d+\u0000/g, '').split(/\s+/).filter(w => !/^\w+=/.test(w)).map(w => w.replace(/^['"]|['"]$/g, ''));
+    const fed = [...s.matchAll(/\u0000(\d+)\u0000/g)].map(m => bodies[m[1]]);
+    return { text: s.replace(/\u0000\d+\u0000/g, ''), first: path.basename(words[0] || ''), second: words[1] || '', fed };
+  });
+}
+// what only searches or prints: its quoted text isn't run, unless the command also hands text to a shell, or runs
+// commands inside it ($( ), backticks, <( ))
+const TEXT = /^(grep|egrep|fgrep|rg|ag|ack|echo|printf)$/;
+const RUNS = /(^|[\s|;&(])(sh|bash|zsh|dash|ksh|fish|eval|xargs|source|parallel|ssh)(?=$|[\s;&|)])|(^|[;&|]\s*)\.\s/;
+const NESTED = /\$\(|`|<\(|>\(/;
+// what only looks whether a file is there, without reading it
+const EXISTS = /^(ls|test|\[|\[\[|stat)$/;
+// what writes a heredoc's text as it is: its body is data, not code
+const DATA = /^(cat|tee)$/;
+// a part's text where the rules apply: without a search's patterns (or, for secret files, a look whether one is there),
+// a commit's message or a data heredoc
+function checked(c, p, reading = false) {
+  const plain = !RUNS.test(c) && !NESTED.test(p.text);
+  if (plain && !reading && (TEXT.test(p.first) || (p.first === 'git' && p.second === 'grep'))) return '';
+  if (plain && reading && EXISTS.test(p.first)) return '';
+  const runs = !plain;
+  let t = p.text;
+  if (!runs && p.first === 'git' && p.second === 'commit') t = t.replace(/(\s(?:-m|--message)(?:=|\s+))("(?:[^"\\$`]|\\.)*"|'[^']*')/g, '$1MSG');
+  return DATA.test(p.first) ? t : [t, ...p.fed].join('\n');
+}
+
 // git commands that throw away work for good: every uncommitted change (a checkout or restore of the whole tree, a forced
 // checkout or switch), saved stashes, a branch with commits merged nowhere. Undoing one file's edit stays allowed
-const discards = c => c.split(/&&|\|\||[;&|\n]/).some(s => {
+const discards = c => parts(c).map(p => checked(c, p)).some(s => {
   const m = /\bgit\s+(checkout|restore|switch|stash|branch)\b(.*)/.exec(s);
   if (!m) return false;
   const args = m[2].trim().split(/\s+/).filter(Boolean);
@@ -51,18 +116,31 @@ try { listed = fs.readFileSync(path.join(root, '.amk-secrets'), 'utf8').split('\
 const secret = s => secretFile.test(s) || listed.some(p => s.includes(p));
 
 const block = reason => { process.stderr.write(`Blocked by scripts/amk/guard.js: ${reason}\n`); process.exit(2); };
+// what the rules say to ask about first: Claude Code asks the developer (an unattended build, or another tool, blocks it)
+const asks = [];
 for (const c of commands) {
-  // a command that only mentions one, in a commit message, is blocked too: the message can come from a file instead
+  // a message that runs commands ($( ), backticks) is checked too: it can come from a file instead
   const inMessage = /git\s+commit\b/.test(c) ? '\n(Only in the commit message? Write it to a file and use git commit -F <file>.)' : '';
-  if (destructive.test(c)) block(`destructive command: ${c}${inMessage}`);
+  for (const p of parts(c)) {
+    for (const r of DESTRUCTIVE.filter(d => d.re.test(checked(c, p)))) {
+      if (r.ask) asks.push(`${c.trim()}\nIt ${r.ask}. The project's rules (AGENTS.md) say to ask first: approve it only if you meant to.`);
+      else block(`destructive command: ${c}${inMessage}`);
+    }
+  }
   if (discards(c)) {
     block(`this throws away work that can't be brought back (uncommitted changes, stashes or unmerged commits): ${c}\n`
       + `Ask the user first, or keep the work: git stash, or a commit. To undo your own edit to a file: git checkout -- <that file>.${inMessage}`);
   }
-  if (secret(c)) block(`shell access to a secret file: ${c}`);
+  if (parts(c).some(p => secret(checked(c, p, true)))) block(`shell access to a secret file: ${c}`);
 }
 for (const p of paths) {
   if (secret(p)) block(`access to a secret file: ${p}`);
+}
+
+if (asks.length) {
+  if (process.env.AMK_AUTOPILOT || !(/[\\/]\.claude[\\/]/.test(String(payload.transcript_path || '')) || process.env.CLAUDECODE)) block(`destructive command: ${asks[0]}`);
+  process.stdout.write(`${JSON.stringify({ hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'ask', permissionDecisionReason: `scripts/amk/guard.js: ${asks.join('\n')}` } })}\n`);
+  process.exit(0);
 }
 
 // An unattended build (scripts/amk/autopilot.js sets AMK_AUTOPILOT) works under your GitHub login, so it never does what

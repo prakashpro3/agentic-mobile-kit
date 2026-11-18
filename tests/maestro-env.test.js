@@ -25,3 +25,34 @@ test('maestro-env.sh exports only MAESTRO_ values from .maestro/.env.local, and 
   assert.match(r.stdout, /^MAESTRO_LAST=\[no-newline\]$/m);
   assert.match(r.stdout, /^API_SECRET=\[\]$/m, 'only MAESTRO_ keys');
 });
+
+test('maestro-env.sh in a git worktree: the main checkout\'s .maestro/.env.local after its own; flows needing values with none say so', () => {
+  const dir = tmpDir('amk-maestro-env-wt-');
+  const git = (cwd, ...a) => spawnSync('git', a, { cwd, encoding: 'utf8' });
+  fs.mkdirSync(path.join(dir, '.maestro'));
+  fs.writeFileSync(path.join(dir, '.maestro/login.yaml'), 'appId: x\n---\n- inputText: ${MAESTRO_EMAIL}\n');
+  fs.writeFileSync(path.join(dir, '.gitignore'), '.maestro/.env.local\n');
+  git(dir, 'init', '-q');
+  git(dir, 'add', '-A');
+  git(dir, '-c', 'user.name=t', '-c', 'user.email=t@example.invalid', 'commit', '-qm', 'flows');
+  git(dir, 'worktree', 'add', '-q', '.claude/worktrees/wt', '-b', 'wt');
+  const wt = path.join(dir, '.claude/worktrees/wt');
+  const run = cwd => spawnSync('sh', ['-c', `. "${SCRIPT}"; printf '[%s][%s]' "$(printenv MAESTRO_EMAIL || true)" "$(printenv MAESTRO_PIN || true)"`], { cwd, encoding: 'utf8', env: { ...process.env, MAESTRO_EMAIL: '', MAESTRO_PIN: '' } });
+  const none = run(wt);
+  assert.strictEqual(none.stdout, '[][]');
+  assert.match(none.stderr, /the flows use \$\{MAESTRO_…\} values, but there's no \.maestro\/\.env\.local here or in the main checkout \(.+\): steps that need them will fail/);
+  fs.writeFileSync(path.join(dir, '.maestro/.env.local'), 'MAESTRO_EMAIL=main@example.com\nMAESTRO_PIN=1234\n');
+  const found = run(wt);
+  assert.strictEqual(found.stdout, '[main@example.com][1234]', found.stderr);
+  assert.strictEqual(found.stderr, '');
+  fs.writeFileSync(path.join(wt, '.maestro/.env.local'), 'MAESTRO_EMAIL=wt@example.com\n');
+  assert.strictEqual(run(wt).stdout, '[wt@example.com][1234]', 'its own first, then the main checkout\'s');
+  assert.strictEqual(run(dir).stdout, '[main@example.com][1234]', 'the main checkout reads its own once');
+  // not in git: only its own folder, never the one above
+  const loose = path.join(tmpDir('amk-maestro-env-loose-'), 'app');
+  fs.mkdirSync(path.join(loose, '.maestro'), { recursive: true });
+  fs.writeFileSync(path.join(path.dirname(loose), '.maestro-not-read'), '');
+  fs.mkdirSync(path.join(path.dirname(loose), '.maestro'));
+  fs.writeFileSync(path.join(path.dirname(loose), '.maestro/.env.local'), 'MAESTRO_EMAIL=parent@example.com\n');
+  assert.strictEqual(run(loose).stdout, '[][]');
+});

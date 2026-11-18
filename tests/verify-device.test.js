@@ -30,7 +30,13 @@ case "$1" in
       if [ "$1 $2" = "shell wm size; wm density" ] || [ "$1 $2 $3" = "shell wm size" ]; then
         awk -v s="$s" '$1 == s { print ($3 == "tablet" ? "Physical size: 2560x1600\\nPhysical density: 320" : "Physical size: 1080x2400\\nPhysical density: 420") }' "$FAKE_STATE"
       fi
+      # FAKE_INCOMPATIBLE: the app there is signed with another key, until it's uninstalled
+      case "$1" in
+        install) if [ -n "$FAKE_INCOMPATIBLE" ] && [ ! -f "$FAKE_STATE.uninstalled-$s" ]; then echo "Failure [INSTALL_FAILED_UPDATE_INCOMPATIBLE: Existing package com.example.app signatures do not match newer version; ignoring!]"; exit 1; fi ;;
+        uninstall) touch "$FAKE_STATE.uninstalled-$s" ;;
+      esac
       case "$1 $2 $3" in
+        "shell settings get") echo 1.15 ;;
         "emu avd name") awk -v s="$s" '$1 == s { print $2; print "OK" }' "$FAKE_STATE" ;;
         "emu kill ") awk -v s="$s" '$1 != s' "$FAKE_STATE" > "$FAKE_STATE.left" && mv "$FAKE_STATE.left" "$FAKE_STATE" ;;
         "shell getprop sys.boot_completed") echo 1 ;;
@@ -80,6 +86,29 @@ const chooseDevice = o => {
   const { out } = verifyAndroid(o);
   return (out.match(/^android: (checking on .*|there's no emulator.*|no emulator found.*(\n {2}.*)?)$/m) || [out])[0];
 };
+
+test('verify.sh android: an emulator with the app signed with another key gets it reinstalled, a phone never; an emulator is woken; --large-text, and a named flavor, keep their evidence apart', { skip }, () => {
+  const shot = 'touch "$(echo "$@" | sed \'s/.*--test-output-dir \\([^ ]*\\).*/\\1/\')/shot.png"';
+  const emu = verifyAndroid({ connected: ['emulator-5556 P35'], build: true, maestro: shot, env: { FAKE_INCOMPATIBLE: '1' }, args: ['android', '--flavor', 'x', '--large-text'] });
+  assert.strictEqual(emu.status, 0, emu.out);
+  assert.match(emu.out, /android: emulator-5556 had the app signed with another key: removing it there \(an emulator\) and installing again/);
+  assert.match(emu.calls, /-s emulator-5556 uninstall com\.example\.app\n-s emulator-5556 install -r/);
+  assert.match(emu.calls, /-s emulator-5556 shell svc power stayon true\n-s emulator-5556 shell input keyevent KEYCODE_WAKEUP/);
+  assert.match(emu.calls, /-s emulator-5556 shell settings put system font_scale 2\.0[\s\S]*-s emulator-5556 shell settings put system font_scale 1\.15/, 'set, then put back');
+  assert.ok(fs.existsSync(path.join(emu.app, '.amk/evidence/no-spec-large-text/android')), 'its own evidence folder');
+  // a flavor other than the first one the app has: its own folder; the first one, named or not, the usual one
+  const flavors = app => fs.writeFileSync(path.join(app, 'android/app/build.gradle'), 'android {\n  flavorDimensions "app"\n  productFlavors {\n    rep { dimension "app" }\n    manager { dimension "app" }\n  }\n}\n');
+  for (const [name, folder] of [['manager', 'no-spec-manager'], ['Rep', 'no-spec']]) {
+    const r = verifyAndroid({ connected: ['emulator-5556 P35'], build: true, maestro: shot, args: ['android', '--flavor', name], prepare: flavors });
+    assert.ok(fs.existsSync(path.join(r.app, `.amk/evidence/${folder}`)), `--flavor ${name}: ${folder}\n${r.out}`);
+    assert.ok(name === 'Rep' || !fs.existsSync(path.join(r.app, '.amk/evidence/no-spec')), 'not the usual folder');
+  }
+  // a phone: its app and data are left alone, and the run says why it stopped
+  const phone = verifyAndroid({ connected: ['ZD22 -'], build: true, maestro: shot, env: { FAKE_INCOMPATIBLE: '1', AMK_ANDROID_DEVICE: 'ZD22' } });
+  assert.notStrictEqual(phone.status, 0);
+  assert.match(phone.out, /^android: the app didn't install on ZD22: Failure \[INSTALL_FAILED_UPDATE_INCOMPATIBLE/m);
+  assert.doesNotMatch(phone.calls, /uninstall|stayon|font_scale/);
+});
 
 test('verify.sh android: an emulator, never a phone plugged in over USB unless named, since the flows clear the app\'s data', { skip }, () => {
   const phone = 'ZD22 -';
@@ -195,7 +224,8 @@ echo "$device $(echo "$@" | sed -n 's/.* -e ORIENTATION=\([^ ]*\) .*/\1/p')" >> 
 if [ "$(awk -v s="$device" '$1 == s { print $3 }' "$FAKE_STATE")" = tablet ]; then w=2560 h=1600; else w=1080 h=2400; fi
 [ "$o" != LANDSCAPE_LEFT ] || [ -n "$NOTURN" ] || { t=$w; w=$h; h=$t; }
 [ ! -f "$out/../noturn-once" ] || { rm "$out/../noturn-once"; t=$w; w=$h; h=$t; }
-node -e 'const b = Buffer.alloc(24); b.writeUInt32BE(+process.argv[2], 16); b.writeUInt32BE(+process.argv[3], 20); require("fs").writeFileSync(process.argv[1], b)' "$out/shot.png" $w $h`;
+name=$SHOT_NAME; [ -n "$name" ] || name=shot
+node -e 'const b = Buffer.alloc(24); b.writeUInt32BE(+process.argv[2], 16); b.writeUInt32BE(+process.argv[3], 20); require("fs").writeFileSync(process.argv[1], b)' "$out/$name.png" $w $h`;
 
 test('verify.sh android: an app that turns and runs on tablets is checked on a phone and a tablet, upright and turned', { skip }, () => {
   // a running tablet emulator isn't taken for the phone; a tablet AVD starts for the tablet screens
@@ -802,6 +832,12 @@ test('verify.sh ios --part: a later part on a temporary simulator of the same ty
     /^ios: part 2\/2 of the flows runs on a copy of the device, which works only for a simulator, not Tester's iPhone$/m);
 });
 
+test('verify.sh ios: --large-text sets the simulator\'s largest text size, puts it back at the end, and keeps its evidence apart', { skip: skipIos }, () => {
+  const r = verifyIos({ args: ['ios', '--large-text'] });
+  assert.match(r.calls, /xcrun simctl ui (\S+) content_size accessibility-extra-extra-extra-large[\s\S]*xcrun simctl ui \1 content_size large/, r.out);
+  assert.ok(fs.existsSync(path.join(r.app, '.amk/evidence/no-spec-large-text')), 'its own evidence folder');
+});
+
 test('verify.sh ios: a build Xcode holds (building or indexing the project) says so, and how to go on (issue #13)', { skip: skipIos }, () => {
   const busy = verifyIos({ env: { FAKE_XCODE_BUSY: '1' } });
   assert.strictEqual(busy.status, 1);
@@ -831,8 +867,12 @@ test("verify.sh: a screen whose screenshots aren't in its orientation runs once 
   const never = verifyAndroid({ ...devices, env: { ...devices.env, NOTURN: '1' } });
   assert.match(never.out, /android-landscape: flows 1\/1 passed, 1 screenshots in .*\n {2}android-landscape: 1 screenshots show the screen upright: the device or the app didn't turn, so this screen isn't checked; treating this as a failure/);
   // a flow that left the app may have come back upright: how to turn it back (issue #11)
-  assert.match(never.out, /^ {2}android-landscape: a flow that leaves the app \(a call, the camera, a picker\) comes back upright when the other app's screen turned the device: turn it back after that step with - setOrientation: \$\{ORIENTATION\}$/m);
+  assert.match(never.out, /^ {2}android-landscape: a flow that leaves the app \(a call, the camera, a picker\) comes back upright when the other app's screen turned the device: turn it back after that step with - setOrientation: \$\{ORIENTATION\}\. A screenshot of the other screen \(the phone's home screen, another app\) ends its name with -outside, and isn't checked for this$/m);
   assert.doesNotMatch(never.out, /sets its orientation/, 'nothing in its code to point at');
+  // a screenshot taken after the app left, named -outside, shows the phone's own screen: not checked for this
+  const outside = verifyAndroid({ ...devices, env: { ...devices.env, NOTURN: '1', SHOT_NAME: 'x7-home-outside' } });
+  assert.doesNotMatch(outside.out, /show the screen upright/);
+  assert.strictEqual(outside.status, 0, outside.out);
   assert.notStrictEqual(never.status, 0);
   // never turns, and its code locks it upright although its native settings allow turning: says where
   const locked = verifyAndroid({ ...devices, env: { ...devices.env, NOTURN: '1' }, git: true, files: { 'src/screen/splash/index.js': 'Orientation.lockToPortrait();\n', 'README.md': 'lockToPortrait\n' } });

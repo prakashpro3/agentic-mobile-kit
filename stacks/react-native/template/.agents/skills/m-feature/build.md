@@ -18,7 +18,7 @@ First, once per session: `node scripts/amk/pr.js forward` merges main into this 
 Stop a feature only where you'd otherwise guess, or can't go on:
 - the approved spec turns out impossible (the API or the platform can't do it);
 - two failed attempts at the same fix;
-- a dependency, native change or permission the plan didn't approve;
+- a dependency, native or backend change, or permission the plan didn't approve;
 - a blocker test failure you can't fix;
 - a requirement changed outside the plan after the approval (`start` exit 4);
 - the first main screen not matching the approved look;

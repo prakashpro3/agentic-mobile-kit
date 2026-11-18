@@ -46,7 +46,7 @@ function codexPlan(dir) {
 }
 
 // found from wherever Claude Code runs it, as the hooks are (.rulesync/hooks.jsonc)
-const STATUS_LINE = { type: 'command', command: "node -e \"require(require('child_process').execSync('git rev-parse --show-toplevel').toString().trim() + '/scripts/amk/status.js').statusLine()\"", refreshInterval: 2 };
+const STATUS_LINE = { type: 'command', command: "node -e \"const f = require('child_process').execSync('git rev-parse --show-toplevel').toString().trim() + '/scripts/amk/status.js'; if (require('fs').existsSync(f)) require(f).statusLine()\"", refreshInterval: 2 };
 function claudeStatus(dir) {
   const file = path.join(dir, '.claude/settings.json');
   let settings;

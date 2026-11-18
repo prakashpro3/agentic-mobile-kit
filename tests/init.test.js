@@ -677,7 +677,7 @@ test('scripts/amk/tool-configs.js, which CI\'s tool-config check runs after rule
   assert.strictEqual(r.status, 0, r.stderr);
   assert.deepStrictEqual(JSON.parse(read(dir, '.agents/hooks.json')).rulesync.Stop, [{ type: 'command', command: 'node stop.js' }]);
   assert.match(read(dir, '.codex/config.toml'), /\[features\]\ndefault_mode_request_user_input = true\n\n# agentic-mobile-kit: .*\n\[tools\.update_plan\]\nenabled = true\n$/);
-  assert.match(JSON.parse(read(dir, '.claude/settings.json')).statusLine.command, /scripts\/amk\/status\.js'\)\.statusLine\(\)/);
+  assert.match(JSON.parse(read(dir, '.claude/settings.json')).statusLine.command, /scripts\/amk\/status\.js'; if \(require\('fs'\)\.existsSync\(f\)\) require\(f\)\.statusLine\(\)/);
 });
 
 test('Codex shows its plan as a checklist while it works: switched on once, and a team\'s own setting of it stays', () => {
@@ -711,7 +711,7 @@ test('Claude Code: the status line, every 2 seconds; a team\'s own status line s
   const fresh = settings({ hooks });
   assert.deepStrictEqual(fresh, { hooks, statusLine: STATUS_LINE });
   assert.strictEqual(STATUS_LINE.refreshInterval, 2);
-  assert.match(STATUS_LINE.command, /^node -e "require\(require\('child_process'\)\.execSync\('git rev-parse --show-toplevel'\)/, 'found from wherever Claude Code runs it, as the hooks are');
+  assert.match(STATUS_LINE.command, /^node -e "const f = require\('child_process'\)\.execSync\('git rev-parse --show-toplevel'\)[^"]*if \(require\('fs'\)\.existsSync\(f\)\)/, 'found from wherever Claude Code runs it, as the hooks are, and quiet on a branch without the kit');
   const text = read(dir, '.claude/settings.json');
   claudeStatus(dir);
   assert.strictEqual(read(dir, '.claude/settings.json'), text, 'nothing more to change');

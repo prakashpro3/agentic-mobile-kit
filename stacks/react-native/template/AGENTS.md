@@ -22,7 +22,7 @@ Other AI workflow frameworks in this project (Superpowers, BMAD, proAgents, …)
 | iOS pods (after native dependency changes) | `sh scripts/amk/pod-install.sh` |
 | iOS build (simulator, no signing) | `sh scripts/amk/ios-build.sh` |
 | Android build | `cd android && ./gradlew assembleDebug` |
-| Check on devices (release builds, Maestro flows, screenshots) | `sh scripts/amk/verify.sh all --spec <id>`; with product flavors it checks the first unless `--flavor <name>`; another iOS scheme: `--scheme <name>`; only some screens: `--screens phone` (or `tablet`, `landscape`, …); smoke flows only: `--tags smoke`; with the app's mock API: `--mock`; on a real iPhone or iPad the user names: `AMK_IOS_DEVICE=<its UDID>` (the flows clear the app's data on it) |
+| Check on devices (release builds, Maestro flows, screenshots) | `sh scripts/amk/verify.sh all --spec <id>`; with product flavors it checks the first unless `--flavor <name>`; another iOS scheme: `--scheme <name>`; only some screens: `--screens phone` (or `tablet`, `landscape`, …); smoke flows only: `--tags smoke`; with the app's mock API: `--mock`; at the largest text size: `--large-text`; on a real iPhone or iPad the user names: `AMK_IOS_DEVICE=<its UDID>` (the flows clear the app's data on it) |
 | Check devices at the same time | `sh scripts/amk/verify.sh plan --spec <id>` prints a command per device, each for an `m-device-checker` subagent |
 | After each task: lint, typecheck and the tests of the changed files | `sh scripts/amk/verify.sh quick --related` |
 | React Native mistakes, flow problems and oversized files or functions in this branch's changes (`verify.sh quick` runs it) | `node scripts/amk/rn-check.js` |

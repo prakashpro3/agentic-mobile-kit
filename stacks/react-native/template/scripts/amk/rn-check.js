@@ -17,7 +17,7 @@
 const fs = require('fs');
 const path = require('path');
 const { execFileSync, spawnSync } = require('child_process');
-const { stripYamlComments, scenarios, flowBlocks, blockFor, allFlows, flowsOf } = require('./specs.js');
+const { stripYamlComments, scenarios, flowBlocks, blockFor, norm, jestTests } = require('./specs.js');
 
 const root = process.cwd();
 const git = (...args) => {
@@ -515,29 +515,57 @@ if ([...changed.keys()].some(source)) {
 }
 
 // ---------- each scenario of a spec the branch touched has its steps in the spec's flows ----------
-// specs/<id>/requirements.md lists them ("#### Scenario: <name>"); the flows are .maestro/<id>*.yaml, with a
-// "# Scenario <n>: <name>" comment above each one's steps, as specs/_templates/flow.yaml shows
+// specs/<id>/requirements.md lists them ("#### Scenario: <name>"); the flows are .maestro/<id>*.yaml, a flavor's in a
+// subfolder too, with a "# Scenario <n>: <name>" comment above each one's steps, as specs/_templates/flow.yaml shows.
+// A scenario checked another way has its check: a Jest test named after it (logic, the server), or a block of the same
+// name in another spec's flow (a requirement this spec modifies, copied whole). Only gaps the branch made: one the
+// base had already isn't this branch's
 const touchedPaths = [...(sha ? (git('diff', '--name-only', '--relative', sha) || '').split('\n') : []),
   ...(git('ls-files', '--others', '--exclude-standard') || '').split('\n')].filter(Boolean);
 const specIds = fs.existsSync(path.join(root, 'specs')) ? fs.readdirSync(path.join(root, 'specs'), { withFileTypes: true })
   .filter(e => e.isDirectory() && !/^(_|current$)/.test(e.name)).map(e => e.name) : [];
-const flowsDir = allFlows(path.join(root, '.maestro'));
+const flowsUnder = (rel = '.maestro') => {
+  let entries = [];
+  try { entries = fs.readdirSync(path.join(root, rel), { withFileTypes: true }); } catch {}
+  return entries.flatMap(e => (e.isDirectory() && !e.name.startsWith('.') ? flowsUnder(`${rel}/${e.name}`)
+    : /\.ya?ml$/.test(e.name) && !e.name.startsWith('.amk-') ? [`${rel}/${e.name}`] : []));
+};
+const ofSpec = (id, flows) => flows.filter(f => path.posix.basename(f).toLowerCase().startsWith(id.toLowerCase()));
+let jestTitles = null;
+// the scenarios of one spec without their check: from its requirements and the flows, now or at the base
+function gaps(id, reqText, flowText) {
+  const flows = Object.keys(flowText);
+  const blocksOf = files => files.flatMap(f => flowBlocks(flowText[f]).map(b => ({ ...b, flow: f })));
+  const own = blocksOf(ofSpec(id, flows));
+  const anywhere = blocksOf(flows);
+  if (!jestTitles) { try { jestTitles = jestTests().map(t => norm(t.title)); } catch { jestTitles = []; } }
+  const out = [];
+  for (const s of scenarios(reqText)) {
+    const b = blockFor(own, s.n, s.name) || anywhere.find(x => norm(x.name) === norm(s.name));
+    const say = (kind, message) => out.push({ key: `${id}|${norm(s.name)}|${kind}`, message, where: `specs/${id}/requirements.md:${s.line}` });
+    if (!b) {
+      if (!jestTitles.some(t => t.includes(norm(s.name)))) say('none', `scenario ${s.n} "${s.name}" has no block in ${ofSpec(id, flows).join(', ')}, and no Jest test is named after it: add "# Scenario ${s.n}: ${s.name}" above its steps, with an assertion for its THEN and a screenshot (or, for what no screen shows, a Jest test named after it)`);
+    } else {
+      if (!/-\s*(assertVisible|assertNotVisible|assertTrue|assertWithAI|extendedWaitUntil)\b/.test(b.code)) say('assert', `scenario ${s.n} "${s.name}" has no assertion in ${b.flow}: check what its THEN expects`);
+      if (!/-\s*takeScreenshot\b/.test(b.code)) say('shot', `scenario ${s.n} "${s.name}" has no screenshot in ${b.flow}, so it has no evidence`);
+    }
+  }
+  return out;
+}
+const flowsNow = flowsUnder();
+let flowsThen = null;
 for (const id of specIds) {
   const req = `specs/${id}/requirements.md`;
   let reqText;
   try { reqText = fs.readFileSync(path.join(root, req), 'utf8'); } catch { continue; }
-  const flows = flowsOf(id, flowsDir).map(f => `.maestro/${f}`);
+  const flows = ofSpec(id, flowsNow);
   if (!flows.length || !touchedPaths.some(p => p.startsWith(`specs/${id}/`) || flows.includes(p))) continue;
-  const blocks = flows.flatMap(f => flowBlocks(fs.readFileSync(path.join(root, f), 'utf8')).map(b => ({ ...b, flow: f })));
-  for (const s of scenarios(reqText)) {
-    const b = blockFor(blocks, s.n, s.name);
-    const say = message => findings.push({ level: '!', message, where: `${req}:${s.line}` });
-    if (!b) say(`scenario ${s.n} "${s.name}" has no block in ${flows.join(', ')}: add "# Scenario ${s.n}: ${s.name}" above its steps, with an assertion for its THEN and a screenshot`);
-    else {
-      if (!/-\s*(assertVisible|assertNotVisible|assertTrue|assertWithAI|extendedWaitUntil)\b/.test(b.code)) say(`scenario ${s.n} "${s.name}" has no assertion in ${b.flow}: check what its THEN expects`);
-      if (!/-\s*takeScreenshot\b/.test(b.code)) say(`scenario ${s.n} "${s.name}" has no screenshot in ${b.flow}, so it has no evidence`);
-    }
-  }
+  const now = gaps(id, reqText, Object.fromEntries(flowsNow.map(f => [f, fs.readFileSync(path.join(root, f), 'utf8')])));
+  const reqThen = sha && git('show', `${sha}:./${req}`);
+  if (reqThen && !flowsThen) flowsThen = Object.fromEntries((git('ls-tree', '-r', '--name-only', sha, '--', '.maestro') || '').split('\n')
+    .filter(f => /\.ya?ml$/.test(f) && !path.posix.basename(f).startsWith('.amk-')).map(f => [f, git('show', `${sha}:./${f}`) || '']));
+  const before = new Set(reqThen ? gaps(id, reqThen, flowsThen).map(g => g.key) : []);
+  for (const g of now) if (!before.has(g.key)) findings.push({ level: '!', message: g.message, where: g.where, spec: true });
 }
 
 // ---------- a text in every language: the language files a branch touched lack no key a sibling has ----------
@@ -568,7 +596,8 @@ for (const files of langGroups.values()) {
 // ---------- report ----------
 // by file, then line
 const order = w => { const [, file, n] = /^(.*):(\d+)$/.exec(w); return [file, Number(n)]; };
-findings.sort((a, b) => { const [fa, na] = order(a.where); const [fb, nb] = order(b.where); return fa === fb ? na - nb : fa < fb ? -1 : 1; });
+// the code's findings first: a spec's scenarios without their check come last, as there can be many
+findings.sort((a, b) => { const [fa, na] = order(a.where); const [fb, nb] = order(b.where); return !a.spec !== !b.spec ? (a.spec ? 1 : -1) : fa === fb ? na - nb : fa < fb ? -1 : 1; });
 const problems = findings.filter(f => f.level === '✗');
 const warnings = findings.filter(f => f.level === '!');
 const plural = (n, w) => `${n} ${w}${n === 1 ? '' : 's'}`;

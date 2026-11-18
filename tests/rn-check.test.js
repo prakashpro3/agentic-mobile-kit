@@ -344,7 +344,7 @@ People SHALL log in with their email.
     /! \.maestro\/x2-login\.yaml:18 {2}"You're offline" has an apostrophe/,
     /! \.maestro\/x4-nothing\.yaml:1 {2}this flow checks nothing/,
     /! specs\/x2-login\/requirements\.md:\d+ {2}scenario 2 "Wrong password" has no screenshot in \.maestro\/x2-login\.yaml/,
-    /! specs\/x2-login\/requirements\.md:\d+ {2}scenario 3 "Offline" has no block in \.maestro\/x2-login\.yaml: add "# Scenario 3: Offline" above its steps/,
+    /! specs\/x2-login\/requirements\.md:\d+ {2}scenario 3 "Offline" has no block in \.maestro\/x2-login\.yaml, and no Jest test is named after it: add "# Scenario 3: Offline" above its steps/,
     /kept with amk-ok: \.maestro\/x2-login\.yaml:19: the retry button comes from a library without a testID[^\n]*\.maestro\/x2-login\.yaml:21: the library's sheet has no testIDs/,
   ]) assert.match(r.out, re, `${re}\n${r.out}`);
   assert.doesNotMatch(r.out, /x2-login\.yaml:(4|8|9|12|13|14) /, 'an existing subflow, a system dialog button, taps by id, a password from a variable');
@@ -442,6 +442,30 @@ test('rn-check --write-caps: the files over the limit at their size, then caps o
   assert.match(caps(), /src\/a\.js 420\n$/, 'never raised');
 });
 
+test('rn-check: a scenario checked another way (a Jest test named after it, its block in another spec\'s flow, a flavor\'s flow in a subfolder) has its check; only gaps the branch made; the code\'s findings first', () => {
+  const spec = names => `## ADDED Requirements: Notes\n\n### Requirement: Notes\nPeople SHALL keep notes.\n\n${names.map(n => `#### Scenario: ${n}\n- WHEN they act\n- THEN it shows\n`).join('\n')}`;
+  const block = (n, name) => `# Scenario ${n}: ${name}\n- assertVisible:\n    id: "x"\n- takeScreenshot: s${n}\n`;
+  const dir = app(undefined, {
+    // on main: a spec whose second scenario never had its steps
+    'specs/x5-old/requirements.md': spec(['Old one', 'Never had steps']),
+    '.maestro/x5-old.yaml': `appId: \${APP_ID}\n---\n- launchApp\n${block(1, 'Old one')}`,
+  });
+  // the branch touches the old spec's flow, and adds a spec whose scenarios are checked in four ways, or not at all
+  write(dir, '.maestro/x5-old.yaml', `appId: \${APP_ID}\n---\n- launchApp\n${block(1, 'Old one')}- back\n`);
+  write(dir, 'specs/x6-new/requirements.md', spec(['Saves the note', 'Old one', 'Shows on the tablet', 'Nobody checks this']));
+  write(dir, '.maestro/manager/x6-new.yaml', `appId: \${APP_ID}\n---\n- launchApp\n${block(3, 'Shows on the tablet')}`);
+  write(dir, '__tests__/note.test.js', "it('Saves the note', () => expect(1).toBe(1));\n");
+  write(dir, 'src/note.tsx', "export const n = 1;\nconsole.log(n);\n");
+  const r = spawnSync(process.execPath, ['scripts/amk/rn-check.js'], { cwd: dir, encoding: 'utf8', env: { ...process.env, AMK_BASE: '', AMK_MAESTRO: path.join(dir, 'no-such-maestro') } });
+  const out = r.stdout + r.stderr;
+  const scenarioLines = out.split('\n').filter(l => /scenario \d/.test(l));
+  assert.strictEqual(scenarioLines.length, 1, out);
+  assert.match(scenarioLines[0], /specs\/x6-new\/requirements\.md:\d+ {2}scenario 4 "Nobody checks this" has no block in \.maestro\/manager\/x6-new\.yaml, and no Jest test is named after it/);
+  const warnings = out.split('\n').filter(l => /^ {2}! /.test(l));
+  const code = warnings.findIndex(l => /src\/note\.tsx/.test(l));
+  assert.ok(code >= 0 && code < warnings.findIndex(l => /scenario 4/.test(l)), `the code's findings first:\n${out}`);
+});
+
 test('verify.sh quick: rn-check runs after lint, typecheck and tests, and its problems fail quick', { skip: process.platform === 'win32' && 'verify.sh needs sh' }, () => {
   const dir = app({ scripts: { lint: 'node -e ""', typecheck: 'node -e ""', test: 'node -e ""' }, dependencies: { react: '19.2.3', 'react-native': '0.87.1' } });
   for (const f of fs.readdirSync(KIT)) write(dir, `scripts/amk/${f}`, fs.readFileSync(path.join(KIT, f), 'utf8'));
@@ -464,6 +488,13 @@ test('verify.sh quick: rn-check runs after lint, typecheck and tests, and its pr
   // --related asks for the tests of the changed files; a test script that isn't Jest runs them all, and says so
   const related = spawnSync('sh', ['scripts/amk/verify.sh', 'quick', '--related'], { cwd: dir, encoding: 'utf8', env: { ...process.env, AMK_BASE: 'main', TMPDIR: temp } });
   assert.match(related.stdout, /^quick: lint, typecheck and the tests related to this branch's changes passed\n {2}test: every test ran, as the test script isn't Jest$/m);
+  // lint failing stops quick there: an earlier run's typecheck log isn't shown as this one's
+  write(dir, '.amk/evidence/no-spec/typecheck.log', 'typecheck: 3 new compared with main (abc1234):\n  src/x.ts: TS2322 old\n');
+  const pkg = JSON.parse(fs.readFileSync(path.join(dir, 'package.json'), 'utf8'));
+  write(dir, 'package.json', JSON.stringify({ ...pkg, scripts: { ...pkg.scripts, lint: 'node -e "process.exit(1)"' } }));
+  const lintFails = quick();
+  assert.match(lintFails.stdout, /^quick: FAILED/m, lintFails.stdout);
+  assert.doesNotMatch(lintFails.stdout, /typecheck: 3 new/);
 });
 
 test('rn-check: an API a React Native version removed is a problem from that version on, and a warning in an app still below it', () => {
