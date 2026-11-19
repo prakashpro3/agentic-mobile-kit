@@ -15,7 +15,7 @@ Input: $ARGUMENTS
 Any other input is the requirement text, a file path, or a task link plus pasted details; or the id of a feature approved in the plan, built here with this skill's stops: `node scripts/amk/specs.js start <id>` makes its branch with the spec as approved; set `Mode: feature-by-feature` in its `requirements.md`, refresh "Existing code to reuse" and "Files to change" in `design.md`, and go on from step 4 (the plan approved the rest).
 
 With no input, don't guess what to build:
-1. Run `node scripts/amk/specs.js status`. If a spec is in progress, say which one and where it stopped, and suggest `m-continue`. If the plan has approved features waiting, suggest `/m-feature build`. Start something new only if the user says so.
+1. Run `node scripts/amk/specs.js status`. If a spec is in progress, say which and where it stopped, and suggest `m-continue`. If the plan has approved features waiting, recommend `/m-feature build`: building one here asks again what the plan approved. Start something new only if the user asks.
 2. When `docs/amk/product.md` plans several features without a spec, ask how to build them (plan all goes on as `plan`, above), unless `Feature mode:` in `docs/amk/team-process.md` says `feature-by-feature` or `plan-all`:
    - Feature by feature: each one's requirements, then its design and tasks, approved before it's built. Suits a live app and day-to-day work.
    - Plan all, then build: the feature map, then every feature's stories with the shared design, then the detail in batches, each approved; then they're built one after another without approvals. Suits a new app, a fixed scope or a milestone.
