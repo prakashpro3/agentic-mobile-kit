@@ -98,6 +98,27 @@ test('handoff check: a link git doesn\'t ignore (the project\'s node_modules in 
   assert.strictEqual(hook(dir), 2, 'a real code change still asks');
 });
 
+test('handoff check: a change older than the handoff (the developer\'s own local setting) doesn\'t ask again once the handoff is committed; code changed after it does', () => {
+  const dir = app();
+  write(dir, 'specs/20261016-x/progress.md', IN_PROGRESS);
+  git(dir, 'add', '-A');
+  git(dir, '-c', 'user.name=t', '-c', 'user.email=t@example.invalid', 'commit', '-q', '-m', 'spec');
+  const at = (f, secondsAgo) => { const t = new Date(Date.now() - secondsAgo * 1000); fs.utimesSync(path.join(dir, f), t, t); };
+  // the developer's build setting, changed an hour ago and never committed
+  write(dir, 'src/config.js', 'export const buildType = 1;\n');
+  at('src/config.js', 3600);
+  at('specs/20261016-x/progress.md', 7200);
+  assert.strictEqual(hook(dir), 2, 'the handoff older than it: asked once');
+  // the agent updates the handoff and commits it
+  write(dir, 'specs/20261016-x/progress.md', `${IN_PROGRESS}Next: the form\n`);
+  git(dir, '-c', 'user.name=t', '-c', 'user.email=t@example.invalid', 'commit', '-q', '-am', 'handoff');
+  at('specs/20261016-x/progress.md', 60);
+  assert.strictEqual(hook(dir), 0, 'only the older setting is uncommitted: the handoff is current');
+  // then it changes code
+  write(dir, 'src/App.tsx', 'export const x = 2;\n');
+  assert.strictEqual(hook(dir), 2, 'code changed after the handoff');
+});
+
 test('handoff check: Claude Code\'s worktrees inside the project (.claude/worktrees/) aren\'t this session\'s code', () => {
   const dir = app();
   write(dir, 'specs/20261016-x/progress.md', IN_PROGRESS);

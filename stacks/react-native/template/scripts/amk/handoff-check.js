@@ -66,9 +66,14 @@ if ((working.length || progress !== null) && !payload.stop_hook_active) {
   const changed = sh('git status --porcelain --untracked-files=all')
     .split('\n').filter(Boolean).filter(l => !(l.startsWith('?? ') && link(l.slice(3)))).map(l => l.slice(3));
   // not the AI tool's worktrees inside the project (Claude Code's .claude/worktrees/): another session's work
-  const codeChanged = changed.some(f => !f.startsWith('specs/') && !f.startsWith('.amk/') && !f.startsWith('.claude/worktrees/'));
-  const handoffUpdated = changed.some(f => /^specs\/[^/]+\/progress\.md$/.test(f));
-  if (codeChanged && !handoffUpdated) {
+  const code = changed.filter(f => !f.startsWith('specs/') && !f.startsWith('.amk/') && !f.startsWith('.claude/worktrees/'));
+  // a handoff written after the last code change is current, committed or not: an older change (the developer's own
+  // local setting, never meant for a commit) doesn't ask again at every stop once the handoff is committed. A deleted
+  // file has no time
+  const mtime = f => { try { return fs.statSync(path.join(root, f)).mtimeMs; } catch { return 0; } };
+  const handoffAt = Math.max(0, ...[...working, ...(own ? [own] : [])].map(id => mtime(`specs/${id}/progress.md`)));
+  const handoffUpdated = changed.some(f => /^specs\/[^/]+\/progress\.md$/.test(f)) || handoffAt > Math.max(0, ...code.map(mtime));
+  if (code.length && !handoffUpdated) {
     process.stderr.write('There are uncommitted code changes, but no specs/<id>/progress.md was updated. ' +
       'Update its handoff block (status, next step, decisions, last checks) before stopping.\n');
     process.exit(2);
