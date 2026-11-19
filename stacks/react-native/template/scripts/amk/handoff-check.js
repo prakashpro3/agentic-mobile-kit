@@ -89,7 +89,7 @@ if (own && !payload.stop_hook_active) {
   try { merged = fs.readdirSync(path.join(root, 'specs', 'current')).some(f => f.endsWith('.md') && (read(`specs/current/${f}`) || '').includes(`Source: specs/${own}\n`)); } catch {}
   if (changes && !merged && /^Status:\s*done/im.test(read(`specs/${own}/progress.md`) || '')) {
     process.stderr.write(`specs/${own} says done, but its requirements aren't in the living spec (no "Source: specs/${own}" in specs/current/): ` +
-      `run node scripts/amk/specs.js merge ${own}, commit specs/current/ with the feature, then stop.\n`);
+      `run node scripts/amk/specs.js merge ${own} and commit specs/current/ with the feature. Then finish what's left of it (its review and pull request) before you stop.\n`);
     process.exit(2);
   }
 }
@@ -115,6 +115,24 @@ if (progress !== null && !fs.existsSync(path.join(root, '.amk', 'build', 'STOP')
   if (!done && !blocked) {
     process.stderr.write(`Nobody is watching this build, so it doesn't stop here: specs/${own} isn't done or blocked. Go on with the next step in its handoff. ` +
       'If you can\'t, record why under Blocked: in its progress.md (what happened, why, and what would unblock it), commit, push, and stop.\n');
+    process.exit(2);
+  }
+}
+
+// a turn ends at a reply: one that says the agent goes on ("I'm continuing with task 15"), asks nothing, and leaves
+// nothing running that would bring it back (Claude Code says what runs in background_tasks) leaves the work idle
+// until the developer comes back. Sent back once
+if (!unattended && Array.isArray(payload.background_tasks) && !payload.background_tasks.length) {
+  let said = typeof payload.last_assistant_message === 'string' ? payload.last_assistant_message : '';
+  try { said = said || require('./notify.js').lastWords(payload); } catch {}
+  said = String(said || '').replace(/[\u2018\u2019]/g, "'");
+  // only when it's known that the reply asks nothing
+  let asks = null;
+  try { asks = require('./status.js').asks(said); } catch {}
+  const GOES_ON = /\b(?:I'm|I am|I'll|I will)\s+(?:now\s+)?(?:continu\w*|go(?:ing)? (?:on|ahead)|mov(?:e|ing) on|carry(?:ing)? on|keep(?:ing)? going|proceed\w*|start(?:ing)? (?:on |with )?(?:task|the next|step))\b|\bnext,? I(?:'ll| will|'m| am)\b|^\s*(?:Moving on|Continuing|Going on) (?:to|with)\b/im;
+  const promise = GOES_ON.exec(said);
+  if (promise && asks === '') {
+    process.stderr.write(`You said you go on ("${said.slice(promise.index, promise.index + 80).split('\n')[0].trim()}…"), but this reply ends your turn, and nothing you started is running to bring you back: the work waits until the user returns. Go on now, with the next step's tools. If you need the user, ask them instead.\n`);
     process.exit(2);
   }
 }

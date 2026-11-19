@@ -130,3 +130,21 @@ test('handoff check: Claude Code\'s worktrees inside the project (.claude/worktr
   write(dir, 'src/App.tsx', 'export const x = 1;\n');
   assert.strictEqual(hook(dir), 2, 'this session\'s own change still asks');
 });
+
+test('handoff check: a reply that says the agent goes on, asks nothing and leaves nothing running is sent back once; waiting on a run, a question, or a second stop isn\'t', () => {
+  const dir = app();
+  fs.cpSync(path.dirname(SCRIPT), path.join(dir, 'scripts/amk'), { recursive: true });
+  const stop = (said, more = {}) => spawnSync('node', [path.join(dir, 'scripts/amk/handoff-check.js')], { cwd: dir, encoding: 'utf8',
+    input: JSON.stringify({ hook_event_name: 'Stop', last_assistant_message: said, background_tasks: [], ...more }) });
+  const promise = 'Task 14 is committed, so tasks 1 to 14 of 18 are done.\n\nI’m continuing with task 15 on my own. Its fulfil actions write to the server.';
+  const sent = stop(promise);
+  assert.strictEqual(sent.status, 2, sent.stderr);
+  assert.match(sent.stderr, /^You said you go on \("I'm continuing with task 15 on my own\. Its fulfil actions write to the server\.…"\), but this reply ends your turn, and nothing you started is running to bring you back/);
+  assert.strictEqual(stop(promise, { stop_hook_active: true }).status, 0, 'once');
+  assert.strictEqual(stop(promise, { background_tasks: [{ id: 'b1', type: 'bash' }] }).status, 0, 'something running brings it back');
+  assert.strictEqual(stop("I'm waiting on the background run, and I'll go on by myself when it finishes.", { background_tasks: [{ id: 'b1' }] }).status, 0);
+  assert.strictEqual(stop("Next I'll start task 15. Shall I push the branch first?").status, 0, 'a question: the user answers');
+  assert.strictEqual(stop("Moving on to task 15 now.", { background_tasks: undefined }).status, 0, 'another tool: what runs is unknown');
+  assert.strictEqual(stop('All 18 tasks are done and the pull request is open: https://github.com/o/r/pull/9').status, 0, 'a report, no promise');
+  assert.strictEqual(stop('Moving on to task 15: the cart reducer first.').status, 2);
+});

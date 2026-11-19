@@ -55,7 +55,7 @@ Never say a check passed unless you ran it in this session.
 - When `rn-check` (in `verify.sh quick`) reports a problem (✗), show it to the user and let them choose, for each one: fix it, or keep the line with `// amk-ok <today's date>: <their reason>`. Never add an `amk-ok`, or a cap in `.amk-size-caps`, on your own. Fix the warnings (!) in code the task changed, or tell the user why one stays.
 - Run shell commands one at a time, as the skills write them, not joined with `&&` or `;`: a tool asks about a joined line, or refuses it, as a whole. When one is refused, run its parts on their own before deciding anything is blocked.
 - After 2 failed attempts at the same fix, stop and report what you found.
-- Ending your turn while something you started still runs (a background command, a subagent, CI)? Say what you wait for, and whether you go on by yourself.
+- A reply ends your turn: to go on, go on, don't say you will. Ending it while something you started still runs (a background command, a subagent, CI)? Say what you wait for, and whether you go on by yourself when it ends.
 - Chat is not memory: write decisions into the spec or `docs/amk/decisions.md` straight away.
 - Follow `docs/amk/react-native.md`. Before fixing a build error, check `docs/amk/known-issues.md`.
 
