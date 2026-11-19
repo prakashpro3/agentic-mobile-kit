@@ -58,8 +58,11 @@ const progress = unattended && own ? read(`specs/${own}/progress.md`) || '' : nu
 const state = progress === null ? null : JSON.stringify([sh('git rev-parse HEAD'),
   ((read(`specs/${own}/tasks.md`) || '').match(/^\s*- \[[xX]\]/gm) || []).length, (/^Next step:\s*(.*)$/m.exec(progress) || [])[1] || '']);
 
-// code changed without the handoff: asked once (stop_hook_active: the agent goes on because of an earlier ask)
-if ((working.length || progress !== null) && !payload.stop_hook_active) {
+// code changed without the handoff: asked once (stop_hook_active: the agent goes on because of an earlier ask). Not
+// while something the agent started still runs (Claude Code's background_tasks: a device run, a subagent): it comes
+// back when that ends, and is asked at the stop that really ends its work
+const running = Array.isArray(payload.background_tasks) && payload.background_tasks.length > 0;
+if ((working.length || progress !== null) && !payload.stop_hook_active && !running) {
   // every new file, not just its new folder; but not a new link, such as the project's node_modules linked into a git
   // worktree: no session writes code that way, and it would ask at every stop
   const link = f => { try { return fs.lstatSync(path.join(root, f)).isSymbolicLink(); } catch { return false; } };

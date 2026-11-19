@@ -117,6 +117,10 @@ test('handoff check: a change older than the handoff (the developer\'s own local
   // then it changes code
   write(dir, 'src/App.tsx', 'export const x = 2;\n');
   assert.strictEqual(hook(dir), 2, 'code changed after the handoff');
+  // but it stops only to wait for a device run it started (Claude Code's background_tasks): asked when it really stops
+  const stop = tasks => spawnSync('node', [path.join(dir, 'scripts/amk/handoff-check.js')], { cwd: dir, input: JSON.stringify({ hook_event_name: 'Stop', background_tasks: tasks }), encoding: 'utf8' }).status;
+  assert.strictEqual(stop([{ id: 'b1', type: 'bash' }]), 0, 'something still runs: it comes back');
+  assert.strictEqual(stop([]), 2, 'nothing runs: the real stop');
 });
 
 test('handoff check: Claude Code\'s worktrees inside the project (.claude/worktrees/) aren\'t this session\'s code', () => {
