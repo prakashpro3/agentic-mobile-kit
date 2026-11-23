@@ -81,6 +81,24 @@ test('handoff check: a feature marked done whose requirements never reached the 
 });
 
 
+test('handoff check: a branch spelled in another case than its spec folder (feature/feat-1, specs/FEAT-1/) finds the folder, and its merge by the folder\'s name (issues #16, #17)', () => {
+  const dir = app();
+  git(dir, 'switch', '-q', '-c', 'feature/feat-1');
+  write(dir, 'specs/FEAT-1/requirements.md', '# FEAT-1\n\n## ADDED Requirements: home\n\n### Requirement: Says hello\nThe app SHALL say hello.\n\n#### Scenario: Hello\n- THEN it says hello\n');
+  write(dir, 'specs/FEAT-1/progress.md', 'Status:        done\nBlocked:       none\n');
+  write(dir, 'specs/current/home.md', '# Home\n\n## Requirements\n');
+  git(dir, 'add', '-A');
+  git(dir, '-c', 'user.name=t', '-c', 'user.email=t@example.invalid', 'commit', '-q', '-m', 'FEAT-1 done');
+  const run = () => spawnSync('node', [path.join(dir, 'scripts/amk/handoff-check.js')], { cwd: dir, input: '{}', encoding: 'utf8' });
+  const notMerged = run();
+  assert.strictEqual(notMerged.status, 2, 'found on any file system');
+  assert.match(notMerged.stderr, /specs\/FEAT-1 says done[\s\S]*specs\.js merge FEAT-1/, 'named as the folder is');
+  write(dir, 'specs/current/home.md', '# Home\n\n## Requirements\n\n### Requirement: Says hello\nThe app SHALL say hello.\n\nSource: specs/FEAT-1\n\n#### Scenario: Hello\n- THEN it says hello\n');
+  assert.strictEqual(run().status, 0, 'merged: Source: specs/FEAT-1');
+  write(dir, 'specs/current/home.md', '# Home\n\n## Requirements\n\n### Requirement: Says hello\nThe app SHALL say hello.\n\nSource: specs/feat-1\n\n#### Scenario: Hello\n- THEN it says hello\n');
+  assert.strictEqual(run().status, 0, 'a merge an earlier specs.js wrote with the branch\'s spelling counts too');
+});
+
 test('handoff check: a link git doesn\'t ignore (the project\'s node_modules in a git worktree) isn\'t a code change', { skip: process.platform === 'win32' }, () => {
   const dir = app();
   write(dir, 'specs/20261016-x/progress.md', IN_PROGRESS);

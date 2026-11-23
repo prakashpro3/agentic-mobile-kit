@@ -271,7 +271,11 @@ function withSource(b, id) {
   return [...ls, ''];
 }
 
-function merge(id) {
+// a spec folder by its own spelling: on macOS and Windows another case opens it too, but what's written about it
+// (Source: specs/<folder>) has to match the folder
+const ownSpelling = id => { try { return fs.readdirSync('specs').find(d => d.toLowerCase() === String(id).toLowerCase()) || id; } catch { return id; } };
+function merge(given) {
+  const id = ownSpelling(given);
   const file = `specs/${id}/requirements.md`;
   const problems = checkFile(file);
   if (problems.length) { problems.forEach(p => console.error(`✗ ${p}`)); console.error('\nFix the format first.'); return 1; }

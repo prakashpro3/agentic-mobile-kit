@@ -84,6 +84,14 @@ test('merge: ADDED creates the area with sources; later MODIFIED, REMOVED and AD
   assert.strictEqual(run(dir, 'check').code, 0, 'the merged living spec is well-formed');
 });
 
+test('merge given another case of a spec folder\'s name (a lower-case branch) writes the folder\'s own spelling in Source (issues #16, #17)', () => {
+  const dir = app({ 'ORDERS-MOBILE': feature(`## ADDED Requirements: orders\n\n${req('Create order', 'The app SHALL create an order.')}`) });
+  const r = run(dir, 'merge', 'orders-mobile');
+  assert.strictEqual(r.code, 0, r.out);
+  assert.match(read(dir, 'specs/current/orders.md'), /^Source: specs\/ORDERS-MOBILE$/m);
+  assert.doesNotMatch(read(dir, 'specs/current/orders.md'), /Source: specs\/orders-mobile/);
+});
+
 test('merge refuses a wrong change type and changes nothing; removing the last requirement deletes the area file', () => {
   const dir = app({
     one: feature(`## ADDED Requirements: home\n\n${req('Switch', 'The app SHALL show a switch.')}`),

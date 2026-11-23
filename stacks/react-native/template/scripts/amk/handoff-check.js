@@ -28,7 +28,10 @@ const inProgress = d => {
 const working = fs.existsSync(path.join(root, 'specs')) ? fs.readdirSync(path.join(root, 'specs')).filter(inProgress) : [];
 // the feature of this branch (feature/<id>), where an unattended build works
 const feature = (/^feature\/(.+)$/.exec(sh('git symbolic-ref --quiet --short HEAD')) || [])[1];
-const own = feature && read(`specs/${feature}/progress.md`) !== null ? feature : null;
+// by the folder's own spelling: on macOS and Windows a branch spelled in another case opens it too (feature/orders-mobile,
+// specs/ORDERS-MOBILE/), and specs.js writes the folder's name (Source: specs/ORDERS-MOBILE) (issues #16, #17)
+const own = feature ? ((() => { try { return fs.readdirSync(path.join(root, 'specs')); } catch { return []; } })()
+  .find(d => d.toLowerCase() === feature.toLowerCase() && read(`specs/${d}/progress.md`) !== null) || null) : null;
 
 if (payload.hook_event_name === 'SessionStart') {
   const id = own || working[0];
@@ -89,7 +92,8 @@ if (own && !payload.stop_hook_active) {
   const req = read(`specs/${own}/requirements.md`) || '';
   const changes = /^## (?:ADDED|MODIFIED) Requirements/m.test(req) && /^### Requirement:/m.test(req);
   let merged = false;
-  try { merged = fs.readdirSync(path.join(root, 'specs', 'current')).some(f => f.endsWith('.md') && (read(`specs/current/${f}`) || '').includes(`Source: specs/${own}\n`)); } catch {}
+  // in any case: a merge run with the branch's spelling, before specs.js used the folder's, wrote that
+  try { merged = fs.readdirSync(path.join(root, 'specs', 'current')).some(f => f.endsWith('.md') && (read(`specs/current/${f}`) || '').toLowerCase().includes(`source: specs/${own.toLowerCase()}\n`)); } catch {}
   if (changes && !merged && /^Status:\s*done/im.test(read(`specs/${own}/progress.md`) || '')) {
     process.stderr.write(`specs/${own} says done, but its requirements aren't in the living spec (no "Source: specs/${own}" in specs/current/): ` +
       `run node scripts/amk/specs.js merge ${own} and commit specs/current/ with the feature. Then finish what's left of it (its review and pull request) before you stop.\n`);
