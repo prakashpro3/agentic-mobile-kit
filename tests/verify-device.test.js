@@ -409,14 +409,18 @@ test('verify.sh plan: room for more devices than kinds splits each kind\'s flows
   for (const k of kinds) for (let i = 1; i <= per; i++) assert.ok(out.includes(`     sh scripts/amk/verify.sh ${k} --no-build --screens phone --part ${i}/${per} --spec x1\n`), out);
   // a phone plugged in can't be copied for a part: it runs all its flows
   const phone = plan({ AMK_MEMORY_GB: '32', AMK_ANDROID_DEVICE: 'ZX1' });
-  assert.ok(phone.includes('     AMK_ANDROID_DEVICE=ZX1 sh scripts/amk/verify.sh android --no-build --screens phone --spec x1\n'), phone);
+  assert.ok(phone.includes('     sh scripts/amk/verify.sh android --no-build --screens phone --spec x1\n'), phone);
+  // plain commands, as unattended runs allow them; a device that may have been named for plan's command alone: a note
+  assert.match(phone, /^plan: if AMK_ANDROID_DEVICE=ZX1 was named for this command only, the commands below don't get it: put it in \.amk\/devices/m);
   assert.doesNotMatch(phone, /verify\.sh android .*--part/);
-  // the device the developer picked, in .amk/devices: each command plan prints names it, as a subagent runs it in a
-  // shell of its own; the environment comes first, and a line that isn't an AMK_ name is left out
+  // the device the developer picked, in .amk/devices, which every command reads: a phone there runs all its flows, with
+  // no note; the environment comes first; a line that isn't an AMK_ name is left out
   const picked = env => verifyAndroid({ connected: [], rotates: false, env: { AMK_DISK_GB: '50', AMK_MEMORY_GB: '32', ...env }, args: ['plan', '--spec', 'x1'],
     files: { ...threeFlows, '.amk/devices': "# the emulator I use\nAMK_ANDROID_DEVICE=ZX1\nAMK_IOS_DEVICE=iPhone 17 Pro\r\nAMK_BAD-NAME=x\nPATH=/nowhere" } }).out;
-  assert.ok(picked().includes("     AMK_IOS_DEVICE='iPhone 17 Pro' AMK_ANDROID_DEVICE=ZX1 sh scripts/amk/verify.sh android --no-build --screens phone --spec x1\n"), picked());
-  assert.match(picked({ AMK_ANDROID_DEVICE: 'ZX2' }), /AMK_ANDROID_DEVICE=ZX2 sh scripts\/amk\/verify\.sh android/);
+  const fromFile = picked();
+  assert.ok(fromFile.includes('     sh scripts/amk/verify.sh android --no-build --screens phone --spec x1\n'), fromFile);
+  assert.doesNotMatch(fromFile, /verify\.sh android .*--part|was named for this command only/);
+  assert.match(picked({ AMK_ANDROID_DEVICE: 'ZX2' }), /if AMK_ANDROID_DEVICE=ZX2 was named for this command only/);
 });
 
 test('verify.sh --part k/n: its share of the flows, in <screen>/part-k/; a later part on a temporary copy of the emulator, deleted afterwards', { skip }, () => {

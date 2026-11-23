@@ -70,6 +70,13 @@ test('menu with the kit: update, add CI, doctor and uninstall', async () => {
   r = await answer(dir, ['']);
   assert.match(r.text, new RegExp(`Update the kit from 0\\.5\\.0 to ${KIT_VERSION.replace(/\./g, '\\.')}`));
   assert.deepStrictEqual(r.args, ['sync'], 'an older kit: Enter updates it');
+  // uncommitted work of the team's: sync is still offered (it checks them itself), removing the kit isn't
+  fs.writeFileSync(path.join(dir, 'notes.txt'), 'wip');
+  r = await answer(dir, ['']);
+  assert.match(r.text, /! You have uncommitted changes \(notes\.txt\)\. Sync runs if none is in a file it writes; removing the kit needs them committed\./);
+  assert.doesNotMatch(r.text, /uninstall/);
+  assert.deepStrictEqual(r.args, ['sync']);
+  fs.rmSync(path.join(dir, 'notes.txt'));
 
   fs.writeFileSync(agents, fs.readFileSync(agents, 'utf8').replace('agentic-mobile-kit 0.5.0', 'agentic-mobile-kit 99.0.0'));
   commit(dir);

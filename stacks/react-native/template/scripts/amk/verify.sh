@@ -81,6 +81,7 @@ for f in .amk/devices "$(git rev-parse --git-common-dir 2> /dev/null || echo .gi
     v=$(printf %s "$v" | tr -d '\r')
     eval "$k=\$v"
     export "$k"
+    from_file="${from_file:-} $k"
   done < "$f"
 done
 
@@ -364,7 +365,10 @@ dark_mode() { # emulator|simulator|real, device
     *) echo "verify: --dark: turn on dark mode on $2 by hand (a real device's settings are left alone)" ;;
   esac
 }
-strays() { find "$root/.maestro" -maxdepth 1 -name '*.png' -newer "$evidence/.run" -exec mv {} "$evidence/" \; 2> /dev/null || true; }
+strays() {
+  case $mode in ios | android | all) ;; *) return 0 ;; esac
+  find "$root/.maestro" -maxdepth 1 -name '*.png' -newer "$evidence/.run" -exec mv {} "$evidence/" \; 2> /dev/null || true
+}
 trap 'text_back; strays; release; drop_temps; [ -z "$tree_flow" ] || rm -f "$tree_flow"; node "$root/scripts/amk/progress.js" end-pid "$me" > /dev/null 2>&1 || true' EXIT
 trap 'exit 130' INT TERM
 holder() {
@@ -1362,13 +1366,16 @@ plan() {
     [ "$parts" -ge 1 ] || parts=1
   fi
   [ "$n" -ge 2 ] || [ "$parts" -ge 2 ] || why="there's one device to check"
-  # the devices named for this run go into each command, as a subagent runs it in a shell of its own
-  run=""
+  # a subagent runs each command in a shell of its own: it has .amk/devices and the session's environment, not a device
+  # named on this command line alone. The commands stay plain, as unattended runs allow them
+  run="sh scripts/amk/verify.sh"
+  named=""
   for v in AMK_IOS_DEVICE AMK_IOS_TABLET AMK_ANDROID_DEVICE AMK_ANDROID_AVD AMK_ANDROID_TABLET AMK_ANDROID_TABLET_AVD; do
     eval "x=\${$v:-}"
-    case $x in '') ;; *[!A-Za-z0-9._-]*) run="$run$v='$x' " ;; *) run="$run$v=$x " ;; esac
+    case " ${from_file:-} " in *" $v "*) continue ;; esac
+    [ -z "$x" ] || named="$named${named:+, }$v=$x"
   done
-  run="${run}sh scripts/amk/verify.sh"
+  [ -z "$named" ] || echo "plan: if $named was named for this command only, the commands below don't get it: put it in .amk/devices (a line each)"
   if [ -n "$why" ]; then
     echo "plan: $have: one device at a time ($why; AMK_PARALLEL=1 overrides)"
     echo "  $run all${args:+ $args}"
