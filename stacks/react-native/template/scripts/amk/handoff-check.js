@@ -72,7 +72,8 @@ if ((working.length || progress !== null) && !payload.stop_hook_active && !runni
   const changed = sh('git status --porcelain --untracked-files=all')
     .split('\n').filter(Boolean).filter(l => !(l.startsWith('?? ') && link(l.slice(3)))).map(l => l.slice(3));
   // not the AI tool's worktrees inside the project (Claude Code's .claude/worktrees/): another session's work
-  const code = changed.filter(f => !f.startsWith('specs/') && !f.startsWith('.amk/') && !f.startsWith('.claude/worktrees/'));
+  // nor a screenshot Maestro left in .maestro/ (a device run stopped halfway): never the app's code
+  const code = changed.filter(f => !f.startsWith('specs/') && !f.startsWith('.amk/') && !f.startsWith('.claude/worktrees/') && !/^\.maestro\/.*\.png$/i.test(f));
   // a handoff written after the last code change is current, committed or not: an older change (the developer's own
   // local setting, never meant for a commit) doesn't ask again at every stop once the handoff is committed. A deleted
   // file has no time

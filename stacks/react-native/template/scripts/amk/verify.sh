@@ -6,7 +6,7 @@
 #
 # Usage: sh scripts/amk/verify.sh [quick|ios|android|all|build|plan|approve] [--spec <ids>] [--flow <file>] [--label <name>]
 #                                [--flavor <name>] [--scheme <name>] [--screens <list>] [--no-build] [--related] [--mock]
-#                                [--large-text]
+#                                [--large-text] [--dark]
 #   quick           lint, typecheck, tests
 #   --related       quick: only the Jest tests related to the files this branch changed, for each task while building
 #                   (without it, the whole suite)
@@ -26,11 +26,12 @@
 #   --label <n>     evidence folder name (default: the spec id, or no-spec)
 #   --flavor <name> Android product flavor to check (default: the first one in build.gradle)
 #   --scheme <name> iOS scheme to check (default: the one named like the workspace)
-#                   another flavor or scheme than a plain run checks, or --large-text, keeps its evidence in
-#                   <spec>-<flavor or scheme>[-large-text]/ (or --label's folder): a plain run doesn't replace it
+#                   another flavor or scheme than a plain run checks, --large-text or --dark keeps its evidence in
+#                   <spec>-<flavor or scheme>[-large-text][-dark]/ (or --label's folder): a plain run doesn't replace it
 #   --large-text    the largest text size on the simulators and emulators (iOS's largest accessibility size, Android's
 #                   font scale 2), set once the device is this run's and put back at the end; a real device's is set by
 #                   hand
+#   --dark          dark mode on the simulators and emulators, the same way
 #   --screens <l>   only these of the screens the app supports, comma-separated: phone, tablet, portrait,
 #                   landscape, or one such as tablet-landscape (portrait and landscape include the tablet's)
 #   --no-build      check the last build instead of building again (after `build`), when it has the same API (--mock)
@@ -67,7 +68,21 @@
 # Real iPhones and iPads (iOS 17 or later): Maestro doesn't run on them, so their flows run through maestro-runner, with
 # WebDriverAgent signed by the same team. The app is opened once first, and crash reports it leaves join the evidence.
 # Flows that log in read ${MAESTRO_EMAIL} and the like from a local, gitignored .maestro/.env.local (never committed).
+# The devices the developer picked stay in .amk/devices (an AMK_ line each, such as AMK_ANDROID_AVD=Pixel_9), here or in
+# the main checkout (for a git worktree): every run reads them, under what the environment sets.
 set -eu
+
+for f in .amk/devices "$(git rev-parse --git-common-dir 2> /dev/null || echo .git)/../.amk/devices"; do
+  [ -f "$f" ] || continue
+  while IFS='=' read -r k v || [ -n "$k" ]; do
+    case $k in AMK_*) ;; *) continue ;; esac
+    case $k in *[!A-Z0-9_]*) continue ;; esac
+    eval "[ -n \"\${$k:-}\" ]" && continue
+    v=$(printf %s "$v" | tr -d '\r')
+    eval "$k=\$v"
+    export "$k"
+  done < "$f"
+done
 
 mode=${1:-all}
 [ $# -gt 0 ] && shift
@@ -86,6 +101,7 @@ build_only=0
 part=""
 flavor_arg="" scheme_arg="" scheme_default=${AMK_IOS_SCHEME:-}
 large=0
+dark=0
 while [ $# -gt 0 ]; do
   case $1 in
     --spec) spec=$2; shift 2 ;;
@@ -95,6 +111,7 @@ while [ $# -gt 0 ]; do
     --flavor) flavor=$2; flavor_arg=$2; shift 2 ;;
     --scheme) AMK_IOS_SCHEME=$2; export AMK_IOS_SCHEME; scheme_arg=$2; shift 2 ;;
     --large-text) large=1; shift ;;
+    --dark) dark=1; shift ;;
     --screens) only=$2; shift 2 ;;
     --no-build) no_build=1; shift ;;
     --mock) mock=1; shift ;;
@@ -129,6 +146,7 @@ if [ -n "$scheme_arg" ]; then
   [ -z "$usual" ] || [ "$(lower "$scheme_arg")" = "$(lower "$usual")" ] || [ "$(lower "$scheme_arg")" = "$(lower "$apart")" ] || apart="${apart:+$apart-}$scheme_arg"
 fi
 [ "$large" = 0 ] || apart="${apart:+$apart-}large-text"
+[ "$dark" = 0 ] || apart="${apart:+$apart-}dark"
 [ -z "$apart" ] || [ -n "$label" ] || label="${spec:-no-spec}-$apart"
 # --flow: a path in the project, or an absolute one (C:/… on Windows too); a Windows path's backslashes become slashes
 case $flow in *\\*) flow=$(printf '%s' "$flow" | tr '\\' /) ;; esac
@@ -156,6 +174,8 @@ fi
 # runs without a spec or a label (verify.sh quick, mostly) share one folder, so they don't push out a feature's
 evidence="$root/.amk/evidence/${label:-${spec:-no-spec}}"
 mkdir -p "$evidence"
+# when this run began: screenshots Maestro leaves in .maestro/ after it (a stopped run, a real iPhone's) go to its evidence
+: > "$evidence/.run"
 if [ "$mock" = 1 ]; then : > "$evidence/.mock"; fi
 # Evidence stays on this machine (.amk/ is out of git): the newest AMK_EVIDENCE_KEEP folders stay, this one among
 # them, and older ones go (5; 0 keeps them all). A prototype's folder (<id>-prototype, material for a demo) and those
@@ -223,6 +243,15 @@ with_tags() {
 xcode_busy() {
   ! grep -q 'unable to initiate PIF transfer session' "$1" 2> /dev/null ||
     echo "  Xcode is building or indexing this project too: let it finish or quit it (if it stays stuck: pkill -f SWBBuildService), then run this again (docs/amk/known-issues.md)"
+}
+# a failed build's first real error lines, so its log needn't be searched: Xcode's errors (not the "failed with exit code 0"
+# ones) and missing symbols, Gradle's "What went wrong"; and a hint for a pod that targets an iOS older than Xcode supports
+build_errors() {
+  { grep -E '(^|[^A-Za-z])error: |Undefined symbols|^ld: ' "$1" 2> /dev/null | grep -v -E 'with (a nonzero )?exit code 0' | head -n 3
+    grep -A 2 'What went wrong' "$1" 2> /dev/null | grep -v -E 'What went wrong|^--$' | head -n 2; } | cut -c1-220 | sed 's/^[[:space:]]*/  /'
+  if grep -q -E "IPHONEOS_DEPLOYMENT_TARGET'? is set to" "$1" 2> /dev/null; then
+    echo "  a pod targets an iOS version older than this Xcode supports: a post_install step in the Podfile that raises the pods' IPHONEOS_DEPLOYMENT_TARGET to the app's fixes it (the Podfile is the team's: ask first)"
+  fi
 }
 
 # the screens to check on a platform: the ones the app supports (as far as .amk-screens lets), narrowed by --screens
@@ -293,7 +322,9 @@ step() { # quick, ios or android; its stage; for the flows: how many ran, of how
 }
 # its length is kept as a guide for the next of its kind when it passed
 finish() { node "$root/scripts/amk/progress.js" end "verify-$1-$me" --result "$([ "$status" = 0 ] && echo passed || echo failed)" > /dev/null 2>&1 || true; }
-# --large-text: each device's text size as it was, put back at the end ("a:<serial>=<size>", "i:<UDID>=<size>")
+# the device settings this run changed, as they were, put back at the end: --large-text's text size ("a:<serial>=<size>",
+# "i:<UDID>=<size>"), --dark's mode ("n:<serial>=yes|no|auto", "d:<UDID>=light|dark"), an emulator's screen timeout
+# ("t:<serial>=<ms>")
 sizes_before=""
 text_back() {
   for p in $sizes_before; do
@@ -301,6 +332,9 @@ text_back() {
     case $p in
       a:*) "$adb" -s "$d" shell settings put system font_scale "${p#*=}" > /dev/null 2>&1 || true ;;
       i:*) xcrun simctl ui "$d" content_size "${p#*=}" > /dev/null 2>&1 || true ;;
+      n:*) "$adb" -s "$d" shell cmd uimode night "${p#*=}" > /dev/null 2>&1 || true ;;
+      d:*) xcrun simctl ui "$d" appearance "${p#*=}" > /dev/null 2>&1 || true ;;
+      t:*) "$adb" -s "$d" shell settings put system screen_off_timeout "${p#*=}" > /dev/null 2>&1 || true ;;
     esac
   done
 }
@@ -316,7 +350,22 @@ large_text() { # emulator|simulator|real, device
     *) echo "verify: --large-text: set the largest text size on $2 by hand (a real device's settings are left alone)" ;;
   esac
 }
-trap 'text_back; release; drop_temps; [ -z "$tree_flow" ] || rm -f "$tree_flow"; node "$root/scripts/amk/progress.js" end-pid "$me" > /dev/null 2>&1 || true' EXIT
+dark_mode() { # emulator|simulator|real, device
+  [ "$dark" = 1 ] || return 0
+  case $1 in
+    emulator) was=$("$adb" -s "$2" shell cmd uimode night 2> /dev/null | tr -d '\r' | sed 's/.*: *//')
+      case $was in yes | no | auto) ;; *) was=no ;; esac
+      sizes_before="$sizes_before n:$2=$was"
+      "$adb" -s "$2" shell cmd uimode night yes > /dev/null 2>&1 || echo "verify: --dark: couldn't turn on dark mode on $2" ;;
+    simulator) was=$(xcrun simctl ui "$2" appearance 2> /dev/null | tr -d '\r')
+      case $was in light | dark) ;; *) was=light ;; esac
+      sizes_before="$sizes_before d:$2=$was"
+      xcrun simctl ui "$2" appearance dark > /dev/null 2>&1 || echo "verify: --dark: couldn't turn on dark mode on $2" ;;
+    *) echo "verify: --dark: turn on dark mode on $2 by hand (a real device's settings are left alone)" ;;
+  esac
+}
+strays() { find "$root/.maestro" -maxdepth 1 -name '*.png' -newer "$evidence/.run" -exec mv {} "$evidence/" \; 2> /dev/null || true; }
+trap 'text_back; strays; release; drop_temps; [ -z "$tree_flow" ] || rm -f "$tree_flow"; node "$root/scripts/amk/progress.js" end-pid "$me" > /dev/null 2>&1 || true' EXIT
 trap 'exit 130' INT TERM
 holder() {
   l=$(lock_path "$1")
@@ -397,10 +446,21 @@ run_flow() { # screen device app_id file name orientation
       --team-id "$team" --wda-bundle-id "$3.wda" --app-file "$device_app" test -e APP_ID="$3" \
       -e ORIENTATION="$([ "$6" = PORTRAIT ] && echo PORTRAIT || echo landscape)" --output "$debug" \
       --flatten "$target" > "$out/$5.log" 2>&1 || rc=$?
-    pngs "$@" | comm -13 "$debug/.pngs" - | while IFS= read -r f; do mv "$f" "$debug/"; done
+    # (one another run's end moved first, as a stray, is gone already)
+    pngs "$@" | comm -13 "$debug/.pngs" - | while IFS= read -r f; do mv "$f" "$debug/" 2> /dev/null || true; done
     # its takeScreenshot files, not the ones of a step that failed (<step>-after.png)
     find "$debug" -path '*/assets/*.png' ! -name '*-[0-9][0-9][0-9]-after.png' -exec cp {} "$out/screenshots/" \;
     return $rc
+  fi
+  # a flow that left the notification shade or a system dialog open fails every flow after it, and an emulator that
+  # dozed off between flows shows a black screen: before each flow and each try, both closed and the screen awake
+  if [ "${1%%-*}" = android ]; then
+    "$adb" -s "$2" shell cmd statusbar collapse > /dev/null 2>&1 || true
+    "$adb" -s "$2" shell am broadcast -a android.intent.action.CLOSE_SYSTEM_DIALOGS > /dev/null 2>&1 || true
+    case $2 in emulator-*)
+      "$adb" -s "$2" shell input keyevent KEYCODE_WAKEUP > /dev/null 2>&1 || true
+      "$adb" -s "$2" shell wm dismiss-keyguard > /dev/null 2>&1 || true ;;
+    esac
   fi
   # screenshots use relative names: older Maestro saves them in the current folder, then in --test-output-dir, and
   # from 2.7 in the debug output under <flow>/takeScreenshot/, from where they join the screen's evidence
@@ -421,6 +481,15 @@ run_flow() { # screen device app_id file name orientation
   return $rc
 }
 
+# why flow $1 isn't a valid flow, when Maestro's output ($2) says it couldn't read one: Maestro's syntax check of the flow
+# itself (its own line numbers, not the copy's with view-tree steps), else what the output said. It fails each try alike
+bad_flow() {
+  grep -qsE '\.ya?ml:[0-9]+|Unknown Property|Parsing Failed|Flow Parsing' "$2" || return 1
+  said=$(maestro check-syntax "$1" 2>&1 | grep -v -E '^[[:space:]]*(OK)?[[:space:]]*$' | head -n 1 |
+    sed "s| at /syntax-checker:\([0-9]*\):[0-9]*| at ${1#"$root"/}:\1|") || true
+  [ -n "$said" ] || said=$(grep -m 1 -E '\.ya?ml:[0-9]+|Unknown Property|Parsing Failed|Flow Parsing' "$2" | sed 's/^[[:space:]]*//')
+  printf '%s\n' "$said" | cut -c1-300
+}
 # whether a flow failed because the Android device dropped out: Maestro says so in its own log or the flow's ($1)
 lost_device() {
   grep -qs -E 'device offline|DeviceServerDiedException|Device server died' "$debug/maestro.log" ||
@@ -440,7 +509,9 @@ steady() {
 why_failed() {
   if is_real "$1"; then
     node -e 'try { const e = ((JSON.parse(require("fs").readFileSync(process.argv[1], "utf8")).flows || [])[0] || {}).error;
-      if (e) console.log(`with: ${e.split("\n")[0]}`); } catch {}' "$debug/report.json"
+      // a real iPhone or iPad that will not turn: its Portrait Orientation Lock, mostly
+      const turn = /Unable To Rotate|Set orientation failed/i.test(e || "") ? " (a real iPhone or iPad does not turn while Portrait Orientation Lock is on in Control Center: turn it off, or check landscape on a simulator)" : "";
+      if (e) console.log(`with: ${e.split("\n")[0]}${turn}`); } catch {}' "$debug/report.json"
   else
     # the first step that failed is the innermost; Maestro's message comes after the subflows that failed around it
     # (Run <subflow>... FAILED) and the steps onFlowComplete ran
@@ -512,7 +583,7 @@ run_flows() { # screen device app_id orientation (PORTRAIT, or LANDSCAPE_LEFT to
     total=$((total + 1))
     name=$(basename "$f" .yaml)
     step "${1%%-*}" "$view" $((total - 1)) "$count" "$name"
-    ok=0 why="" shot="" first=""
+    ok=0 why="" shot="" first="" bad=""
     # an earlier run's first try, when the flow was flaky then
     [ ! -d "$evidence/maestro-logs/$1-$name-first-try" ] || rm -r "$evidence/maestro-logs/$1-$name-first-try"
     : > "$out/.flow-started"
@@ -540,6 +611,9 @@ run_flows() { # screen device app_id orientation (PORTRAIT, or LANDSCAPE_LEFT to
       sleep 15
       ok=0
       run_flow "$1" "$2" "$3" "$f" "$name" "$4" || ok=$?
+    elif [ "$ok" != 0 ] && ! is_real "$2" && ! grep -qE '\.\.\. *(COMPLETED|FAILED|SKIPPED|WARNED)' "$out/$name.log" &&
+      bad=$(bad_flow "$f" "$out/$name.log"); then
+      : # a flow Maestro can't read: no second try
     elif [ "$ok" != 0 ] && ! is_real "$2" && ! grep -qE '\.\.\. *(COMPLETED|FAILED|SKIPPED|WARNED)' "$out/$name.log"; then
       # nor did it get to the flow's first step when its driver didn't start on the device (a stack trace, and no step)
       echo "  $1: Maestro stopped before flow $name started; running it once more"
@@ -577,7 +651,7 @@ run_flows() { # screen device app_id orientation (PORTRAIT, or LANDSCAPE_LEFT to
       status=1
     fi
     if [ "$ok" != 0 ]; then
-      why=$(why_failed "$2" "$name" | tr '\t' ' ')
+      if [ -n "$bad" ]; then why="as it isn't a valid flow: $bad"; else why=$(why_failed "$2" "$name" | tr '\t' ' '); fi
       # a step the device dropped out of has no FAILED line: say so, or it reads as the flow's own failure
       [ -n "$why" ] || [ "${1%%-*}" != android ] || ! lost_device "$out/$name.log" ||
         why="when the device went offline, on each try (an emulator under load drops out: check again with fewer devices open)"
@@ -696,6 +770,8 @@ quick() {
   node scripts/amk/rn-check.js > "$evidence/rn-check.log" 2>&1 || status=1
   head -n 40 "$evidence/rn-check.log"
   [ "$(wc -l < "$evidence/rn-check.log")" -le 40 ] || echo "  … all of it in ${evidence#"$root"/}/rn-check.log"
+  # the verdict once more, last: what an agent reads when it looks at the end of the output
+  if [ "$status" = 0 ]; then echo "quick: passed"; else echo "quick: FAILED, see above"; fi
 }
 
 ios() {
@@ -763,11 +839,11 @@ ios() {
   claim_wait "build-ios-$project" "" "the iOS build of this project" || { status=1; return; }
   if [ "$no_build" = 0 ]; then
     if [ "$sims" = 1 ] && ! CONFIGURATION=Release sh scripts/amk/ios-build.sh > "$evidence/ios-build.log" 2>&1; then
-      echo "ios: release build FAILED, see ${evidence#"$root"/}/ios-build.log"; xcode_busy "$evidence/ios-build.log"; status=1; return
+      echo "ios: release build FAILED, see ${evidence#"$root"/}/ios-build.log"; build_errors "$evidence/ios-build.log"; xcode_busy "$evidence/ios-build.log"; status=1; return
     fi
     for d in $reals; do
       if ! CONFIGURATION=Release AMK_IOS_TEAM=$team sh scripts/amk/ios-build.sh device "$d" > "$evidence/ios-device-build.log" 2>&1; then
-        echo "ios: release build for $d FAILED, see ${evidence#"$root"/}/ios-device-build.log"; status=1; return
+        echo "ios: release build for $d FAILED, see ${evidence#"$root"/}/ios-device-build.log"; build_errors "$evidence/ios-device-build.log"; status=1; return
       fi
     done
     built_api ios
@@ -791,7 +867,7 @@ ios() {
       xcrun simctl bootstatus "$d" -b > /dev/null
       xcrun simctl install "$d" "$app"
     fi
-    if is_real "$d"; then large_text real "$d"; else large_text simulator "$d"; fi
+    if is_real "$d"; then large_text real "$d"; dark_mode real "$d"; else large_text simulator "$d"; dark_mode simulator "$d"; fi
   done
   check_screens ios "$device" "$tablet" "$app_id" $screens
   for d in $reals; do crash_reports "$d"; done
@@ -1165,13 +1241,15 @@ android() {
     # a check build isn't a release: its mapping files and debug symbols stay off the crash reporters
     set -- "$@" --init-script "$(cd scripts/amk && { pwd -W 2> /dev/null || pwd; })/no-symbol-upload.gradle"
     # Gradle would count the JavaScript bundled for the other API (mock or real) as up to date: it's bundled again
-    # (React Native's Gradle plugin puts it in generated/*/react/<variant>/, before 0.71 in createBundle<Variant>JsAndAssets/)
+    # (React Native's Gradle plugin puts it in generated/*/react/<variant>/, before 0.71 in createBundle<Variant>JsAndAssets/).
+    # And each build bundles it afresh: a file an earlier build left there (CodePush's CodePushHash) fails the next with
+    # "Duplicate resources"
+    rm -rf android/app/build/generated/assets/react android/app/build/generated/res/react
     if [ "$(cat "$root/.amk/last-build-android" 2> /dev/null || echo real)" != "$api" ]; then
-      rm -rf android/app/build/generated/assets/react android/app/build/generated/res/react \
-        android/app/build/generated/assets/createBundle* android/app/build/generated/res/createBundle*
+      rm -rf android/app/build/generated/assets/createBundle* android/app/build/generated/res/createBundle*
     fi
     if ! (cd android && SENTRY_DISABLE_AUTO_UPLOAD=true ./gradlew "assemble${variant}Release" --no-daemon -q "$@") > "$evidence/android-build.log" 2>&1; then
-      echo "android: release build FAILED, see ${evidence#"$root"/}/android-build.log"; status=1; return
+      echo "android: release build FAILED, see ${evidence#"$root"/}/android-build.log"; build_errors "$evidence/android-build.log"; status=1; return
     fi
     built_api android
   fi
@@ -1207,8 +1285,13 @@ android() {
       "$adb" -s "$d" shell svc power stayon true > /dev/null 2>&1 || true
       "$adb" -s "$d" shell input keyevent KEYCODE_WAKEUP > /dev/null 2>&1 || true
       "$adb" -s "$d" shell wm dismiss-keyguard > /dev/null 2>&1 || true
-      large_text emulator "$d" ;;
-    *) large_text real "$d" ;;
+      # stayon holds only while the emulator reports being plugged in, which it doesn't always: a screen timeout of
+      # 30 minutes, put back at the end
+      was=$("$adb" -s "$d" shell settings get system screen_off_timeout 2> /dev/null | tr -d '\r')
+      case $was in '' | *[!0-9]*) ;; *) sizes_before="$sizes_before t:$d=$was" ;; esac
+      "$adb" -s "$d" shell settings put system screen_off_timeout 1800000 > /dev/null 2>&1 || true
+      large_text emulator "$d"; dark_mode emulator "$d" ;;
+    *) large_text real "$d"; dark_mode real "$d" ;;
     esac
     "$adb" -s "$d" shell am broadcast -a android.intent.action.CLOSE_SYSTEM_DIALOGS > /dev/null 2>&1 || true
   done
@@ -1279,9 +1362,16 @@ plan() {
     [ "$parts" -ge 1 ] || parts=1
   fi
   [ "$n" -ge 2 ] || [ "$parts" -ge 2 ] || why="there's one device to check"
+  # the devices named for this run go into each command, as a subagent runs it in a shell of its own
+  run=""
+  for v in AMK_IOS_DEVICE AMK_IOS_TABLET AMK_ANDROID_DEVICE AMK_ANDROID_AVD AMK_ANDROID_TABLET AMK_ANDROID_TABLET_AVD; do
+    eval "x=\${$v:-}"
+    case $x in '') ;; *[!A-Za-z0-9._-]*) run="$run$v='$x' " ;; *) run="$run$v=$x " ;; esac
+  done
+  run="${run}sh scripts/amk/verify.sh"
   if [ -n "$why" ]; then
     echo "plan: $have: one device at a time ($why; AMK_PARALLEL=1 overrides)"
-    echo "  sh scripts/amk/verify.sh all${args:+ $args}"
+    echo "  $run all${args:+ $args}"
     return
   fi
   # one command per device, a kind's parts next to each other. A real iPhone, iPad or phone can't be copied for a
@@ -1297,7 +1387,7 @@ plan() {
     esac
     i=1
     while [ "$i" -le "$p" ]; do
-      cmd="sh scripts/amk/verify.sh ${c%:*} --no-build --screens ${c#*:}"
+      cmd="$run ${c%:*} --no-build --screens ${c#*:}"
       [ "$p" = 1 ] || cmd="$cmd --part $i/$p"
       jobs="$jobs$cmd${args:+ $args}
 "
@@ -1310,7 +1400,7 @@ plan() {
   elif [ "$parts" -gt 1 ]; then echo "plan: $have: check on $total devices at the same time, each kind's flows in parts"
   else echo "plan: $have: check the $n devices at the same time"; fi
   echo "  1. sh scripts/amk/verify.sh quick${args:+ $args}"
-  echo "  2. sh scripts/amk/verify.sh build${args:+ $args}"
+  echo "  2. $run build${args:+ $args}"
   r=1
   while [ "$r" -le "$rounds" ]; do
     if [ "$rounds" = 1 ]; then echo "  3. at the same time, each in its own subagent (m-device-checker), which checks its screenshots and reports:"

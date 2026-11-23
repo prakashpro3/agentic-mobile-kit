@@ -340,12 +340,21 @@ function checkFlow(file, text) {
   let optional = false;
   let target = '';
   let asserts = 0;
+  // a runFlow's indent while its when: says platform: Android (its commands run there only); -1 outside one
+  let runFlowAt = -1;
+  let androidOnly = -1;
   const done = () => { if (cmd === 'extendedWaitUntil' && !optional) asserts++; };
   for (const l of stripYamlComments(text).split('\n')) {
     const at = offset;
     offset += l.length + 1;
     const item = /^\s*-\s*([A-Za-z]+)\s*:?\s*(.*)$/.exec(l);
-    if (item) { done(); cmd = item[1]; optional = false; if (ASSERTS.test(cmd)) asserts++; }
+    const indent = l.length - l.trimStart().length;
+    if (item) {
+      done(); cmd = item[1]; optional = false; if (ASSERTS.test(cmd)) asserts++;
+      if (androidOnly >= 0 && indent <= androidOnly) androidOnly = -1;
+      if (cmd === 'runFlow') runFlowAt = indent;
+    }
+    if (/^\s*platform\s*:\s*['"]?android\b/i.test(l) && runFlowAt >= 0) androidOnly = runFlowAt;
     if (/^\s*optional\s*:\s*true\b/.test(l)) optional = true;
     const app = /^appId\s*:\s*(.+)$/.exec(l);
     if (app && !/\$\{APP_ID\}/.test(app[1])) add('!', at, `appId ${app[1].trim()}: verify.sh sets APP_ID for the build it checks, which a flavor or scheme changes: use appId: \${APP_ID}`);
@@ -361,6 +370,10 @@ function checkFlow(file, text) {
         add('!', at, `${cmd} "${value}" taps by text: on iOS a label and its control both match, and on a real iPhone a hidden one can; tap by testID (id:)`);
       }
       if (kind === 'text' && /['’]/.test(value)) add('!', at, `"${value}" has an apostrophe, which a real iPhone can't search for (maestro-runner): match a testID, or text without it`);
+    }
+    // iOS has no back key: Maestro's back does nothing there, and the flow goes on from the wrong screen
+    if (item && cmd === 'back' && androidOnly < 0 && (expoSdk || fs.existsSync(path.join(root, 'ios')))) {
+      add('!', at, '- back presses Android\'s back key; iOS has none, so on an iPhone or iPad it does nothing: tap the screen\'s own back control by testID, or run back only on Android (runFlow with when: { platform: Android })');
     }
     if (item && cmd === 'inputText' && item[2].trim() && !item[2].includes('${') && /pass(word|code)?\b|\bpin\b|otp|secret/i.test(target)) {
       add('!', at, `a password typed into the flow: use \${MAESTRO_PASSWORD} (or another MAESTRO_ variable) from .maestro/.env.local, which isn't committed`);

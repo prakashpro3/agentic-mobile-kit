@@ -60,15 +60,15 @@ For each task, in order (a task with `after:` once those tasks are ticked; one w
 3. Commit with a clear message ending in `Spec: specs/<id>`.
 4. Tick the task in `tasks.md` and update the handoff block and log in `progress.md`.
 
-After the main screen's task, show the user its screenshot and **stop until they OK the look**: a wrong look then costs one screen, not five.
+After the main screen's task, show the user its screenshot (beside the prototype's, if any) and **stop until they OK the look**: a wrong look then costs one screen, not five.
 
 If building shows the plan is wrong: when the intent is the same, update `design.md` or `tasks.md` and tell the user what changed. A requirement that changes gets an entry under `## Changes after approval` in `requirements.md` (before and after, why, and the stories, scenarios, tasks, tests and flows it changes), and you stop for its approval, a question of its own. When the intent itself changed, or the scope grew into different work, stop and suggest finishing this feature small and starting a new one.
 
 ## 5. Test it
 
-When all tasks are done, follow `.agents/skills/m-test/SKILL.md` for `<id>`: the code checks, the device flows of the feature and of the areas it touches, and the test report, where each scenario gets a status. Fix what fails and run it again until the report says Ready (two failed attempts at the same fix: stop and report). Where the code and the spec disagree, fix whichever is wrong, asking first if it's the spec: the spec must describe what ships. Off a Mac, record in `progress.md` that iOS still needs checking on a Mac, and say so in the PR.
+When all tasks are done, follow `.agents/skills/m-test/SKILL.md` for `<id>`: the code checks, the device flows of the feature and of the areas it touches, and the test report, where each scenario gets a status. Fix what fails and run it again until the report says Ready (two failed attempts at the same fix: stop and report). Where the code and the spec disagree, fix whichever is wrong, asking first if it's the spec: the spec must describe what ships.
 
-Then **the design review**: give the screenshots `verify.sh` listed as changed (all of them, the first time) to the `m-design-reviewer` subagent, which sees only them, `docs/amk/design-system.md` and the UI/UX level in `design.md` (without subagents, check the same yourself). Fix what it finds, or tell the user why one stays. Once the user accepts the look, `sh scripts/amk/verify.sh approve --label <id>` makes these screenshots the approved ones.
+Then **the design review**: give the screenshots `verify.sh` listed as changed (all of them, the first time) to the `m-design-reviewer` subagent, with `docs/amk/design-system.md`, the UI/UX level in `design.md` and any prototype screenshots (`.amk/evidence/<id>-prototype/`) (without subagents, check the same yourself). Fix what it finds, or tell the user why one stays. Once the user accepts the look, `sh scripts/amk/verify.sh approve --label <id>` makes these screenshots the approved ones.
 
 ## 6. Update the living spec and the docs
 

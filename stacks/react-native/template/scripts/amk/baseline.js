@@ -343,7 +343,12 @@ if (check === 'lint') {
   const old = mine && baseProblems(sha, extract);
   if (!mine || !old) {
     // which run's output, and how it ended: a check that couldn't start (no node_modules) says so in its last line
-    const ended = x => { const last = x.out.trim().split('\n').pop() || 'no output'; return ` (exit ${x.code}: ${last.slice(0, 200)})`; };
+    // its first line that says what went wrong, else its last (ESLint ends a crash with where to ask for help)
+    const ended = x => {
+      const lines = x.out.split('\n').map(l => l.trim()).filter(Boolean);
+      const said = lines.find(l => /\b(error|ERR!|failed|cannot|could ?n.?t|not found|no such)\b/i.test(l)) || lines.pop() || 'no output';
+      return ` (exit ${x.code}: ${said.slice(0, 200)})`;
+    };
     console.log(`${check}: failed, and it can't be compared with ${label}: ${check === 'test' && !jest ? 'only Jest results can be compared'
       : !mine ? `this branch's output couldn't be read${ended(now)}` : `the base's output couldn't be read${ended(baseRun)}`}`);
     process.exit(3);

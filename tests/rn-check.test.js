@@ -466,6 +466,21 @@ test('rn-check: a scenario checked another way (a Jest test named after it, its 
   assert.ok(code >= 0 && code < warnings.findIndex(l => /scenario 4/.test(l)), `the code's findings first:\n${out}`);
 });
 
+test('rn-check: Maestro\'s back in a flow is a warning in an app with iOS (no back key there), not in an Android-only app', () => {
+  const flow = 'appId: ${APP_ID}\n---\n- launchApp\n- tapOn:\n    id: "open-detail"\n- back\n- assertVisible:\n    id: "list"\n';
+  const run = dir => spawnSync(process.execPath, ['scripts/amk/rn-check.js'], { cwd: dir, encoding: 'utf8', env: { ...process.env, AMK_BASE: '', AMK_MAESTRO: path.join(dir, 'no-such-maestro') } }).stdout;
+  const withIos = app(undefined, { 'ios/App.xcodeproj/project.pbxproj': '// x\n' });
+  write(withIos, '.maestro/detail.yaml', flow);
+  assert.match(run(withIos), /! \.maestro\/detail\.yaml:6 {2}- back presses Android's back key; iOS has none/);
+  // run on Android only: the fix it suggests
+  write(withIos, '.maestro/detail.yaml', `${flow}- runFlow:\n    when:\n      platform: Android\n    commands:\n      - back\n- back\n`);
+  const twice = run(withIos);
+  assert.deepStrictEqual([...twice.matchAll(/detail\.yaml:(\d+) {2}- back presses/g)].map(m => m[1]), ['6', '14'], twice);
+  const androidOnly = app();
+  write(androidOnly, '.maestro/detail.yaml', flow);
+  assert.doesNotMatch(run(androidOnly), /back presses Android's back key/);
+});
+
 test('verify.sh quick: rn-check runs after lint, typecheck and tests, and its problems fail quick', { skip: process.platform === 'win32' && 'verify.sh needs sh' }, () => {
   const dir = app({ scripts: { lint: 'node -e ""', typecheck: 'node -e ""', test: 'node -e ""' }, dependencies: { react: '19.2.3', 'react-native': '0.87.1' } });
   for (const f of fs.readdirSync(KIT)) write(dir, `scripts/amk/${f}`, fs.readFileSync(path.join(KIT, f), 'utf8'));
@@ -478,8 +493,10 @@ test('verify.sh quick: rn-check runs after lint, typecheck and tests, and its pr
   assert.match(failed.stdout, /^quick: lint, typecheck and tests passed\nrn-check: 1 problem, 1 warning in the lines changed since main\n {2}✗ src\/b\.tsx:1 {2}SafeAreaView/m);
   assert.notStrictEqual(failed.status, 0);
   write(dir, 'src/b.tsx', "import { SafeAreaView } from 'react-native'; // amk-ok: a screen only iOS shows\nconsole.log(1);\n");
+  assert.match(failed.stdout, /\nquick: FAILED, see above\nEvidence: [^\n]*\n$/, 'the verdict at the end, after the warnings');
   const passed = quick();
   assert.match(passed.stdout, /^rn-check: 0 problems, 1 warning/m);
+  assert.match(passed.stdout, /\nquick: passed\nEvidence: [^\n]*\n$/);
   assert.strictEqual(passed.status, 0, passed.stdout + passed.stderr);
   // the status line's record of the run is gone once it ends; a run that passed is the guide for the next one's length
   const kept = path.join(dir, '.amk/progress');

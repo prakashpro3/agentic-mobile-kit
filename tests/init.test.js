@@ -322,6 +322,23 @@ test('sync right after init changes nothing', () => {
   assert.strictEqual(git(dir, 'status', '--porcelain'), '');
 });
 
+test('sync: uncommitted changes to the app\'s own files stay as they are; to a file sync writes, it refuses', () => {
+  const dir = fakeApp();
+  init(dir, { skipGenerate: true });
+  commitAll(dir);
+  fs.writeFileSync(path.join(dir, 'App.local.json'), '{"mine": true}\n');
+  fs.appendFileSync(path.join(dir, 'package.json'), '\n');
+  const r = sync(dir, { skipGenerate: true });
+  assert.strictEqual(r.changed, false, 'the changes from before aren\'t the kit\'s');
+  assert.deepStrictEqual(r.yours.sort(), ['App.local.json', 'package.json']);
+  assert.strictEqual(fs.readFileSync(path.join(dir, 'App.local.json'), 'utf8'), '{"mine": true}\n');
+  fs.appendFileSync(path.join(dir, 'scripts/amk/verify.sh'), '# mine\n');
+  assert.throws(() => sync(dir, { skipGenerate: true }), e => e instanceof InitError && /uncommitted changes to files sync updates \(scripts\/amk\/verify\.sh\)/.test(e.message));
+  fs.appendFileSync(path.join(dir, '.gitignore'), 'mine/\n');
+  git(dir, 'checkout', '--', 'scripts/amk/verify.sh');
+  assert.throws(() => sync(dir, { skipGenerate: true }), /files sync updates \(\.gitignore\)/);
+});
+
 test('sync needs the kit installed, and the installed version for kits before 0.4.0', () => {
   assert.throws(() => sync(fakeApp(), { skipGenerate: true }), /Run init instead/);
   const before040 = '<!-- KIT:START agentic-mobile-kit (edit outside these markers; the kit updates what\'s inside) -->\nold\n<!-- KIT:END agentic-mobile-kit -->\n';

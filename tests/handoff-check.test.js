@@ -139,6 +139,12 @@ test('handoff check: a change older than the handoff (the developer\'s own local
   const stop = tasks => spawnSync('node', [path.join(dir, 'scripts/amk/handoff-check.js')], { cwd: dir, input: JSON.stringify({ hook_event_name: 'Stop', background_tasks: tasks }), encoding: 'utf8' }).status;
   assert.strictEqual(stop([{ id: 'b1', type: 'bash' }]), 0, 'something still runs: it comes back');
   assert.strictEqual(stop([]), 2, 'nothing runs: the real stop');
+  // a screenshot a stopped device run left in .maestro/ isn't code
+  git(dir, '-c', 'user.name=t', '-c', 'user.email=t@example.invalid', 'commit', '-q', '-am', 'code');
+  write(dir, 'specs/20261016-x/progress.md', `${IN_PROGRESS}Next: the list\n`);
+  git(dir, '-c', 'user.name=t', '-c', 'user.email=t@example.invalid', 'commit', '-q', '-am', 'handoff');
+  write(dir, '.maestro/ORDERS-1-home.png', 'png');
+  assert.strictEqual(hook(dir), 0, 'a stray screenshot');
 });
 
 test('handoff check: Claude Code\'s worktrees inside the project (.claude/worktrees/) aren\'t this session\'s code', () => {

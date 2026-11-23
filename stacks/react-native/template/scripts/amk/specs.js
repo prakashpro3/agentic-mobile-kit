@@ -76,7 +76,8 @@ function flowBlocks(text) {
   const code = stripYamlComments(text).split('\n');
   const out = [];
   text.split('\n').forEach((l, i) => {
-    const m = /^\s*#\s*Scenario\b\s*(\d+)?\s*[:.)-]?\s*(.*)$/i.exec(l);
+    // a number or a colon after the word: "# Scenario 3: …", "# Scenario: …", not prose that starts with it
+    const m = /^\s*#\s*Scenario\b\s*(?:(\d+)\s*[:.)-]?|[:.)-])\s*(.*)$/i.exec(l);
     if (m) out.push({ n: Number(m[1]) || 0, name: m[2].trim(), line: i + 1, code: '' });
     else if (out.length) out[out.length - 1].code += `${code[i]}\n`;
   });

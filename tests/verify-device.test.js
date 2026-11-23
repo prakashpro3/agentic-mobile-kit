@@ -110,6 +110,16 @@ test('verify.sh android: an emulator with the app signed with another key gets i
   assert.doesNotMatch(phone.calls, /uninstall|stayon|font_scale/);
 });
 
+test('verify.sh: screenshots Maestro leaves in .maestro/ during a run go to its evidence when the run ends; older ones stay', { skip }, () => {
+  const strays = 'out=$(echo "$@" | sed \'s/.*--test-output-dir \\([^ ]*\\).*/\\1/\'); touch "$out/shot.png"; touch "${out%%/.amk/*}/.maestro/x1-home-left.png"';
+  const r = verifyAndroid({ connected: ['emulator-5556 P35'], build: true, maestro: strays, files: { '.maestro/team-logo.png': 'an old file of the team\'s' },
+    prepare: app => { const t = new Date(Date.now() - 86400e3); fs.utimesSync(path.join(app, '.maestro/team-logo.png'), t, t); } });
+  assert.strictEqual(r.status, 0, r.out);
+  assert.ok(!fs.existsSync(path.join(r.app, '.maestro/x1-home-left.png')), 'out of .maestro/');
+  assert.ok(fs.existsSync(path.join(r.app, '.amk/evidence/run/x1-home-left.png')), 'in the run\'s evidence');
+  assert.ok(fs.existsSync(path.join(r.app, '.maestro/team-logo.png')), 'a file from before the run stays');
+});
+
 test('verify.sh android: an emulator, never a phone plugged in over USB unless named, since the flows clear the app\'s data', { skip }, () => {
   const phone = 'ZD22 -';
   assert.strictEqual(chooseDevice({ connected: [phone, 'emulator-5556 P35', 'emulator-5554 amk-test'], avds: 'P35 amk-test', env: { AMK_ANDROID_AVD: 'amk-test' } }),
@@ -331,6 +341,27 @@ test('verify.sh build and --no-build: build once, then check each device without
   assert.match(nothing.out, /android: there's no build to check yet: run sh scripts\/amk\/verify\.sh build first/);
 });
 
+test('verify.sh android: before each flow the shade is closed and an emulator woken; its screen stays on 30 minutes; each build bundles afresh; --dark turns dark mode on, then back, with its evidence apart', { skip }, () => {
+  const shot = 'touch "$(echo "$@" | sed \'s/.*--test-output-dir \\([^ ]*\\).*/\\1/\')/shot.png"';
+  const left = 'android/app/build/generated/assets/react/xRelease/CodePushHash';
+  const r = verifyAndroid({ connected: ['emulator-5556 P35'], build: true, maestro: shot, files: { ...threeFlows, [left]: 'an earlier build\'s' }, args: ['android', '--flavor', 'x', '--spec', 'x1', '--dark'] });
+  assert.strictEqual(r.status, 0, r.out);
+  assert.strictEqual((r.calls.match(/-s emulator-5556 shell cmd statusbar collapse\n-s emulator-5556 shell am broadcast -a android\.intent\.action\.CLOSE_SYSTEM_DIALOGS\n-s emulator-5556 shell input keyevent KEYCODE_WAKEUP\n/g) || []).length, 3, 'before each of the 3 flows');
+  assert.match(r.calls, /-s emulator-5556 shell settings put system screen_off_timeout 1800000/);
+  assert.match(r.calls, /-s emulator-5556 shell cmd uimode night yes[\s\S]*-s emulator-5556 shell cmd uimode night no/, 'set, then put back');
+  assert.ok(fs.existsSync(path.join(r.app, '.amk/evidence/x1-dark/android')), 'its own evidence folder');
+  assert.ok(!fs.existsSync(path.join(r.app, left)), 'what an earlier build bundled is gone');
+});
+
+test('verify.sh android: a flow Maestro can\'t read fails once, with what its syntax check says at the flow\'s own line, not "Maestro stopped"', { skip }, () => {
+  const bad = 'if [ "$1" = check-syntax ]; then echo "Unknown Property: direction at /syntax-checker:4:3"; exit 1; fi; echo "$*" >> "$FAKE_STATE.maestro"; echo "Unknown Property: direction at $PWD/.maestro/.amk-android-x1-a.yaml:9"; exit 1';
+  const r = verifyAndroid({ connected: ['emulator-5556 P35'], build: true, maestro: bad, files: { '.maestro/x1-a.yaml': 'appId: x\n---\n- launchApp\n- swipe:\n    direction: UP\n' }, args: ['android', '--flavor', 'x', '--spec', 'x1'] });
+  assert.notStrictEqual(r.status, 0);
+  assert.match(r.out, /flow x1-a failed, see [^\n]*\n {4}failed as it isn't a valid flow: Unknown Property: direction at \.maestro\/x1-a\.yaml:4\n/);
+  assert.doesNotMatch(r.out, /running it once more/);
+  assert.strictEqual(r.maestro.split('\n').filter(Boolean).length, 1, 'one try');
+});
+
 test('verify.sh plan: as many devices at once as memory allows (about 6 GB each, 4 GB kept), in rounds; else one command', { skip }, () => {
   const mac = process.platform === 'darwin';
   // with 50 GB of free disk, whatever this machine has
@@ -378,8 +409,14 @@ test('verify.sh plan: room for more devices than kinds splits each kind\'s flows
   for (const k of kinds) for (let i = 1; i <= per; i++) assert.ok(out.includes(`     sh scripts/amk/verify.sh ${k} --no-build --screens phone --part ${i}/${per} --spec x1\n`), out);
   // a phone plugged in can't be copied for a part: it runs all its flows
   const phone = plan({ AMK_MEMORY_GB: '32', AMK_ANDROID_DEVICE: 'ZX1' });
-  assert.ok(phone.includes('     sh scripts/amk/verify.sh android --no-build --screens phone --spec x1\n'), phone);
+  assert.ok(phone.includes('     AMK_ANDROID_DEVICE=ZX1 sh scripts/amk/verify.sh android --no-build --screens phone --spec x1\n'), phone);
   assert.doesNotMatch(phone, /verify\.sh android .*--part/);
+  // the device the developer picked, in .amk/devices: each command plan prints names it, as a subagent runs it in a
+  // shell of its own; the environment comes first, and a line that isn't an AMK_ name is left out
+  const picked = env => verifyAndroid({ connected: [], rotates: false, env: { AMK_DISK_GB: '50', AMK_MEMORY_GB: '32', ...env }, args: ['plan', '--spec', 'x1'],
+    files: { ...threeFlows, '.amk/devices': "# the emulator I use\nAMK_ANDROID_DEVICE=ZX1\nAMK_IOS_DEVICE=iPhone 17 Pro\r\nAMK_BAD-NAME=x\nPATH=/nowhere" } }).out;
+  assert.ok(picked().includes("     AMK_IOS_DEVICE='iPhone 17 Pro' AMK_ANDROID_DEVICE=ZX1 sh scripts/amk/verify.sh android --no-build --screens phone --spec x1\n"), picked());
+  assert.match(picked({ AMK_ANDROID_DEVICE: 'ZX2' }), /AMK_ANDROID_DEVICE=ZX2 sh scripts\/amk\/verify\.sh android/);
 });
 
 test('verify.sh --part k/n: its share of the flows, in <screen>/part-k/; a later part on a temporary copy of the emulator, deleted afterwards', { skip }, () => {
@@ -677,6 +714,8 @@ esac
 echo "xcodebuild $*" >> "$FAKE_STATE.calls"
 # FAKE_XCODE_BUSY: Xcode builds or indexes the project, and holds its build service
 if [ -n "$FAKE_XCODE_BUSY" ]; then echo 'error: Could not compute dependency graph: MsgHandlingError(message: "unable to initiate PIF transfer session (operation in progress?)")'; exit 65; fi
+# FAKE_XCODE_LINK: a link error deep in a long log, after the warning about a pod's old iOS target
+if [ -n "$FAKE_XCODE_LINK" ]; then seq 1 3000 | sed 's/^/compiling /'; echo "warning: The iOS Simulator deployment target 'IPHONEOS_DEPLOYMENT_TARGET' is set to 12.4, but the range of supported deployment target versions is 15.0 to 27.2.99."; echo 'Undefined symbols for architecture arm64:'; echo 'ld: symbol(s) not found for architecture arm64'; echo 'error: Command PhaseScriptExecution failed with a nonzero exit code 0'; exit 65; fi
 case "$*" in *"-destination id="*) p=Release-iphoneos ;; *) p=Release-iphonesimulator ;; esac
 mkdir -p "ios/DerivedData/Build/Products/$p/App.app"
 printf '<plist version="1.0"><dict><key>CFBundleIdentifier</key><string>com.example.app</string><key>CFBundleExecutable</key><string>App</string></dict></plist>\n' > "ios/DerivedData/Build/Products/$p/App.app/Info.plist"
@@ -783,6 +822,8 @@ test('verify.sh ios: a connected iPhone, when named: a build signed for it, open
 
   // a flow that fails on the iPhone: why, from maestro-runner's report, and the screen then
   const broke = verifyIos({ env: { AMK_IOS_DEVICE: '00008020-AAAA', FAKE_RUNNER_FAIL: 'Element not visible: id=save' }, args: ['ios', '--label', 'run', '--screens', 'phone-portrait'] });
+  const locked = verifyIos({ env: { AMK_IOS_DEVICE: '00008020-AAAA', FAKE_RUNNER_FAIL: 'Set orientation failed (WDA error: Unable To Rotate Device)' }, args: ['ios', '--label', 'run', '--screens', 'phone-portrait'] });
+  assert.match(locked.out, /failed with: Set orientation failed \(WDA error: Unable To Rotate Device\) \(a real iPhone or iPad does not turn while Portrait Orientation Lock is on in Control Center: turn it off, or check landscape on a simulator\)/);
   assert.match(broke.out, /flow smoke failed, see [^\n]* maestro-runner's own log [^\n]*\n {4}failed with: Element not visible: id=save\n {4}the screen when it failed: \.amk\/evidence\/run\/maestro-logs\/ios-smoke\/assets\/flow-000\/nested-000-after\.png\n/);
 });
 
@@ -838,6 +879,12 @@ test('verify.sh ios: --large-text sets the simulator\'s largest text size, puts 
   assert.ok(fs.existsSync(path.join(r.app, '.amk/evidence/no-spec-large-text')), 'its own evidence folder');
 });
 
+test('verify.sh ios: --dark turns on the simulator\'s dark mode, puts it back at the end, and keeps its evidence apart', { skip: skipIos }, () => {
+  const r = verifyIos({ args: ['ios', '--dark'] });
+  assert.match(r.calls, /xcrun simctl ui (\S+) appearance dark[\s\S]*xcrun simctl ui \1 appearance light/, r.out);
+  assert.ok(fs.existsSync(path.join(r.app, '.amk/evidence/no-spec-dark')), 'its own evidence folder');
+});
+
 test('verify.sh ios: a build Xcode holds (building or indexing the project) says so, and how to go on (issue #13)', { skip: skipIos }, () => {
   const busy = verifyIos({ env: { FAKE_XCODE_BUSY: '1' } });
   assert.strictEqual(busy.status, 1);
@@ -845,6 +892,13 @@ test('verify.sh ios: a build Xcode holds (building or indexing the project) says
   assert.match(busy.out, /^ {2}Xcode is building or indexing this project too: let it finish or quit it \(if it stays stuck: pkill -f SWBBuildService\), then run this again \(docs\/amk\/known-issues\.md\)$/m);
   const other = verifyIos({ env: { FAKE_XCODE_BUSY: '' } });
   assert.doesNotMatch(other.out, /Xcode is building or indexing/);
+});
+
+test('verify.sh ios: a failed build shows its first real error lines, and a hint for a pod that targets an old iOS', { skip: skipIos }, () => {
+  const r = verifyIos({ env: { FAKE_XCODE_LINK: '1' } });
+  assert.strictEqual(r.status, 1);
+  assert.match(r.out, /^ios: release build FAILED, see \S+ios-build\.log\n {2}Undefined symbols for architecture arm64:\n {2}ld: symbol\(s\) not found for architecture arm64\n {2}a pod targets an iOS version older than this Xcode supports/m);
+  assert.doesNotMatch(r.out, /exit code 0/, 'not Xcode\'s "failed with exit code 0" line');
 });
 
 test('verify.sh ios: a first iOS build (no pods or no build folder yet) needs 8 GB free; later ones 5', { skip: skipIos }, () => {

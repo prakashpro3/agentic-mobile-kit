@@ -249,3 +249,9 @@ test('flow <id> writes a block for each scenario, never over a flow that\'s ther
   assert.strictEqual(read(dir, '.maestro/NEW-1.yaml'), text);
   assert.match(run(dir, 'flow', 'LOGIN-1').out, /Each of the 1 scenarios has a block/);
 });
+
+test('flow blocks: "# Scenario 3: …" and "# Scenario: …" start a block; a comment that only starts with the word (the flow template\'s) doesn\'t', () => {
+  const { flowBlocks } = require(path.join(path.dirname(SCRIPT), 'specs.js'));
+  const flow = 'appId: x\n---\n# - The app keeps its data: clear it only for a\n#   scenario that needs a fresh install: onboarding.\n- launchApp\n# Scenario 1: Home\n- assertVisible: "Home"\n# scenario: Settings\n- tapOn: { id: "s" }\n# Scenario 3 Profile\n- assertVisible: "Me"\n';
+  assert.deepStrictEqual(flowBlocks(flow).map(b => [b.n, b.name]), [[1, 'Home'], [0, 'Settings'], [3, 'Profile']]);
+});

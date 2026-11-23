@@ -55,6 +55,14 @@ const check = (dir, what, env = {}) => {
   return { code: r.status, out: `${r.stdout}${r.stderr}` };
 };
 
+test('a check whose output can\'t be read: the line that says what went wrong, not its last (where a tool asks you to report the crash)', () => {
+  const dir = app();
+  write(dir, 'types.txt', 'Oops! Something went wrong.\nError: Cannot find module \'typescript\'\nPlease report it in our chat: https://example.invalid/chat\n');
+  const r = check(dir, 'typecheck');
+  assert.strictEqual(r.code, 3, r.out);
+  assert.match(r.out, /\(exit 2: Error: Cannot find module 'typescript'\)/);
+});
+
 test('typecheck and tests: failures the base branch already had pass; new ones fail and are listed', () => {
   const dir = app();
   write(dir, 'src/b.ts', 'export const b = 2;\n'); // a change with no new problems; the old error moved down a line
@@ -192,6 +200,7 @@ test('git worktrees: another one inside this checkout (.claude/worktrees/) isn\'
   const none = check(wt, 'typecheck', { AMK_BASE: 'main' });
   assert.strictEqual(none.code, 3, none.out);
   assert.match(none.out, /typecheck: failed, and it can't be compared with main \([0-9a-f]{7}\): this branch's output couldn't be read \(exit 1: .+\)/);
+
   // installed in the main checkout: found from the worktree, and linked into the base's copy made before they were
   fs.renameSync(path.join(dir, 'nm-away'), path.join(dir, 'node_modules'));
   const r = check(wt, 'typecheck', { AMK_BASE: 'main' });

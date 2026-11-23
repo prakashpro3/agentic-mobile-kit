@@ -8,7 +8,6 @@ Other AI workflow frameworks in this project (Superpowers, BMAD, proAgents, …)
 ## Project
 
 - Expo SDK {{EXPO_SDK}}, React Native {{RN_VERSION}} ({{RN_ARCH}}), React {{REACT_VERSION}}, {{LANGUAGE}}, Node {{NODE_VERSION}}. Package manager: {{PM}}.
-- `ios/` and `android/` come from `npx expo prebuild`, not git; the kit's scripts generate them when needed.
 - Screens: {{SCREENS}}. Build every screen for each of them (`docs/amk/expo.md`, Tablets and landscape); `verify.sh` checks each one.
 - What the app does: `docs/amk/product.md`, and requirement by requirement, as it works now: `specs/current/`. Stack and services: `docs/amk/tech.md`. Folders and layers: `docs/amk/structure.md`. Code style: `docs/amk/conventions.md`.
 - The app's own words, to use in names, specs and messages: `docs/amk/glossary.md`.
@@ -22,7 +21,7 @@ Other AI workflow frameworks in this project (Superpowers, BMAD, proAgents, …)
 | Add a library (ask first) | `npx expo install <package>` (the SDK's version) |
 | Lint, typecheck, test (each skips what the app lacks) | `sh scripts/amk/pm-run.sh lint` (or `typecheck`, `test`) |
 | Check dependency versions and app config | `npx expo install --check`, `npx expo-doctor` |
-| Check on devices (release builds, Maestro flows, screenshots) | `sh scripts/amk/verify.sh all --spec <id>`; only some screens: `--screens phone` (or `tablet`, `landscape`, …); smoke flows only: `--tags smoke`; with the app's mock API: `--mock`; on a real iPhone or iPad the user names: `AMK_IOS_DEVICE=<its UDID>` (the flows clear the app's data on it) |
+| Check on devices (release builds, Maestro flows, screenshots) | `sh scripts/amk/verify.sh all --spec <id>`; some screens: `--screens phone` (or `tablet`, `landscape`, …); smoke flows: `--tags smoke`; mock API: `--mock`; largest text: `--large-text`; dark mode: `--dark`; a real iPhone or iPad the user names: `AMK_IOS_DEVICE=<its UDID>` (the flows clear its app data); devices the user picks: a line each in `.amk/devices` (`AMK_ANDROID_AVD=<name>`) |
 | Check devices at the same time | `sh scripts/amk/verify.sh plan --spec <id>` prints a command per device, each for an `m-device-checker` subagent |
 | After each task: lint, typecheck and the tests of the changed files | `sh scripts/amk/verify.sh quick --related` |
 | React Native mistakes, flow problems and oversized files or functions in this branch's changes (`verify.sh quick` runs it) | `node scripts/amk/rn-check.js` |
@@ -46,10 +45,10 @@ Never say a check passed unless you ran it in this session.
 ## Rules
 
 - Stay inside the task. Ask before touching unrelated files.
-- Ask the user in rounds: every question you can ask now, each with the answer you recommend. With a question tool (`AskUserQuestion`, `request_user_input`, `question`), give each 2 to 4 options, the recommended one first and marked "(Recommended)", multiple choice where several can apply; suggestions too. Without one, number them, each worded so "yes" takes it. An approval is always a question of its own, never part of a round. The answers can open the next round. Look facts up in the code yourself; ask only for decisions. A question only someone else can answer (the client, a designer, the backend team) goes into `specs/<id>/questions-<who>.md` for the user to send; go on with the rest.
+- Ask the user in rounds: every question you can ask now, each with the answer you recommend. With a question tool (`AskUserQuestion`, `request_user_input`, `question`), give each 2 to 4 options, the recommended one first and marked "(Recommended)", multiple choice where several can apply; suggestions too. Without one, number them, each worded so "yes" takes it. An approval is always a question of its own, never part of a round. Look facts up in the code yourself; ask only for decisions. A question only someone else can answer (the client, a designer, the backend team) goes into `specs/<id>/questions-<who>.md` for the user to send; go on with the rest.
 - Before designing a feature's screens, ask the user which UI/UX level they want: Simple (the default), Mixed or Premium (`specs/_templates/design.md` describes each). Build them to it.
 - Ask before adding or upgrading dependencies, and before editing `package.json`, lockfiles, `app.json`, `app.config.*`, `eas.json` or `.github/workflows/`.
-- Never edit `ios/` or `android/`: the next prebuild overwrites them. Native settings go in `app.json` or `app.config.*` (config plugins, after asking); native code in an Expo module (`expo-module` skill).
+- Never edit `ios/` or `android/` (not in git): `npx expo prebuild` makes them, and the kit's scripts run it when needed. Native settings go in `app.json` or `app.config.*` (config plugins, after asking); native code in an Expo module (`expo-module` skill).
 - Never run `eas build`, `eas submit` or `eas update`: they use the team's accounts, so a person runs them.
 - Never read, print or commit `.env` files, keystores, signing files or the files `.amk-secrets` lists. Secrets don't belong in this repo.
 - Never use `git commit --no-verify`, `git push --force`, `git reset --hard` or `rm -rf`, and never throw away work that can't be brought back (uncommitted changes with `git checkout .` or `git restore .`, stashes with `git stash drop` or `clear`, unmerged commits with `git branch -D`): ask first. To undo your own edit to a file, `git checkout -- <that file>`.
