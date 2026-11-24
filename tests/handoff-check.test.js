@@ -24,6 +24,26 @@ function app() {
   return dir;
 }
 
+test('stop hook, in Claude Code: once a session, says when the kit\'s files kept out of git here aren\'t from the version AGENTS.md has', () => {
+  const dir = app();
+  write(dir, 'scripts/amk/stale-kit.js', fs.readFileSync(path.join(path.dirname(SCRIPT), 'stale-kit.js'), 'utf8'));
+  write(dir, 'AGENTS.md', '<!-- KIT:START agentic-mobile-kit 0.17.5 -->\n');
+  write(dir, '.gitignore', '.rulesync\n.amk/\n');
+  const stop = (session, transcript = '/Users/x/.claude/projects/p/s.jsonl') => spawnSync('node', [path.join(dir, 'scripts/amk/handoff-check.js')], {
+    cwd: dir, encoding: 'utf8', input: JSON.stringify({ hook_event_name: 'Stop', session_id: session, transcript_path: transcript, background_tasks: [] }) });
+  const first = stop('s1');
+  assert.strictEqual(first.status, 0, first.stderr);
+  assert.match(JSON.parse(first.stdout).systemMessage, /^agentic-mobile-kit: this checkout's copies of the kit's files kept out of git \(.*\) aren't from kit 0\.17\.5, .*: run npx agentic-mobile-kit@latest sync in this folder$/);
+  assert.strictEqual(stop('s1').stdout, '', 'once a session');
+  assert.strictEqual(stop('s2', '/tmp/codex/sessions/rollout.jsonl').stdout, '', 'Claude Code only');
+  write(dir, '.amk/kit-version', '0.17.5\n');
+  assert.strictEqual(stop('s3').stdout, '', 'at the version AGENTS.md has');
+  write(dir, '.amk/kit-version', '0.7.19\n');
+  assert.match(JSON.parse(stop('s4').stdout).systemMessage, /\(they're from 0\.7\.19\)/);
+  write(dir, '.gitignore', '.amk/\n');
+  assert.strictEqual(stop('s5').stdout, '', 'the kit\'s files in git: nothing to say');
+});
+
 test('handoff check: a new spec folder that isn\'t in git yet counts its progress.md', () => {
   const dir = app();
   write(dir, 'specs/20261016-x/progress.md', IN_PROGRESS);

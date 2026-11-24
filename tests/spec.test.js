@@ -250,6 +250,30 @@ test('flow <id> writes a block for each scenario, never over a flow that\'s ther
   assert.match(run(dir, 'flow', 'LOGIN-1').out, /Each of the 1 scenarios has a block/);
 });
 
+test('status: specs not done in another git worktree or on a local branch, with where; and kit files kept out of git that aren\'t AGENTS.md\'s version', () => {
+  const dir = tmpDir('amk-spec-away-');
+  const g = (...a) => execFileSync('git', a, { cwd: dir, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+  const commitAll = m => { g('add', '-A'); g('-c', 'user.name=t', '-c', 'user.email=t@example.invalid', 'commit', '-qm', m); };
+  g('init', '-q', '-b', 'main');
+  write(dir, 'specs/A-1/progress.md', 'Status: done\n');
+  write(dir, '.gitignore', '.claude/\n');
+  commitAll('a');
+  g('worktree', 'add', '-q', '-b', 'worktree-b', '.claude/worktrees/b');
+  write(path.join(dir, '.claude/worktrees/b'), 'specs/B-2/progress.md', 'Status: in progress — task 1 of 12\n');
+  g('switch', '-q', '-c', 'feature/c');
+  write(dir, 'specs/C-3/progress.md', 'Status: not started\n');
+  write(dir, 'specs/D-4/progress.md', 'Status: done\n');
+  commitAll('c');
+  g('switch', '-q', 'main');
+  const out = run(dir, 'status').out;
+  assert.match(out, /^Not done, elsewhere in this repository \(m-continue works on one there\):\n {2}B-2 {2}in progress — task 1 of 12 {2}in the git worktree \S+\.claude\/worktrees\/b \(branch worktree-b\)\n {2}C-3 {2}not started {2}on the branch feature\/c \(git switch feature\/c\)\n/m);
+  assert.doesNotMatch(out, /D-4|A-1 .*elsewhere/);
+  assert.doesNotMatch(out, /^! /m);
+  write(dir, 'AGENTS.md', '<!-- KIT:START agentic-mobile-kit 0.17.5 -->\n');
+  write(dir, '.gitignore', '.claude/\n.rulesync\n');
+  assert.match(run(dir, 'status').out, /^! This checkout's copies of the kit's files kept out of git .* run npx agentic-mobile-kit@latest sync in this folder\.$/m);
+});
+
 test('flow blocks: "# Scenario 3: …" and "# Scenario: …" start a block; a comment that only starts with the word (the flow template\'s) doesn\'t', () => {
   const { flowBlocks } = require(path.join(path.dirname(SCRIPT), 'specs.js'));
   const flow = 'appId: x\n---\n# - The app keeps its data: clear it only for a\n#   scenario that needs a fresh install: onboarding.\n- launchApp\n# Scenario 1: Home\n- assertVisible: "Home"\n# scenario: Settings\n- tapOn: { id: "s" }\n# Scenario 3 Profile\n- assertVisible: "Me"\n# Scenario Log out works\n- tapOn: { id: "out" }\n';

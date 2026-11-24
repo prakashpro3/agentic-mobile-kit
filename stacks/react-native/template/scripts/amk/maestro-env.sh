@@ -24,7 +24,8 @@ for amk_file in .maestro/.env.local .maestro/.env ${amk_main:+"$amk_main/.maestr
   done < "$amk_file"
 done
 # flows that use ${MAESTRO_…} values (a test login) that neither a file nor the shell (CI's secrets) sets fail at that
-# step: say why first
+# step: say why first, in a run that has flows (not quick, build, plan or approve)
+case ${mode:-all} in ios | android | all) ;; *) amk_read=1 ;; esac
 if [ -z "$amk_read" ]; then
   amk_unset=$(grep -rhoE '\$\{MAESTRO_[A-Za-z0-9_]+' .maestro 2> /dev/null | sed 's/^..//' | sort -u | while read -r amk_key; do [ -n "$(printenv "$amk_key")" ] || printf '%s ' "$amk_key"; done)
   [ -z "$amk_unset" ] || echo "verify.sh: the flows use ${amk_unset% }, which nothing sets: no .maestro/.env.local here${amk_main:+ or in the main checkout ($amk_main)}, and not in the shell. Steps that need them will fail" >&2

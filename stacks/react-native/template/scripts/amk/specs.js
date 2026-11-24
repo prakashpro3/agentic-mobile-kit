@@ -348,11 +348,59 @@ function status() {
   if (!rows.length) console.log('No specs yet.');
   const w = Math.max(0, ...rows.map(r => r.name.length));
   for (const r of rows) console.log(`${r.name.padEnd(w)}  ${r.state.padEnd(32)}  ${r.tasks}  (updated ${new Date(r.updated).toISOString().slice(0, 10)})`);
+  const away = elsewhere(new Set(rows.map(r => r.name)));
+  if (away.length) {
+    console.log('\nNot done, elsewhere in this repository (m-continue works on one there):');
+    for (const r of away) console.log(`  ${r.name}  ${r.state}  ${r.where}`);
+  }
   const current = allSpecFiles().filter(f => f.startsWith('specs/current/'));
   const count = current.reduce((n, f) => n + blocks(read(f).split('\n')).length, 0);
   console.log(`\nLiving spec: ${current.length} area(s), ${count} requirement(s) in specs/current/`);
+  try { const stale = require('./stale-kit.js')(); if (stale) console.log(`\n! ${stale.charAt(0).toUpperCase()}${stale.slice(1)}.`); } catch {}
   planStatus();
   return 0;
+}
+
+// the specs not done in this repository's other worktrees, and on local branches no worktree has (not merged here, and
+// with a spec folder that differs from this branch's), each with where it is: a pause in a git worktree leaves its work
+// there, which this checkout's specs/ doesn't show
+function elsewhere(here) {
+  const g = (...a) => { try { return execFileSync('git', a, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }); } catch { return ''; } };
+  const out = [];
+  const seen = new Set(here);
+  const add = (name, progress, where) => {
+    if (seen.has(name) || name === 'current' || name.startsWith('_') || !progress) return;
+    const state = stateOf(progress);
+    if (/^done\b/i.test(state)) return;
+    seen.add(name);
+    out.push({ name, state, where });
+  };
+  const top = fs.realpathSync('.');
+  const trees = g('worktree', 'list', '--porcelain').split(/\n\s*\n/).map(b => ({ dir: (/^worktree (.+)$/m.exec(b) || [])[1], branch: (/^branch refs\/heads\/(.+)$/m.exec(b) || [])[1] }))
+    .filter(t => t.dir);
+  for (const t of trees) {
+    let real = null;
+    try { real = fs.realpathSync(t.dir); } catch { continue; }
+    if (real === top) continue;
+    let names = [];
+    try { names = fs.readdirSync(path.join(real, 'specs')); } catch {}
+    for (const n of names) {
+      let p = null;
+      try { p = fs.readFileSync(path.join(real, 'specs', n, 'progress.md'), 'utf8'); } catch {}
+      add(n, p, `in the git worktree ${t.dir}${t.branch ? ` (branch ${t.branch})` : ''}`);
+    }
+  }
+  const busy = new Set(trees.map(t => t.branch).filter(Boolean));
+  const mine = new Map(g('ls-tree', 'HEAD:specs').split('\n').filter(Boolean).map(l => [l.split('\t')[1], l.split(/\s+/)[2]]));
+  for (const b of g('for-each-ref', '--no-merged', 'HEAD', '--format=%(refname:short)', 'refs/heads').split('\n').filter(Boolean)) {
+    if (busy.has(b) || b === 'plan') continue;
+    for (const l of g('ls-tree', `${b}:specs`).split('\n').filter(Boolean)) {
+      const [meta, n] = l.split('\t');
+      if (!/ tree /.test(` ${meta} `) || mine.get(n) === meta.split(/\s+/)[2]) continue;
+      add(n, g('show', `${b}:specs/${n}/progress.md`), `on the branch ${b} (git switch ${b})`);
+    }
+  }
+  return out;
 }
 
 // ---------- a change's tests, or a release's ----------

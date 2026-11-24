@@ -755,6 +755,19 @@ check_screens() { # platform phone tablet app_id screens…
 quick() {
   # a check this run doesn't reach (lint failed first) has no log, not the last run's
   rm -f "$evidence/lint.log" "$evidence/typecheck.log" "$evidence/test.log"
+  # a git worktree (Claude Code's .claude/worktrees/) has no node_modules until someone installs there, so the app's
+  # scripts can't find their tools (./node_modules/.bin/eslint): the main checkout's, linked (not on Windows, where ln
+  # copies), when git ignores it here
+  if [ ! -e node_modules ] && git check-ignore -q node_modules 2> /dev/null; then
+    main=$(cd "$(git rev-parse --git-common-dir 2> /dev/null)/.." 2> /dev/null && pwd -P) || main=
+    if [ -n "$main" ] && [ "$main" != "$(pwd -P)" ] && [ -d "$main/node_modules" ]; then
+      case $(uname -s) in
+        MINGW* | MSYS* | CYGWIN*) echo "quick: this git worktree has no node_modules: install its own (sh scripts/amk/install-deps.sh)" ;;
+        *) ln -s "$main/node_modules" node_modules &&
+          echo "quick: this git worktree had no node_modules: linked the main checkout's ($main/node_modules). For its own: rm node_modules, then sh scripts/amk/install-deps.sh" ;;
+      esac
+    fi
+  fi
   # each one passes when the app's script passes, or when all its failures were already on the base branch
   if step quick lint && node scripts/amk/baseline.js lint > "$evidence/lint.log" 2>&1 &&
     step quick typecheck && node scripts/amk/baseline.js typecheck > "$evidence/typecheck.log" 2>&1 &&

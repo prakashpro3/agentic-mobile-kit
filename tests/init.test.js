@@ -339,6 +339,35 @@ test('sync: uncommitted changes to the app\'s own files stay as they are; to a f
   assert.throws(() => sync(dir, { skipGenerate: true }), /files sync updates \(\.gitignore\)/);
 });
 
+test('sync: the kit\'s files git ignores here are as old as this checkout\'s last sync (.amk/kit-version), not team edits; in a git worktree it says the main checkout needs one too', () => {
+  const dir = fakeApp();
+  init(dir, { skipGenerate: true });
+  assert.strictEqual(read(dir, '.amk/kit-version'), `${KIT_VERSION}\n`, 'init records it');
+  fs.appendFileSync(path.join(dir, '.gitignore'), '.githooks/\n');
+  commitAll(dir);
+  const kits = read(dir, '.githooks/pre-push');
+  // a copy from an older kit, in a checkout synced before 0.17.5 (no record): replaced, the old one kept
+  fs.writeFileSync(path.join(dir, '.githooks/pre-push'), '#!/bin/sh\n# an older kit\'s\n');
+  fs.rmSync(path.join(dir, '.amk/kit-version'));
+  const r = sync(dir, { skipGenerate: true });
+  assert.deepStrictEqual(r.report.replaced, ['.githooks/pre-push']);
+  assert.strictEqual(read(dir, '.githooks/pre-push'), kits);
+  assert.strictEqual(read(dir, '.amk/sync-backup/.githooks/pre-push'), '#!/bin/sh\n# an older kit\'s\n');
+  assert.strictEqual(r.changed, true, 'a change git doesn\'t show is one');
+  assert.strictEqual(read(dir, '.amk/kit-version'), `${KIT_VERSION}\n`);
+  // recorded as this version: a local edit stays, as in any checkout
+  fs.appendFileSync(path.join(dir, '.githooks/pre-push'), '# ours\n');
+  assert.deepStrictEqual(sync(dir, { skipGenerate: true }).report.replaced, []);
+  assert.match(read(dir, '.githooks/pre-push'), /# ours\n$/);
+  // a git worktree has none of them: sync adds them there, and says the main checkout keeps its own
+  git(dir, 'worktree', 'add', '-q', '-b', 'wt', path.join(dir, '.claude/worktrees/wt'));
+  const wt = path.join(dir, '.claude/worktrees/wt');
+  const w = sync(wt, { skipGenerate: true });
+  assert.ok(fs.existsSync(path.join(wt, '.githooks/pre-push')));
+  assert.ok(w.warnings.some(x => /^this is a git worktree, and the kit's files git ignores \(\.githooks\) are each checkout's own: the main checkout \(.+\) keeps its older ones/.test(x)), w.warnings.join('\n'));
+  git(dir, 'worktree', 'remove', '--force', wt);
+});
+
 test('sync needs the kit installed, and the installed version for kits before 0.4.0', () => {
   assert.throws(() => sync(fakeApp(), { skipGenerate: true }), /Run init instead/);
   const before040 = '<!-- KIT:START agentic-mobile-kit (edit outside these markers; the kit updates what\'s inside) -->\nold\n<!-- KIT:END agentic-mobile-kit -->\n';
@@ -480,6 +509,16 @@ test('husky 9: the kit runs from husky\'s files, core.hooksPath stays husky\'s, 
   assert.match(skipped.stderr, /this clone has no \.githooks\/pre-push yet, so the kit's checks were skipped: run npx agentic-mobile-kit sync/);
   fs.renameSync(path.join(dir, 'githooks-away'), path.join(dir, '.githooks'));
   commitAll(dir);
+  // a git worktree of a team that keeps .githooks out of git: the main checkout's hook runs there
+  fs.appendFileSync(path.join(dir, '.gitignore'), '.githooks/\n');
+  git(dir, 'rm', '-r', '-q', '--cached', '.githooks');
+  commitAll(dir);
+  git(dir, 'worktree', 'add', '-q', '-b', 'wt', path.join(dir, '.claude/worktrees/wt'));
+  const wt = path.join(dir, '.claude/worktrees/wt');
+  assert.ok(!fs.existsSync(path.join(wt, '.githooks')));
+  const mainHook = sh(wt, 'sh scripts/amk/run-hook.sh .githooks/pre-commit');
+  assert.doesNotMatch(mainHook.stderr, /this clone has no/, mainHook.stderr);
+  git(dir, 'worktree', 'remove', '--force', wt);
   assert.ok(Object.values(sync(dir, { skipGenerate: true }).report).every(a => a.length === 0), 'sync adds nothing twice');
   // an earlier kit's plain call, which failed there: sync upgrades it
   fs.writeFileSync(path.join(dir, '.husky/pre-commit'), `sh .githooks/pre-commit || exit 1 # agentic-mobile-kit\n${lintStaged}`);

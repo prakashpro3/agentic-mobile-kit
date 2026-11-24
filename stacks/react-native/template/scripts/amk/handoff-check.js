@@ -51,6 +51,17 @@ if (payload.hook_event_name === 'SessionStart') {
 const ends = () => {
   try { require('./status.js').mark(payload, { ended: Date.now() }); } catch {}
   try { require('./notify.js').notify({ ...payload, hook_event_name: 'Stop' }); } catch {}
+  // once a session, in Claude Code, shown to the developer: this checkout's kit files git ignores are older than its
+  // scripts, so its hooks, subagents and status line are too (a sync in a git worktree updates only what git carries)
+  try {
+    const stale = require('./stale-kit.js')(root);
+    const told = path.join(root, '.amk', 'stale-kit-told');
+    if (stale && /[\\/]\.claude[\\/]/.test(payload.transcript_path || '') && (read('.amk/stale-kit-told') || '').trim() !== String(payload.session_id)) {
+      fs.mkdirSync(path.dirname(told), { recursive: true });
+      fs.writeFileSync(told, String(payload.session_id));
+      fs.writeSync(1, JSON.stringify({ systemMessage: `agentic-mobile-kit: ${stale}` }));
+    }
+  } catch {}
   process.exit(0);
 };
 

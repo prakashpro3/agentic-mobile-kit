@@ -41,6 +41,8 @@ test('maestro-env.sh in a git worktree: the main checkout\'s .maestro/.env.local
   const none = run(wt);
   assert.strictEqual(none.stdout, '[][]');
   assert.match(none.stderr, /the flows use MAESTRO_EMAIL, which nothing sets: no \.maestro\/\.env\.local here or in the main checkout \(.+\), and not in the shell\. Steps that need them will fail/);
+  // a run without flows (quick, build, plan, approve): nothing to say
+  assert.strictEqual(spawnSync('sh', ['-c', `mode=quick; . "${SCRIPT}"`], { cwd: wt, encoding: 'utf8', env: { ...process.env, MAESTRO_EMAIL: '' } }).stderr, '');
   // the values from the shell (CI's secrets): nothing to say
   const fromShell = spawnSync('sh', ['-c', `. "${SCRIPT}"`], { cwd: wt, encoding: 'utf8', env: { ...process.env, MAESTRO_EMAIL: 'ci@example.com' } });
   assert.strictEqual(fromShell.stderr, '');

@@ -6,4 +6,7 @@
 set -eu
 hook=$1; shift
 if [ -f "$hook" ]; then exec sh "$hook" "$@"; fi
+# a git worktree (Claude Code's .claude/worktrees/) has no copy of what git ignores: the main checkout's hook, run here
+main="$(git rev-parse --git-common-dir 2> /dev/null)/../$hook"
+if [ -f "$main" ]; then exec sh "$main" "$@"; fi
 echo "agentic-mobile-kit: this clone has no $hook yet, so the kit's checks were skipped: run npx agentic-mobile-kit sync" >&2

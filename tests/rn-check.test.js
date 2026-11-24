@@ -481,6 +481,21 @@ test('rn-check: Maestro\'s back in a flow is a warning in an app with iOS (no ba
   assert.doesNotMatch(run(androidOnly), /back presses Android's back key/);
 });
 
+test('verify.sh quick in a git worktree without node_modules: links the main checkout\'s, and says so', { skip: process.platform === 'win32' && 'verify.sh needs sh' }, () => {
+  const dir = app({ scripts: { lint: 'node -e ""', typecheck: 'node -e ""', test: 'node -e ""' }, dependencies: { react: '19.2.3', 'react-native': '0.87.1' } });
+  for (const f of fs.readdirSync(KIT)) write(dir, `scripts/amk/${f}`, fs.readFileSync(path.join(KIT, f), 'utf8'));
+  write(dir, '.gitignore', 'node_modules\n.amk/\n.claude/\n');
+  commit(dir, 'kit');
+  write(dir, 'node_modules/.bin/tool', '');
+  spawnSync('git', ['worktree', 'add', '-q', '-b', 'wt', '.claude/worktrees/wt'], { cwd: dir });
+  const wt = path.join(dir, '.claude/worktrees/wt');
+  const r = spawnSync('sh', ['scripts/amk/verify.sh', 'quick'], { cwd: wt, encoding: 'utf8', env: { ...process.env, AMK_BASE: 'main', TMPDIR: tmpDir('amk-rncheck-tmp-') } });
+  assert.match(r.stdout, /^quick: this git worktree had no node_modules: linked the main checkout's \(\S+\/node_modules\)\. For its own: rm node_modules, then sh scripts\/amk\/install-deps\.sh$/m, r.stdout + r.stderr);
+  assert.strictEqual(fs.realpathSync(path.join(wt, 'node_modules')), fs.realpathSync(path.join(dir, 'node_modules')));
+  const again = spawnSync('sh', ['scripts/amk/verify.sh', 'quick'], { cwd: wt, encoding: 'utf8', env: { ...process.env, AMK_BASE: 'main', TMPDIR: tmpDir('amk-rncheck-tmp-') } });
+  assert.doesNotMatch(again.stdout, /had no node_modules/);
+});
+
 test('verify.sh quick: rn-check runs after lint, typecheck and tests, and its problems fail quick', { skip: process.platform === 'win32' && 'verify.sh needs sh' }, () => {
   const dir = app({ scripts: { lint: 'node -e ""', typecheck: 'node -e ""', test: 'node -e ""' }, dependencies: { react: '19.2.3', 'react-native': '0.87.1' } });
   for (const f of fs.readdirSync(KIT)) write(dir, `scripts/amk/${f}`, fs.readFileSync(path.join(KIT, f), 'utf8'));
