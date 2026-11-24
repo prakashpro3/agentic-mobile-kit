@@ -366,7 +366,11 @@ test('sync: the kit\'s files git ignores here are as old as this checkout\'s las
   const wt = path.join(dir, '.claude/worktrees/wt');
   const w = sync(wt, { skipGenerate: true });
   assert.ok(fs.existsSync(path.join(wt, '.githooks/pre-push')));
-  assert.ok(w.warnings.some(x => /^this is a git worktree, and the kit's files git ignores \(\.githooks\) are each checkout's own: the main checkout \(.+\) keeps its older ones/.test(x)), w.warnings.join('\n'));
+  assert.ok(!w.warnings.some(x => /this is a git worktree/.test(x)), 'the main checkout is at this version already');
+  fs.writeFileSync(path.join(dir, '.amk/kit-version'), '0.17.4\n');
+  fs.rmSync(path.join(wt, '.githooks'), { recursive: true });
+  const older = sync(wt, { skipGenerate: true });
+  assert.ok(older.warnings.some(x => /^this is a git worktree, and the kit's files git ignores \(\.githooks\) are each checkout's own: the main checkout \(.+\) keeps its older ones/.test(x)), older.warnings.join('\n'));
   git(dir, 'worktree', 'remove', '--force', wt);
 });
 
