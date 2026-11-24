@@ -369,6 +369,9 @@ test('sync: the kit\'s files git ignores here are as old as this checkout\'s las
   assert.ok(!w.warnings.some(x => /this is a git worktree/.test(x)), 'the main checkout is at this version already');
   fs.writeFileSync(path.join(dir, '.amk/kit-version'), '0.17.4\n');
   fs.rmSync(path.join(wt, '.githooks'), { recursive: true });
+  // what the first sync changed there, committed (on Windows it rewrites rulesync.jsonc's line ends)
+  git(wt, 'add', '-A');
+  git(wt, '-c', 'user.name=t', '-c', 'user.email=t@example.invalid', '-c', 'core.hooksPath=/dev/null', 'commit', '-q', '--allow-empty', '-m', 'sync');
   const older = sync(wt, { skipGenerate: true });
   assert.ok(older.warnings.some(x => /^this is a git worktree, and the kit's files git ignores \(\.githooks\) are each checkout's own: the main checkout \(.+\) keeps its older ones/.test(x)), older.warnings.join('\n'));
   git(dir, 'worktree', 'remove', '--force', wt);
