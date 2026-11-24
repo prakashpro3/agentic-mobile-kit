@@ -344,6 +344,8 @@ test('sync: the kit\'s files git ignores here are as old as this checkout\'s las
   init(dir, { skipGenerate: true });
   assert.strictEqual(read(dir, '.amk/kit-version'), `${KIT_VERSION}\n`, 'init records it');
   fs.appendFileSync(path.join(dir, '.gitignore'), '.githooks/\n');
+  // (on Windows init stages the hooks, to mark them executable)
+  git(dir, 'rm', '-r', '-q', '--cached', '--ignore-unmatch', '.githooks');
   commitAll(dir);
   const kits = read(dir, '.githooks/pre-push');
   // a copy from an older kit, in a checkout synced before 0.17.5 (no record): replaced, the old one kept
